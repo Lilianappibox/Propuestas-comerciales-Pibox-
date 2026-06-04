@@ -1,10 +1,22 @@
 import { fmt } from "../utils/formatCurrency";
 import { COBERTURA } from "../data/tarifas";
 import { TEMPLATE_DEFAULT } from "../data/templateTexts";
+import PiboxLogo from "./PiboxLogo";
+
+// ── Colores de marca PIBOX ──────────────────────────────────────
+const PURPLE   = "#7C22D4";
+const MAGENTA  = "#C026D3";
+const STRIPE   = "#FAF5FF";  // purple-50
+const GRADIENT = "linear-gradient(135deg, #7C22D4, #C026D3)";
 
 const Section = ({ title, children }) => (
   <div className="mb-8">
-    <h2 className="text-lg font-bold text-blue-800 border-b-2 border-blue-600 pb-1 mb-4">{title}</h2>
+    <h2
+      className="text-base font-bold pb-1 mb-4"
+      style={{ color: PURPLE, borderBottom: `2px solid ${PURPLE}` }}
+    >
+      {title}
+    </h2>
     {children}
   </div>
 );
@@ -13,17 +25,17 @@ const DataTable = ({ headers, rows }) => (
   <div className="overflow-x-auto mb-4">
     <table className="w-full text-sm border-collapse">
       <thead>
-        <tr className="bg-blue-700 text-white">
+        <tr style={{ background: GRADIENT }}>
           {headers.map((h, i) => (
-            <th key={i} className="px-3 py-2 text-left font-semibold text-xs border border-blue-800">{h}</th>
+            <th key={i} className="px-3 py-2 text-left font-semibold text-xs text-white border border-purple-900">{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {rows.map((row, ri) => (
-          <tr key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-blue-50"}>
+          <tr key={ri} style={{ backgroundColor: ri % 2 === 0 ? "#ffffff" : STRIPE }}>
             {row.map((cell, ci) => (
-              <td key={ci} className="px-3 py-2 text-xs border border-gray-200">{cell}</td>
+              <td key={ci} className="px-3 py-2 text-xs border border-purple-100">{cell}</td>
             ))}
           </tr>
         ))}
@@ -36,16 +48,16 @@ const PolicyTable = ({ rows }) => (
   <div className="overflow-x-auto mb-4">
     <table className="w-full text-sm border-collapse">
       <thead>
-        <tr className="bg-gray-700 text-white">
-          <th className="px-3 py-2 text-left text-xs border border-gray-800 w-1/3">Ítem</th>
-          <th className="px-3 py-2 text-left text-xs border border-gray-800">Observaciones</th>
+        <tr style={{ backgroundColor: "#4B1181" }}>
+          <th className="px-3 py-2 text-left text-xs text-white border border-purple-900 w-1/3">Ítem</th>
+          <th className="px-3 py-2 text-left text-xs text-white border border-purple-900">Observaciones</th>
         </tr>
       </thead>
       <tbody>
         {rows.map(([item, obs], i) => (
-          <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-            <td className="px-3 py-2 text-xs border border-gray-200 font-medium">{item}</td>
-            <td className="px-3 py-2 text-xs border border-gray-200">{obs}</td>
+          <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : STRIPE }}>
+            <td className="px-3 py-2 text-xs border border-purple-100 font-medium">{item}</td>
+            <td className="px-3 py-2 text-xs border border-purple-100">{obs}</td>
           </tr>
         ))}
       </tbody>
@@ -74,24 +86,26 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
 
   return (
     <div id="propuesta-preview" className="bg-white text-gray-900 font-sans p-8 max-w-4xl mx-auto print:p-0">
-      {/* Encabezado */}
-      <div className="flex justify-between items-start mb-8">
-        <div>
-          <div className="text-2xl font-black text-blue-700 tracking-tight">PIBOX</div>
-          <div className="text-xs text-gray-500">Digital Platforms Colombia SAS</div>
-        </div>
-        <div className="text-right text-sm text-gray-600">
-          <p>Bogotá, {fechaFmt}</p>
-          {ciudad && <p>{ciudad}</p>}
+
+      {/* ── Banda de color superior con logo ── */}
+      <div
+        className="rounded-xl p-4 mb-6 flex justify-between items-center"
+        style={{ background: GRADIENT }}
+      >
+        <PiboxLogo size="md" white />
+        <div className="text-right text-white">
+          <p className="text-sm font-semibold">Bogotá, {fechaFmt}</p>
+          {ciudad && <p className="text-xs text-white/80">{ciudad}</p>}
+          <p className="text-xs text-white/60 mt-1">Digital Platforms Colombia SAS</p>
         </div>
       </div>
 
       {/* Destinatario */}
-      <div className="mb-6">
-        {contacto && <p className="font-semibold">Señor(a): {contacto}</p>}
-        {cliente && <p className="font-bold text-blue-800 text-lg">{cliente}</p>}
-        {ciudad && <p className="text-gray-600">Ciudad: {ciudad}</p>}
-        {email && <p className="text-gray-600 text-sm">Correo: {email}</p>}
+      <div className="mb-6 border-l-4 pl-4" style={{ borderColor: PURPLE }}>
+        {contacto && <p className="font-semibold text-gray-700">Señor(a): {contacto}</p>}
+        {cliente && <p className="font-bold text-lg" style={{ color: PURPLE }}>{cliente}</p>}
+        {ciudad && <p className="text-gray-600 text-sm">📍 {ciudad}</p>}
+        {email && <p className="text-gray-600 text-sm">✉️ {email}</p>}
         <p className="mt-2 font-semibold text-gray-700">Asunto: Propuesta Comercial PIBOX</p>
       </div>
 
@@ -346,21 +360,21 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-blue-700 text-white">
+                <tr style={{ background: GRADIENT }}>
                   {["Ciudad", "Origen / Área Metropolitana", "Periferia", "Aledaños", "Lejanías", "Zonas Rojas / No Acceso"].map((h, i) => (
-                    <th key={i} className="px-2 py-2 text-left font-semibold border border-blue-800">{h}</th>
+                    <th key={i} className="px-2 py-2 text-left font-semibold text-white border border-purple-900">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {COBERTURA.map((row, i) => (
-                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-blue-50"}>
-                    <td className="px-2 py-2 border border-gray-200 font-semibold">{row.ciudad}</td>
-                    <td className="px-2 py-2 border border-gray-200">{row.origen}{row.metropolitana ? `, ${row.metropolitana}` : ""}</td>
-                    <td className="px-2 py-2 border border-gray-200">{row.periferia || "—"}</td>
-                    <td className="px-2 py-2 border border-gray-200">{row.aledanos || "—"}</td>
-                    <td className="px-2 py-2 border border-gray-200">—</td>
-                    <td className="px-2 py-2 border border-gray-200 text-red-600">{row.zonasRojas || "—"}</td>
+                  <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : STRIPE }}>
+                    <td className="px-2 py-2 border border-purple-100 font-semibold" style={{ color: PURPLE }}>{row.ciudad}</td>
+                    <td className="px-2 py-2 border border-purple-100">{row.origen}{row.metropolitana ? `, ${row.metropolitana}` : ""}</td>
+                    <td className="px-2 py-2 border border-purple-100">{row.periferia || "—"}</td>
+                    <td className="px-2 py-2 border border-purple-100">{row.aledanos || "—"}</td>
+                    <td className="px-2 py-2 border border-purple-100">—</td>
+                    <td className="px-2 py-2 border border-purple-100 text-red-600">{row.zonasRojas || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -479,24 +493,30 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
       )}
 
       {/* Cierre */}
-      <div className="mt-8 pt-4 border-t border-gray-200 text-sm text-gray-700">
+      <div className="mt-8 pt-4 border-t border-purple-100 text-sm text-gray-700">
         <p className="mb-4">{T.cierreParrafo}</p>
-        <p className="font-semibold">Cordialmente,</p>
-        <div className="mt-4">
-          {currentUser ? (
-            <>
-              <p className="text-blue-800 font-bold">{currentUser.nombre}</p>
-              {currentUser.cargo && <p className="text-sm text-gray-600">{currentUser.cargo}</p>}
-              <p className="text-xs text-gray-500">{currentUser.email}</p>
-              {currentUser.celular && <p className="text-xs text-gray-500">📱 {currentUser.celular}</p>}
-              <p className="text-xs text-gray-400 mt-1">{T.cierreSubtitulo}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-blue-800 font-bold">{T.cierreFirma}</p>
-              <p className="text-xs text-gray-500">{T.cierreSubtitulo}</p>
-            </>
-          )}
+        <p className="font-semibold text-gray-500">Cordialmente,</p>
+        <div className="mt-4 flex items-end justify-between flex-wrap gap-4">
+          <div>
+            {currentUser ? (
+              <>
+                <p className="font-bold text-base" style={{ color: PURPLE }}>{currentUser.nombre}</p>
+                {currentUser.cargo && <p className="text-sm text-gray-600">{currentUser.cargo}</p>}
+                <p className="text-xs text-gray-500">{currentUser.email}</p>
+                {currentUser.celular && <p className="text-xs text-gray-500">📱 {currentUser.celular}</p>}
+                <p className="text-xs text-gray-400 mt-1">{T.cierreSubtitulo}</p>
+              </>
+            ) : (
+              <>
+                <p className="font-bold" style={{ color: PURPLE }}>{T.cierreFirma}</p>
+                <p className="text-xs text-gray-500">{T.cierreSubtitulo}</p>
+              </>
+            )}
+          </div>
+          {/* Logo en el cierre */}
+          <div className="opacity-80">
+            <PiboxLogo size="sm" white={false} />
+          </div>
         </div>
       </div>
     </div>

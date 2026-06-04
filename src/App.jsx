@@ -8,6 +8,7 @@ import UserManager from "./components/UserManager";
 import TemplateEditor from "./components/TemplateEditor";
 import Login from "./components/Login";
 import PropuestasSaved, { loadSaved, storeSaved } from "./components/PropuestasSaved";
+import PiboxLogo from "./components/PiboxLogo";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -22,8 +23,14 @@ const TAB_PLANTILLA= "plantilla";
 const TAB_SAVED    = "saved";
 const TAB_USUARIOS = "usuarios";
 
-const ROLE_COLORS = { [ROLES.ADMIN]: "bg-purple-100 text-purple-700", [ROLES.KAM]: "bg-blue-100 text-blue-700" };
-const ROLE_ICONS  = { [ROLES.ADMIN]: "🛡️", [ROLES.KAM]: "💼" };
+const ROLE_COLORS = {
+  [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700",
+  [ROLES.KAM]:   "bg-purple-100 text-purple-700",
+};
+const ROLE_ICONS = { [ROLES.ADMIN]: "🛡️", [ROLES.KAM]: "💼" };
+
+// Colores de marca PIBOX
+const BRAND_GRADIENT = "linear-gradient(135deg, #5B17A8 0%, #7C22D4 50%, #C026D3 100%)";
 
 const INITIAL_MODULOS = {
   onDemand: true, programadoBloqueHoras: false, programadoRutas: false,
@@ -192,21 +199,29 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Topbar */}
-      <header className="bg-blue-800 text-white shadow-lg print:hidden">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <header className="text-white shadow-lg print:hidden" style={{ background: BRAND_GRADIENT }}>
+        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-4">
+          {/* Logo */}
           <div className="flex items-center gap-3 shrink-0">
-            <div className="text-2xl font-black tracking-tight">PIBOX</div>
-            <div className="text-blue-300 text-sm hidden sm:block">Tablero Comercial</div>
+            <PiboxLogo size="sm" white />
+            <span className="text-white/60 text-xs hidden sm:block tracking-wide">Tablero Comercial</span>
           </div>
+
+          {/* Nav */}
           <nav className="flex items-center gap-1 flex-1 justify-center flex-wrap">
             {navTabs.map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  tab === t.id ? "bg-white text-blue-800" : "text-blue-200 hover:bg-blue-700"}`}>
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  tab === t.id
+                    ? "bg-white text-purple-700 shadow"
+                    : "text-white/80 hover:bg-white/15"
+                }`}>
                 {t.label}
               </button>
             ))}
           </nav>
+
+          {/* Usuario */}
           <div className="flex items-center gap-2 shrink-0">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold leading-tight">{currentUser.nombre}</p>
@@ -214,10 +229,13 @@ export default function App() {
                 {ROLE_ICONS[currentUser.rol]} {currentUser.rol}
               </span>
             </div>
-            <div className="w-8 h-8 rounded-full bg-white text-blue-800 font-bold flex items-center justify-center text-sm shrink-0">
+            <div className="w-8 h-8 rounded-full bg-white/20 border border-white/40 font-bold flex items-center justify-center text-sm shrink-0">
               {currentUser.nombre.charAt(0).toUpperCase()}
             </div>
-            <button onClick={handleLogout} className="text-blue-200 hover:text-white text-xs px-2 py-1 rounded hover:bg-blue-700">Salir</button>
+            <button onClick={handleLogout}
+              className="text-white/70 hover:text-white text-xs px-2 py-1 rounded hover:bg-white/15 transition-colors">
+              Salir
+            </button>
           </div>
         </div>
       </header>
@@ -265,18 +283,20 @@ export default function App() {
               </div>
 
               {/* Tu perfil como KAM */}
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+              <div className="rounded-xl p-4 text-white" style={{ background: BRAND_GRADIENT }}>
+                <p className="text-xs font-semibold text-white/80 mb-2 flex items-center gap-1">
                   💼 Tu firma en la propuesta
                 </p>
-                <p className="text-sm font-bold text-gray-800">{currentUser.nombre}</p>
-                {currentUser.cargo && <p className="text-xs text-gray-600">{currentUser.cargo}</p>}
-                <p className="text-xs text-gray-600">{currentUser.email}</p>
-                {currentUser.celular && <p className="text-xs text-gray-600">📱 {currentUser.celular}</p>}
-                <p className="text-xs text-blue-500 mt-2 cursor-pointer hover:underline"
-                  onClick={() => { setTab(TAB_USUARIOS); }}>
-                  Editar mis datos →
-                </p>
+                <p className="text-sm font-bold text-white">{currentUser.nombre}</p>
+                {currentUser.cargo && <p className="text-xs text-white/80">{currentUser.cargo}</p>}
+                <p className="text-xs text-white/70">{currentUser.email}</p>
+                {currentUser.celular && <p className="text-xs text-white/70">📱 {currentUser.celular}</p>}
+                {permisos.gestionarUsuarios && (
+                  <p className="text-xs text-white/60 mt-2 cursor-pointer hover:text-white underline"
+                    onClick={() => setTab(TAB_USUARIOS)}>
+                    Editar mis datos →
+                  </p>
+                )}
               </div>
 
               {/* Módulos */}
@@ -324,15 +344,16 @@ export default function App() {
                     👁️ Ver propuesta completa
                   </button>
                   <button onClick={handleExportPdf} disabled={exportingPdf}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
+                    className="w-full text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
+                    style={{ background: BRAND_GRADIENT }}>
                     {exportingPdf ? "Preparando PDF..." : "⬇️ Descargar PDF"}
                   </button>
                   <button onClick={handleExportWord} disabled={exportingWord}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
+                    className="w-full bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 transition-colors border border-purple-200">
                     {exportingWord ? "Generando Word..." : "⬇️ Descargar Word (.docx)"}
                   </button>
                   <button onClick={handleSaveProposal}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2 text-sm font-medium">
+                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors">
                     💾 Guardar propuesta
                   </button>
                 </div>

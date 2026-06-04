@@ -1,9 +1,20 @@
 @import "tailwindcss";
 
+/* ── Variables de marca PIBOX ─────────────────────────────────── */
+:root {
+  --pibox-purple:      #7C22D4;
+  --pibox-purple-dark: #5B17A8;
+  --pibox-magenta:     #C026D3;
+  --pibox-gradient:    linear-gradient(135deg, #7C22D4 0%, #C026D3 100%);
+  --pibox-table-hdr:   #7C22D4;
+  --pibox-table-stripe:#FAF5FF;
+  --pibox-table-border:#E9D5FF;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
-  background-color: #f3f4f6;
+  background-color: #f5f3ff;   /* purple-50 — fondo general app */
 }
 
 #root {
@@ -12,7 +23,7 @@ body {
   text-align: left;
 }
 
-/* ── PRINT / PDF EXPORT ────────────────────────────────────────────── */
+/* ── PRINT / PDF EXPORT ────────────────────────────────────────── */
 @media print {
   * {
     -webkit-print-color-adjust: exact !important;
@@ -27,16 +38,12 @@ body {
     padding: 0 !important;
   }
 
-  #root {
-    background: #ffffff !important;
-  }
+  #root { background: #ffffff !important; }
 
-  /* Hide everything that isn't the proposal */
   header, nav, .print\:hidden, [data-print-hide] {
     display: none !important;
   }
 
-  /* The proposal itself */
   #propuesta-preview {
     padding: 12mm 14mm !important;
     max-width: none !important;
@@ -45,17 +52,16 @@ body {
     box-shadow: none !important;
   }
 
-  /* Preserve table stripe colours */
-  .bg-blue-50   { background-color: #eff6ff !important; }
-  .bg-blue-700  { background-color: #1d4ed8 !important; }
-  .bg-gray-50   { background-color: #f9fafb !important; }
-  .bg-gray-700  { background-color: #374151 !important; }
-  .bg-yellow-50 { background-color: #fefce8 !important; }
-  .bg-green-50  { background-color: #f0fdf4 !important; }
-  .bg-orange-50 { background-color: #fff7ed !important; }
-  .bg-purple-50 { background-color: #faf5ff !important; }
+  /* Preserve brand colours in print */
+  .bg-pibox-header  { background-color: #7C22D4 !important; }
+  .bg-purple-50     { background-color: #FAF5FF !important; }
+  .bg-purple-700    { background-color: #7C22D4 !important; }
+  .bg-gray-50       { background-color: #f9fafb !important; }
+  .bg-gray-700      { background-color: #374151 !important; }
+  .bg-yellow-50     { background-color: #fefce8 !important; }
+  .bg-green-50      { background-color: #f0fdf4 !important; }
+  .bg-orange-50     { background-color: #fff7ed !important; }
 
-  /* Page breaks */
   h2 { page-break-after: avoid; }
   table { page-break-inside: avoid; }
   .mb-8 { page-break-inside: avoid; }
