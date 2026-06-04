@@ -13,7 +13,6 @@ const SECCION_ICONS = {
   "Picarga": "🚚",
   "Storage": "📦",
   "ADN Tecnológico": "🔬",
-  "URLs y Vínculos": "🔗",
   "Términos y Condiciones": "📋",
   "Aceptación y Contrato": "✒️",
   "Cierre": "✍️",

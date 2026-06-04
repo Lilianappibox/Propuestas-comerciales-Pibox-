@@ -74,21 +74,6 @@ const ML = ({ text, className = "" }) => (
   </>
 );
 
-// Badge de enlace por módulo
-const LinkBadge = ({ url, label }) => {
-  if (!url) return null;
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border mb-3"
-      style={{ color: PURPLE, borderColor: "#E9D5FF", backgroundColor: "#FAF5FF" }}
-    >
-      🔗 {label || url}
-    </a>
-  );
-};
 
 export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: textsProp, currentUser }) {
   const T = { ...TEMPLATE_DEFAULT, ...(textsProp || {}) };
@@ -184,8 +169,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
         {/* ON DEMAND */}
         {modulos.onDemand && (
           <div className="mb-8">
-            <h3 className="font-bold text-yellow-700 text-base mb-2">⚡ Pibox On Demand</h3>
-            <LinkBadge url={T.urlOnDemand} label={T.urlOnDemand} />
+            <h3 className="font-bold text-yellow-700 text-base mb-3">⚡ Pibox On Demand</h3>
             <p className="text-xs text-gray-600 mb-3">{T.onDemandDesc}</p>
             <DataTable
               headers={["Ciudad", "Tipo de Vehículo", "Km Base", "Tarifa Km Base", "Tarifa Km Extra", "Parada Adicional", "VD / Ruta"]}
@@ -219,8 +203,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
         {/* PROGRAMADO BLOQUE HORAS */}
         {modulos.programadoBloqueHoras && (
           <div className="mb-8">
-            <h3 className="font-bold text-green-700 text-base mb-2">🛵 Pibox Programado — 📆 Modalidad Bloque de Horas</h3>
-            <LinkBadge url={T.urlProgramadoBH} label={T.urlProgramadoBH} />
+            <h3 className="font-bold text-green-700 text-base mb-3">🛵 Pibox Programado — 📆 Modalidad Bloque de Horas</h3>
             <p className="text-xs text-gray-600 mb-3">{T.programadoBHDesc}</p>
             <DataTable
               headers={["Ciudad", "Pilotos", "Horas/Día", "Tarifa Hora", "Cobertura", "VD / Ruta", "Recaudo / Ruta"]}
@@ -252,8 +235,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
         {/* PROGRAMADO RUTAS */}
         {modulos.programadoRutas && (
           <div className="mb-8">
-            <h3 className="font-bold text-green-700 text-base mb-2">🔁 Pibox Programado — Modalidad Rutas</h3>
-            <LinkBadge url={T.urlProgramadoRutas} label={T.urlProgramadoRutas} />
+            <h3 className="font-bold text-green-700 text-base mb-3">🔁 Pibox Programado — Modalidad Rutas</h3>
             <p className="text-xs text-gray-600 mb-3">{T.programadoRutasDesc}</p>
             <DataTable
               headers={["Ciudad", "Paquetes/Ruta", "Paquetes/Día", "Tarifa Paquete", "VD / Ruta", "Recaudo / Ruta"]}
@@ -280,8 +262,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
         {/* PICARGA */}
         {modulos.picarga && (
           <div className="mb-8">
-            <h3 className="font-bold text-orange-700 text-base mb-2">🚚 Picarga</h3>
-            <LinkBadge url={T.urlPicarga} label={T.urlPicarga} />
+            <h3 className="font-bold text-orange-700 text-base mb-3">🚚 Picarga</h3>
             <p className="text-xs text-gray-600 mb-3">{T.picargaDesc}</p>
             <DataTable
               headers={["Ciudad", "Vehículo", "Km Base", "Tarifa Km Base", "Tarifa Km Extra", "Parada Adicional", "VD / Ruta"]}
@@ -310,8 +291,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
         {/* STORAGE */}
         {modulos.storage && (
           <div className="mb-8">
-            <h3 className="font-bold text-purple-700 text-base mb-2">📦 Pibox Storage</h3>
-            <LinkBadge url={T.urlStorage} label={T.urlStorage} />
+            <h3 className="font-bold text-purple-700 text-base mb-3">📦 Pibox Storage</h3>
             <p className="text-sm text-gray-700 mb-3">{T.storageDesc}</p>
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-xs text-gray-700 space-y-2">
               <p>✅ Almacenamiento por posición / m²</p>
@@ -327,11 +307,10 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
       {/* ADN TECNOLÓGICO */}
       {modulos.adnTecnologico && (
         <Section title={`🔬 ${T.adnTitulo}`}>
-          <LinkBadge url={T.urlAdnRegistro || T.adnRegistroUrl} label={T.adnRegistroLabel || T.urlAdnRegistro} />
           <p className="text-sm text-gray-700 mb-3">
             {T.adnIntro1}{" "}
             <a
-              href={T.urlAdnRegistro || T.adnRegistroUrl}
+              href={T.adnRegistroUrl}
               style={{ color: PURPLE }}
               className="underline font-medium"
               target="_blank"
@@ -417,11 +396,6 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
       {/* TÉRMINOS Y CONDICIONES */}
       {modulos.terminosCondiciones && (
         <Section title="📋 Términos y Condiciones de la Propuesta">
-          <div className="flex flex-wrap gap-2 mb-4">
-            {T.urlPlataforma && <LinkBadge url={T.urlPlataforma} label="Plataforma PIBOX" />}
-            {T.urlTerminos && <LinkBadge url={T.urlTerminos} label="T&C Corporativos" />}
-            {T.urlPipay && <LinkBadge url={T.urlPipay} label="Portal de Pagos" />}
-          </div>
           {/* Forma de pago */}
           <h3 className="font-bold text-gray-800 text-sm underline mb-2">Forma de pago</h3>
           <p className="text-xs text-gray-700 mb-2">{T.tcFormaPagoIntro}</p>
