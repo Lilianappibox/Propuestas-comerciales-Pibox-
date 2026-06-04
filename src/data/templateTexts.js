@@ -185,6 +185,61 @@ export const TEMPLATE_FIELDS = [
     label: "Ítems configurables desde el usuario web (uno por línea)",
     tipo: "textarea",
   },
+  // ── URLs POR MÓDULO ───────────────────────────────────
+  {
+    id: "urlPlataforma",
+    seccion: "URLs y Vínculos",
+    label: "URL — Plataforma principal",
+    tipo: "text",
+  },
+  {
+    id: "urlOnDemand",
+    seccion: "URLs y Vínculos",
+    label: "URL — Pibox On Demand",
+    tipo: "text",
+  },
+  {
+    id: "urlProgramadoBH",
+    seccion: "URLs y Vínculos",
+    label: "URL — Programado Bloque de Horas",
+    tipo: "text",
+  },
+  {
+    id: "urlProgramadoRutas",
+    seccion: "URLs y Vínculos",
+    label: "URL — Programado Rutas",
+    tipo: "text",
+  },
+  {
+    id: "urlPicarga",
+    seccion: "URLs y Vínculos",
+    label: "URL — Picarga",
+    tipo: "text",
+  },
+  {
+    id: "urlStorage",
+    seccion: "URLs y Vínculos",
+    label: "URL — Pibox Storage",
+    tipo: "text",
+  },
+  {
+    id: "urlAdnRegistro",
+    seccion: "URLs y Vínculos",
+    label: "URL — Registro Corporativo (ADN)",
+    tipo: "text",
+  },
+  {
+    id: "urlTerminos",
+    seccion: "URLs y Vínculos",
+    label: "URL — Términos y Condiciones",
+    tipo: "text",
+  },
+  {
+    id: "urlPipay",
+    seccion: "URLs y Vínculos",
+    label: "URL — Plataforma de pagos (Pipay)",
+    tipo: "text",
+  },
   // ── TÉRMINOS Y CONDICIONES ────────────────────────────
   {
     id: "tcFormaPagoIntro",
@@ -322,6 +377,15 @@ export const TEMPLATE_DEFAULT = {
   adnWebTitulo: "Configurables desde su usuario web",
   adnWebItems:
     "☀ Direcciones favoritas.\n☀ Sedes y usuarios.\n☀ Enrutamiento y optimización.\n☀ Integración tecnológica Api.\n☀ Descargar Informes.\n☀ Seguridad.",
+  urlPlataforma:      "https://pibox.app/",
+  urlOnDemand:        "https://pibox.app/on-demand",
+  urlProgramadoBH:    "https://pibox.app/programado",
+  urlProgramadoRutas: "https://pibox.app/programado-rutas",
+  urlPicarga:         "https://pibox.app/picarga",
+  urlStorage:         "https://pibox.app/storage",
+  urlAdnRegistro:     "https://pibox.app/registro-corporativo",
+  urlTerminos:        "https://pibox.app/terminos",
+  urlPipay:           "https://pipay.pibox.app/login",
   tcFormaPagoIntro: "Contará con diferentes formas de pago:",
   tcFormaPagoItems:
     "a) Registro de tarjeta de crédito desde la App: Finalizado el servicio será descontado de la tarjeta asociada el valor total del servicio prestado.\nb) Recarga de Bolsillo Virtual (Picash) App y Web: Puede realizar recarga de su billetera virtual, mediante PSE o tarjeta, y tener un saldo virtual utilizado para el pago de los servicios realizados.\nc) Efectivo: Puede seleccionar la opción de pagar en efectivo en el origen o destino directamente al prestador del servicio.\nd) Crédito: Plazo a 30 días facturados mes vencido, los pagos deberán realizarse a través de la plataforma https://pipay.pibox.app/login",
