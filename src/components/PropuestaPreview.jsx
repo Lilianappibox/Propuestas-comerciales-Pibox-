@@ -452,22 +452,9 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
         </Section>
       )}
 
-      {/* CONTACTO PIBOX + ACEPTACIÓN */}
+      {/* ACEPTACIÓN DE LA OFERTA */}
       {modulos.terminosCondiciones && (
         <Section title="✒️ Aceptación de la Oferta">
-          <p className="text-sm text-gray-700 mb-4">{T.aceptacionIntro}</p>
-
-          {/* KAM contact block */}
-          {currentUser && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 inline-block min-w-64">
-              <p className="text-xs font-bold text-blue-800 mb-1">KAM PIBOX</p>
-              <p className="text-sm font-semibold text-gray-800">{currentUser.nombre}</p>
-              {currentUser.cargo && <p className="text-xs text-gray-600">{currentUser.cargo}</p>}
-              <p className="text-xs text-gray-600">{currentUser.email}</p>
-              {currentUser.celular && <p className="text-xs text-gray-600">📱 {currentUser.celular}</p>}
-            </div>
-          )}
-
           {/* Firma del cliente */}
           <p className="text-sm font-semibold text-gray-700 mb-6">FIRMA</p>
           <div className="border-b-2 border-gray-400 w-72 mb-2"></div>
@@ -483,7 +470,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
             <ul className="space-y-1">
               {(T.contratoDocumentos || "").split("\n").filter(Boolean).map((doc, i) => (
                 <li key={i} className="text-xs text-gray-700 flex items-start gap-2">
-                  <span className="text-blue-600 shrink-0">●</span>
+                  <span style={{ color: PURPLE }} className="shrink-0">●</span>
                   <span>{doc}</span>
                 </li>
               ))}
