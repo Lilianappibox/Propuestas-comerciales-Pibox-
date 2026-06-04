@@ -1,76 +1,98 @@
 /**
- * Logo SVG de PIBOX — replica la identidad visual oficial:
- * "pib" + cubo 3D isométrico + "x" + arco sonriente
+ * Logo PIBOX — recreación fiel del logo oficial:
+ * "pib" + cubo 3D isométrico (reemplaza la "o") + "x" + arco sonriente
  */
 export default function PiboxLogo({ size = "md", white = true }) {
   const sizes = {
-    xs:  { w: 80,  h: 34 },
-    sm:  { w: 110, h: 46 },
-    md:  { w: 150, h: 64 },
-    lg:  { w: 220, h: 92 },
-    xl:  { w: 300, h: 126 },
+    xs:  { w: 72,  h: 36  },
+    sm:  { w: 108, h: 54  },
+    md:  { w: 144, h: 72  },
+    lg:  { w: 200, h: 100 },
+    xl:  { w: 280, h: 140 },
   };
   const { w, h } = sizes[size] || sizes.md;
-  const fill = white ? "#ffffff" : "#7C22D4";
+  const c = white ? "#ffffff" : "#7C22D4";   // color principal
+
+  /*
+   * ViewBox: 220 × 110
+   * Baseline del texto: y = 73
+   * Fuente ~65px, negrita máxima, minúsculas
+   *
+   * Layout horizontal (estimado con Arial Black 65px):
+   *   "pib"  → x=4  … ~x=105
+   *   cubo   → x=107 … x=147  (centro en x=127)
+   *   "x"    → x=150 … ~x=197
+   *
+   * Cubo isométrico — vértices para un cubo de lado ≈20px:
+   *   Centro:  (127, 51)
+   *   Cara superior (rombo):  (127,31) (147,42) (127,52) (107,42)
+   *   Cara derecha:           (147,42) (147,62) (127,72) (127,52)
+   *   Cara izquierda:         (107,42) (127,52) (127,72) (107,62)
+   *
+   * Sonrisa: arco que va de x=4 a x=216, curva en y≈108
+   */
 
   return (
     <svg
-      viewBox="0 0 220 90"
+      viewBox="0 0 220 110"
       width={w}
       height={h}
       xmlns="http://www.w3.org/2000/svg"
-      aria-label="PIBOX"
+      aria-label="pibox"
       role="img"
     >
-      {/* ── Texto "pib" ── */}
+      {/* ── "pib" ────────────────────────────────────────── */}
       <text
-        x="4" y="62"
-        fontFamily="'Arial Black', 'Arial Bold', Arial, sans-serif"
+        x="4"
+        y="73"
+        fontFamily="'Arial Black','Arial Bold',Arial,sans-serif"
         fontWeight="900"
-        fontSize="58"
-        fill={fill}
-        letterSpacing="-2"
+        fontSize="65"
+        fill={c}
+        letterSpacing="-1"
       >
         pib
       </text>
 
-      {/* ── Cubo isométrico (reemplaza la "o") ── */}
-      {/* cara superior */}
+      {/* ── Cubo isométrico 3D (reemplaza la "o") ──────── */}
+
+      {/* Cara superior — más clara, máxima luminosidad */}
       <polygon
-        points="118,10 142,22 118,34 94,22"
-        fill={fill}
+        points="127,31 147,42 127,52 107,42"
+        fill={c}
         opacity="1"
       />
-      {/* cara izquierda */}
+      {/* Cara derecha — luminosidad media */}
       <polygon
-        points="94,22 118,34 118,56 94,44"
-        fill={fill}
-        opacity="0.6"
+        points="147,42 147,62 127,72 127,52"
+        fill={c}
+        opacity="0.78"
       />
-      {/* cara derecha */}
+      {/* Cara izquierda — más oscura */}
       <polygon
-        points="142,22 118,34 118,56 142,44"
-        fill={fill}
-        opacity="0.8"
+        points="107,42 127,52 127,72 107,62"
+        fill={c}
+        opacity="0.55"
       />
 
-      {/* ── Texto "x" ── */}
+      {/* ── "x" ─────────────────────────────────────────── */}
       <text
-        x="148" y="62"
-        fontFamily="'Arial Black', 'Arial Bold', Arial, sans-serif"
+        x="150"
+        y="73"
+        fontFamily="'Arial Black','Arial Bold',Arial,sans-serif"
         fontWeight="900"
-        fontSize="58"
-        fill={fill}
-        letterSpacing="-2"
+        fontSize="65"
+        fill={c}
+        letterSpacing="-1"
       >
         x
       </text>
 
-      {/* ── Arco sonriente ── */}
+      {/* ── Arco sonriente ──────────────────────────────── */}
       <path
-        d="M 10 74 Q 110 100 210 74"
-        stroke={fill}
-        strokeWidth="4.5"
+        d="M 6 84 Q 110 112 214 84"
+        stroke={c}
+        strokeWidth="6.5"
         fill="none"
         strokeLinecap="round"
       />
