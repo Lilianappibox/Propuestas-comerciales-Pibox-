@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background-color: #f3f4f6;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
+}
+
+/* ── PRINT / PDF EXPORT ────────────────────────────────────────────── */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #root {
+    background: #ffffff !important;
+  }
+
+  /* Hide everything that isn't the proposal */
+  header, nav, .print\:hidden, [data-print-hide] {
+    display: none !important;
+  }
+
+  /* The proposal itself */
+  #propuesta-preview {
+    padding: 12mm 14mm !important;
+    max-width: none !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+  }
+
+  /* Preserve table stripe colours */
+  .bg-blue-50   { background-color: #eff6ff !important; }
+  .bg-blue-700  { background-color: #1d4ed8 !important; }
+  .bg-gray-50   { background-color: #f9fafb !important; }
+  .bg-gray-700  { background-color: #374151 !important; }
+  .bg-yellow-50 { background-color: #fefce8 !important; }
+  .bg-green-50  { background-color: #f0fdf4 !important; }
+  .bg-orange-50 { background-color: #fff7ed !important; }
+  .bg-purple-50 { background-color: #faf5ff !important; }
+
+  /* Page breaks */
+  h2 { page-break-after: avoid; }
+  table { page-break-inside: avoid; }
+  .mb-8 { page-break-inside: avoid; }
+
+  @page {
+    size: A4;
+    margin: 10mm 14mm;
+  }
+}
