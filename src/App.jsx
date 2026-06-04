@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { TARIFAS_DEFAULT, MODULOS_CONFIG } from "./data/tarifas";
-import { loadUsers, saveUsers, PERMISOS, ROLES } from "./data/users";
+import { loadUsers, saveUsers, getPermisos, ROLES } from "./data/users";
 import { loadTemplate, saveTemplate, loadHistory, saveHistory, addHistoryEntry } from "./data/templateTexts";
 import PropuestaPreview from "./components/PropuestaPreview";
 import TarifasEditor from "./components/TarifasEditor";
@@ -74,7 +74,7 @@ export default function App() {
   const [exportingWord, setExportingWord] = useState(false);
   const [savedMsg, setSavedMsg]     = useState("");
 
-  const permisos = currentUser ? PERMISOS[currentUser.rol] : {};
+  const permisos = currentUser ? getPermisos(currentUser) : {};
 
   // Auto-save drafts
   useEffect(() => { localStorage.setItem(SK_PROPUESTA, JSON.stringify(propuesta)); }, [propuesta]);
@@ -92,9 +92,11 @@ export default function App() {
 
   const handleSaveUsers = (updated) => {
     setUsers(updated); saveUsers(updated);
+    // Refresca la sesión del usuario actual para que los nuevos permisos apliquen al instante
     if (currentUser) {
       const r = updated.find((u) => u.id === currentUser.id);
-      if (r && r.activo) setCurrentUser(r); else handleLogout();
+      if (r && r.activo) { setCurrentUser(r); localStorage.setItem(SK_SESSION, JSON.stringify(r)); }
+      else handleLogout();
     }
     toast("✓ Usuarios guardados");
   };

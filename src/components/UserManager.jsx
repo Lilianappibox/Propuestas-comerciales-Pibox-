@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ROLES, generateId } from "../data/users";
+import { ROLES, generateId, PERMISOS_CONFIGURABLES_KAM, PERMISOS_BASE, getPermisos } from "../data/users";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]: "bg-purple-100 text-purple-700 border-purple-200",
@@ -12,24 +12,33 @@ const ROLE_ICONS = {
 };
 
 export default function UserManager({ users, onSave }) {
-  const [editing, setEditing] = useState(null); // null | "new" | user.id
-  const [form, setForm] = useState({ nombre: "", email: "", password: "", rol: ROLES.KAM, activo: true });
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ nombre: "", email: "", password: "", rol: ROLES.KAM, activo: true, cargo: "", celular: "", telefono: "", permisosCustom: {} });
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const openNew = () => {
-    setForm({ nombre: "", email: "", password: "", rol: ROLES.KAM, activo: true, cargo: "", celular: "", telefono: "" });
+    setForm({ nombre: "", email: "", password: "", rol: ROLES.KAM, activo: true, cargo: "", celular: "", telefono: "", permisosCustom: {} });
     setError("");
     setShowPass(false);
     setEditing("new");
   };
 
   const openEdit = (user) => {
-    setForm({ cargo: "", celular: "", telefono: "", ...user });
+    setForm({ cargo: "", celular: "", telefono: "", permisosCustom: {}, ...user });
     setError("");
     setShowPass(false);
     setEditing(user.id);
+  };
+
+  const togglePermiso = (id) => {
+    const base = PERMISOS_BASE[ROLES.KAM][id];
+    const current = form.permisosCustom?.[id] ?? base;
+    setForm((f) => ({
+      ...f,
+      permisosCustom: { ...(f.permisosCustom || {}), [id]: !current },
+    }));
   };
 
   const handleSave = () => {
@@ -112,6 +121,22 @@ export default function UserManager({ users, onSave }) {
                 )}
               </div>
               <p className="text-xs text-gray-500 mt-0.5 truncate">{user.email}</p>
+              {/* Permisos activos del KAM */}
+              {user.rol === ROLES.KAM && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {PERMISOS_CONFIGURABLES_KAM.map((p) => {
+                    const activo = getPermisos(user)[p.id];
+                    return activo ? (
+                      <span key={p.id} className="text-xs bg-green-100 text-green-700 border border-green-200 rounded-full px-2 py-0.5">
+                        ✓ {p.label}
+                      </span>
+                    ) : null;
+                  })}
+                  {!PERMISOS_CONFIGURABLES_KAM.some((p) => getPermisos(user)[p.id]) && (
+                    <span className="text-xs text-gray-400 italic">Sin permisos adicionales</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -160,31 +185,41 @@ export default function UserManager({ users, onSave }) {
         ))}
       </div>
 
-      {/* Role legend */}
+      {/* Leyenda de permisos */}
       <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
         <p className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">Permisos por Rol</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[
-            {
-              rol: ROLES.KAM,
-              permisos: ["✅ Crear y editar propuestas", "✅ Seleccionar módulos", "✅ Exportar PDF y Word", "❌ Editar tarifas", "❌ Gestionar usuarios"],
-            },
-            {
-              rol: ROLES.ADMIN,
-              permisos: ["✅ Crear y editar propuestas", "✅ Seleccionar módulos", "✅ Exportar PDF y Word", "✅ Editar tarifas", "✅ Gestionar usuarios"],
-            },
-          ].map(({ rol, permisos }) => (
-            <div key={rol} className="bg-white rounded-lg border p-3">
-              <p className={`text-xs font-bold mb-2 px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${ROLE_COLORS[rol]}`}>
-                {ROLE_ICONS[rol]} {rol}
-              </p>
-              <ul className="space-y-1">
-                {permisos.map((p, i) => (
-                  <li key={i} className="text-xs text-gray-600">{p}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {/* KAM */}
+          <div className="bg-white rounded-lg border p-3">
+            <p className={`text-xs font-bold mb-2 px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${ROLE_COLORS[ROLES.KAM]}`}>
+              {ROLE_ICONS[ROLES.KAM]} KAM
+            </p>
+            <ul className="space-y-1 mb-3">
+              <li className="text-xs text-gray-600">✅ Crear y editar propuestas</li>
+              <li className="text-xs text-gray-600">✅ Seleccionar módulos</li>
+              <li className="text-xs text-gray-600">✅ Exportar PDF y Word</li>
+              <li className="text-xs text-gray-600">✅ Guardar propuestas</li>
+            </ul>
+            <p className="text-xs font-semibold text-blue-700 mb-1">🔑 Configurables por el Admin:</p>
+            <ul className="space-y-1">
+              {PERMISOS_CONFIGURABLES_KAM.map((p) => (
+                <li key={p.id} className="text-xs text-gray-500">• {p.label}</li>
+              ))}
+            </ul>
+          </div>
+          {/* Admin */}
+          <div className="bg-white rounded-lg border p-3">
+            <p className={`text-xs font-bold mb-2 px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${ROLE_COLORS[ROLES.ADMIN]}`}>
+              {ROLE_ICONS[ROLES.ADMIN]} Administrativo
+            </p>
+            <ul className="space-y-1">
+              <li className="text-xs text-gray-600">✅ Crear y exportar propuestas</li>
+              <li className="text-xs text-gray-600">✅ Ver propuestas de todos los KAM</li>
+              <li className="text-xs text-gray-600">✅ Editar tarifas y ciudades</li>
+              <li className="text-xs text-gray-600">✅ Editar plantilla + historial</li>
+              <li className="text-xs text-gray-600">✅ Gestionar usuarios y permisos</li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -294,6 +329,54 @@ export default function UserManager({ users, onSave }) {
                   <span className="text-sm text-gray-700">Usuario activo</span>
                 </label>
               </div>
+
+              {/* ── Permisos configurables (solo para KAM) ── */}
+              {form.rol === ROLES.KAM && (
+                <div className="border border-blue-200 rounded-xl p-4 bg-blue-50">
+                  <p className="text-xs font-bold text-blue-800 mb-3 flex items-center gap-2">
+                    🔑 Permisos adicionales para este KAM
+                  </p>
+                  <div className="space-y-2">
+                    {PERMISOS_CONFIGURABLES_KAM.map((p) => {
+                      const base    = PERMISOS_BASE[ROLES.KAM][p.id];
+                      const current = form.permisosCustom?.[p.id] ?? base;
+                      return (
+                        <label key={p.id}
+                          className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${
+                            current
+                              ? "bg-white border-blue-400"
+                              : "bg-blue-50 border-blue-200 hover:border-blue-300"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={current}
+                            onChange={() => togglePermiso(p.id)}
+                            className="mt-0.5 accent-blue-600"
+                          />
+                          <div>
+                            <p className={`text-sm font-semibold ${current ? "text-blue-700" : "text-gray-500"}`}>
+                              {current ? "✅" : "🔒"} {p.label}
+                            </p>
+                            <p className="text-xs text-gray-500">{p.desc}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-blue-500 mt-2">
+                    * Los permisos aplican desde el próximo inicio de sesión del usuario.
+                  </p>
+                </div>
+              )}
+
+              {form.rol === ROLES.ADMIN && (
+                <div className="border border-purple-200 rounded-xl p-3 bg-purple-50">
+                  <p className="text-xs text-purple-700 font-medium">
+                    🛡️ El Administrativo tiene acceso completo a todas las funciones. Los permisos no son configurables para este rol.
+                  </p>
+                </div>
+              )}
             </div>
 
             {error && (
