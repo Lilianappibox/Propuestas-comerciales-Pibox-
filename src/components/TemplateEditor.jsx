@@ -10,6 +10,7 @@ const SECCION_ICONS = {
   "On Demand": "⚡",
   "Programado — Bloque de Horas": "🛵",
   "Programado — Rutas": "🔁",
+  "Entregas Optimizadas": "🚀",
   "Picarga": "🚚",
   "Storage": "📦",
   "ADN Tecnológico": "🔬",

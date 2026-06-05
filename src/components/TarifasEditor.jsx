@@ -26,8 +26,9 @@ const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
 const cityTemplate = {
   onDemand: { ciudad: "Nueva Ciudad", vehiculo: "Motocicleta", kmBase: 3, tarifaKmBase: 9800, tarifaKmExtra: 1200, paradaAdicional: 2500, vdRuta: 5000000 },
   picarga:  { ciudad: "Nueva Ciudad", vehiculo: "Carry",        kmBase: 10, tarifaKmBase: 65000, tarifaKmExtra: 4500, paradaAdicional: 15000, vdRuta: 5000000 },
-  programadoBloqueHoras: { ciudad: "Nueva Ciudad", pilotos: 1, horasDia: 4, tarifaHora: 15500, cobertura: "8Km", vdRuta: 5000000, recaudoRuta: 1500000 },
-  programadoRutas: { ciudad: "Nueva Ciudad", paquetesPorRuta: 10, paquetesDia: 50, tarifaPaquete: 8500, vdRuta: 5000000, recaudoRuta: 1500000 },
+  programadoBloqueHoras:  { ciudad: "Nueva Ciudad", pilotos: 1, horasDia: 4, tarifaHora: 15500, cobertura: "8Km", vdRuta: 5000000, recaudoRuta: 1500000 },
+  programadoRutas:        { ciudad: "Nueva Ciudad", paquetesPorRuta: 10, paquetesDia: 50, tarifaPaquete: 8500, vdRuta: 5000000, recaudoRuta: 1500000 },
+  entregasOptimizadas:    { ciudad: "Nueva Ciudad", paquetesPorRuta: 10, paquetesDia: 50, tarifaPaquete: 8500, vdRuta: 5000000, recaudoRuta: 1500000 },
   storage: { ciudad: "Nueva Ciudad", tarifaPosicionPallet: 35000, tarifaPosicionCaja: 15000, tarifaM2Mes: 18000, picking: 800, crossDocking: 2500, facturaMinima: 500000 },
 };
 
@@ -60,6 +61,7 @@ export default function TarifasEditor({ tarifas, onChange }) {
     { id: "onDemand",              label: "⚡ On Demand" },
     { id: "programadoBloqueHoras", label: "🛵 Bloque Horas" },
     { id: "programadoRutas",       label: "🔁 Rutas" },
+    { id: "entregasOptimizadas",   label: "🚀 Entregas Opt." },
     { id: "picarga",               label: "🚚 Picarga" },
     { id: "storage",               label: "📦 Storage" },
   ];
@@ -209,6 +211,47 @@ export default function TarifasEditor({ tarifas, onChange }) {
               </Row>
               <Row label="Tarifa Devoluciones ($)">
                 <Input value={tarifas.programadoRutas.adicionales.tarifaDevoluciones} onChange={(v) => update("programadoRutas.adicionales.tarifaDevoluciones", v)} prefix="$" />
+              </Row>
+            </div>
+          </div>
+        )}
+
+        {/* ── ENTREGAS OPTIMIZADAS ── */}
+        {tab === "entregasOptimizadas" && (
+          <div>
+            <SectionHeader label="Rutas por Ciudad" onAdd={() => addRow("entregasOptimizadas", "rutas")} />
+            {(tarifas.entregasOptimizadas?.rutas || []).map((r, i) => (
+              <CityCard key={i} title={r.ciudad} onDelete={() => removeRow("entregasOptimizadas", "rutas", i)}>
+                <Row label="Ciudad">
+                  <Input value={r.ciudad} type="text" onChange={(v) => update(`entregasOptimizadas.rutas.${i}.ciudad`, v)} />
+                </Row>
+                <Row label="Paquetes / Ruta">
+                  <Input value={r.paquetesPorRuta} onChange={(v) => update(`entregasOptimizadas.rutas.${i}.paquetesPorRuta`, v)} />
+                </Row>
+                <Row label="Paquetes / Día">
+                  <Input value={r.paquetesDia} onChange={(v) => update(`entregasOptimizadas.rutas.${i}.paquetesDia`, v)} />
+                </Row>
+                <Row label="Tarifa Paquete ($)">
+                  <Input value={r.tarifaPaquete} onChange={(v) => update(`entregasOptimizadas.rutas.${i}.tarifaPaquete`, v)} prefix="$" />
+                </Row>
+                <Row label="VD / Ruta ($)">
+                  <Input value={r.vdRuta} onChange={(v) => update(`entregasOptimizadas.rutas.${i}.vdRuta`, v)} prefix="$" />
+                </Row>
+                <Row label="Recaudo / Ruta ($)">
+                  <Input value={r.recaudoRuta} onChange={(v) => update(`entregasOptimizadas.rutas.${i}.recaudoRuta`, v)} prefix="$" />
+                </Row>
+              </CityCard>
+            ))}
+            <SectionHeader label="Adicionales" />
+            <div className="bg-gray-50 rounded-lg p-3">
+              <Row label="% Recaudo Ida/Vuelta">
+                <Input value={tarifas.entregasOptimizadas?.adicionales?.recaudoIdaVuelta || 0} onChange={(v) => update("entregasOptimizadas.adicionales.recaudoIdaVuelta", v)} />
+              </Row>
+              <Row label="Intentos de Entrega">
+                <Input value={tarifas.entregasOptimizadas?.adicionales?.intentosEntrega || 1} onChange={(v) => update("entregasOptimizadas.adicionales.intentosEntrega", v)} />
+              </Row>
+              <Row label="Tarifa Devoluciones ($)">
+                <Input value={tarifas.entregasOptimizadas?.adicionales?.tarifaDevoluciones || 0} onChange={(v) => update("entregasOptimizadas.adicionales.tarifaDevoluciones", v)} prefix="$" />
               </Row>
             </div>
           </div>

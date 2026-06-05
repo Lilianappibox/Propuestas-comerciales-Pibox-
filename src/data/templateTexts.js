@@ -104,6 +104,19 @@ export const TEMPLATE_FIELDS = [
     label: "Texto ANS",
     tipo: "textarea",
   },
+  // ── ENTREGAS OPTIMIZADAS ─────────────────────────────
+  {
+    id: "entregasOptimizadasDesc",
+    seccion: "Entregas Optimizadas",
+    label: "Descripción del módulo",
+    tipo: "textarea",
+  },
+  {
+    id: "entregasOptimizadasAns",
+    seccion: "Entregas Optimizadas",
+    label: "Texto ANS",
+    tipo: "textarea",
+  },
   // ── PICARGA ───────────────────────────────────────────
   {
     id: "picargaDesc",
@@ -301,6 +314,10 @@ export const TEMPLATE_DEFAULT = {
     "Rutas optimizadas con trazabilidad en tiempo real. Mínimo de 10 entregas agrupables organizadas estratégicamente por sectores.",
   programadoRutasAns:
     "• ANS: 98% | Hora de recogida máxima: 3:00 PM\n• Capacidad Moto: 50×50×50 cm / hasta 50kg",
+  entregasOptimizadasDesc:
+    "Servicio de entregas masivas optimizadas con rutas inteligentes. Agrupamos los envíos por sectores geográficos garantizando el mayor número de entregas efectivas por jornada con trazabilidad en tiempo real.",
+  entregasOptimizadasAns:
+    "• ANS: 98% de efectividad en entregas\n• Mínimo 10 paquetes por ruta agrupados por sector\n• Hora de recogida máxima: 3:00 PM\n• Capacidad Moto: 50×50×50 cm / hasta 50kg",
   picargaDesc:
     "Servicio para gestión de entregas con vehículos tipo Carry y NHR. Entregas programadas en bloques de horas y/o rutas, según capacidad de carga.",
   picargaAns:

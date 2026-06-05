@@ -40,6 +40,17 @@ export const TARIFAS_DEFAULT = {
       { ciudad: "Nacional", vehiculo: "Carry, NHR", tiempoEspera: "5 minutos", tarifaMinuto: 1500, bonificacion: 5000 },
     ],
   },
+  entregasOptimizadas: {
+    rutas: [
+      { ciudad: "Bogotá", paquetesPorRuta: 10, paquetesDia: 50, tarifaPaquete: 8500, vdRuta: 5000000, recaudoRuta: 1500000 },
+    ],
+    adicionales: {
+      recaudoIdaVuelta: 5,
+      medioRecaudo: "Datáfono / Efectivo",
+      intentosEntrega: 1,
+      tarifaDevoluciones: 8500,
+    },
+  },
   storage: {
     ciudades: [
       {
@@ -64,6 +75,7 @@ export const MODULOS_CONFIG = [
   { id: "onDemand",              label: "⚡ Pibox On Demand",                  emoji: "⚡", desc: "Asignación en tiempo real con IA georreferenciada" },
   { id: "programadoBloqueHoras", label: "🛵 Pibox Programado — Bloque de Horas", emoji: "🛵", desc: "Drivers fidelizados en bloques mínimos de 4 horas" },
   { id: "programadoRutas",       label: "🔁 Pibox Programado — Rutas",          emoji: "🔁", desc: "Rutas optimizadas con mínimo 10 entregas agrupables" },
+  { id: "entregasOptimizadas",   label: "🚀 Entregas Optimizadas",              emoji: "🚀", desc: "Rutas optimizadas con entregas agrupadas por paquete" },
   { id: "picarga",               label: "🚚 Picarga",                           emoji: "🚚", desc: "Vehículos Carry y NHR para carga pesada" },
   { id: "storage",               label: "📦 Pibox Storage",                     emoji: "📦", desc: "Warehouses estratégicos: almacenamiento y cross-docking" },
   { id: "adnTecnologico",        label: "🔬 ADN Tecnológico PIBOX",             emoji: "🔬", desc: "Registro corporativo, configuraciones y funcionalidades web" },

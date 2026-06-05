@@ -36,8 +36,8 @@ const BRAND_GRADIENT = "linear-gradient(135deg, #5B17A8 0%, #7C22D4 50%, #C026D3
 
 const INITIAL_MODULOS = {
   onDemand: true, programadoBloqueHoras: false, programadoRutas: false,
-  picarga: false, storage: false, adnTecnologico: true,
-  terminosCondiciones: true, cobertura: true,
+  entregasOptimizadas: false, picarga: false, storage: false,
+  adnTecnologico: true, terminosCondiciones: true, cobertura: true,
 };
 
 function loadTarifas() {
@@ -45,8 +45,8 @@ function loadTarifas() {
     const s = localStorage.getItem(SK_TARIFAS);
     if (!s) return JSON.parse(JSON.stringify(TARIFAS_DEFAULT));
     const saved = JSON.parse(s);
-    // Ensure storage exists (new field)
-    if (!saved.storage) saved.storage = JSON.parse(JSON.stringify(TARIFAS_DEFAULT.storage));
+    if (!saved.storage)             saved.storage             = JSON.parse(JSON.stringify(TARIFAS_DEFAULT.storage));
+    if (!saved.entregasOptimizadas) saved.entregasOptimizadas = JSON.parse(JSON.stringify(TARIFAS_DEFAULT.entregasOptimizadas));
     return saved;
   } catch { return JSON.parse(JSON.stringify(TARIFAS_DEFAULT)); }
 }

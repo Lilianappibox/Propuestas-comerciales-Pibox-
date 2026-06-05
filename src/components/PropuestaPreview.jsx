@@ -259,6 +259,33 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
           </div>
         )}
 
+        {/* ENTREGAS OPTIMIZADAS */}
+        {modulos.entregasOptimizadas && tarifas.entregasOptimizadas && (
+          <div className="mb-8">
+            <h3 className="font-bold text-base mb-3" style={{ color: "#0369a1" }}>🚀 Entregas Optimizadas</h3>
+            <p className="text-xs text-gray-600 mb-3">{T.entregasOptimizadasDesc}</p>
+            <DataTable
+              headers={["Ciudad", "Paquetes/Ruta", "Paquetes/Día", "Tarifa Paquete", "VD / Ruta", "Recaudo / Ruta"]}
+              rows={(tarifas.entregasOptimizadas.rutas || []).map((r) => [
+                r.ciudad, r.paquetesPorRuta, r.paquetesDia, fmt(r.tarifaPaquete), fmt(r.vdRuta), fmt(r.recaudoRuta),
+              ])}
+            />
+            <DataTable
+              headers={["Tipo de Recaudo", "Medio de Recaudo", "% Ida/Vuelta", "Intentos de Entrega", "Tarifa Devoluciones"]}
+              rows={[[
+                "Ida y vuelta",
+                tarifas.entregasOptimizadas.adicionales?.medioRecaudo || "Datáfono / Efectivo",
+                `${tarifas.entregasOptimizadas.adicionales?.recaudoIdaVuelta || 5}%`,
+                tarifas.entregasOptimizadas.adicionales?.intentosEntrega || 1,
+                fmt(tarifas.entregasOptimizadas.adicionales?.tarifaDevoluciones || 0),
+              ]]}
+            />
+            <div className="text-xs text-gray-600 space-y-1 bg-blue-50 p-3 rounded">
+              <ML text={T.entregasOptimizadasAns} />
+            </div>
+          </div>
+        )}
+
         {/* PICARGA */}
         {modulos.picarga && (
           <div className="mb-8">
