@@ -59,6 +59,44 @@ const Row = ({ label, children }) => (
   </div>
 );
 
+const VEHICULOS_PICARGA = ["Carry", "NHR", "NKR", "NPR", "Turbo", "Furgón", "Camioneta"];
+
+const VehiculoSelect = ({ value, onChange }) => {
+  const isCustom = value && !VEHICULOS_PICARGA.includes(value);
+  const [showCustom, setShowCustom] = useState(isCustom);
+  const [customVal, setCustomVal] = useState(isCustom ? value : "");
+
+  return showCustom ? (
+    <div className="flex gap-1 items-center">
+      <input
+        type="text"
+        value={customVal}
+        onChange={(e) => setCustomVal(e.target.value)}
+        onBlur={() => { if (customVal.trim()) onChange(customVal.trim()); else { setShowCustom(false); onChange(VEHICULOS_PICARGA[0]); } }}
+        placeholder="Tipo de vehículo"
+        className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        autoFocus
+      />
+      <button onClick={() => { setShowCustom(false); onChange(VEHICULOS_PICARGA[0]); setCustomVal(""); }}
+        className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+    </div>
+  ) : (
+    <div className="flex gap-1 items-center">
+      <select
+        value={value}
+        onChange={(e) => {
+          if (e.target.value === "__custom__") { setShowCustom(true); setCustomVal(""); }
+          else onChange(e.target.value);
+        }}
+        className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+      >
+        {VEHICULOS_PICARGA.map((v) => <option key={v} value={v}>{v}</option>)}
+        <option value="__custom__">+ Otro vehículo...</option>
+      </select>
+    </div>
+  );
+};
+
 // Generic helpers
 const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
 
@@ -308,7 +346,7 @@ export default function TarifasEditor({ tarifas, onChange }) {
                   <Input value={c.ciudad} type="text" onChange={(v) => update(`picarga.ciudades.${i}.ciudad`, v)} />
                 </Row>
                 <Row label="Vehículo">
-                  <Input value={c.vehiculo} type="text" onChange={(v) => update(`picarga.ciudades.${i}.vehiculo`, v)} />
+                  <VehiculoSelect value={c.vehiculo} onChange={(v) => update(`picarga.ciudades.${i}.vehiculo`, v)} />
                 </Row>
                 <Row label="Km Base">
                   <Input value={c.kmBase} onChange={(v) => update(`picarga.ciudades.${i}.kmBase`, v)} />
@@ -343,7 +381,7 @@ export default function TarifasEditor({ tarifas, onChange }) {
                   <Input value={r.ciudad} type="text" onChange={(v) => update(`picarga.reservas.${i}.ciudad`, v)} />
                 </Row>
                 <Row label="Vehículo">
-                  <Input value={r.vehiculo} type="text" onChange={(v) => update(`picarga.reservas.${i}.vehiculo`, v)} />
+                  <VehiculoSelect value={r.vehiculo} onChange={(v) => update(`picarga.reservas.${i}.vehiculo`, v)} />
                 </Row>
                 <Row label="Cantidad vehículos">
                   <Input value={r.vehiculos} onChange={(v) => update(`picarga.reservas.${i}.vehiculos`, v)} />
