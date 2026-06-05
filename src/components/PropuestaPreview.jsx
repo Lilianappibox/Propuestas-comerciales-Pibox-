@@ -139,6 +139,15 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
               </div>
             </div>
           )}
+          {modulos.entregasOptimizadas && (
+            <div className="flex gap-3 p-3 bg-sky-50 rounded-lg border border-sky-200">
+              <span className="text-2xl">🚀</span>
+              <div>
+                <p className="font-bold text-sm">Entregas Optimizadas</p>
+                <p className="text-xs text-gray-600">{T.entregasOptimizadasCard}</p>
+              </div>
+            </div>
+          )}
           {modulos.picarga && (
             <div className="flex gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
               <span className="text-2xl">🚚</span>

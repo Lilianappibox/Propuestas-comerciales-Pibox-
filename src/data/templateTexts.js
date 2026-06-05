@@ -106,6 +106,12 @@ export const TEMPLATE_FIELDS = [
   },
   // ── ENTREGAS OPTIMIZADAS ─────────────────────────────
   {
+    id: "entregasOptimizadasCard",
+    seccion: "Entregas Optimizadas",
+    label: "Tarjeta en Plataforma Tecnológica",
+    tipo: "textarea",
+  },
+  {
     id: "entregasOptimizadasDesc",
     seccion: "Entregas Optimizadas",
     label: "Descripción del módulo",
@@ -314,6 +320,8 @@ export const TEMPLATE_DEFAULT = {
     "Rutas optimizadas con trazabilidad en tiempo real. Mínimo de 10 entregas agrupables organizadas estratégicamente por sectores.",
   programadoRutasAns:
     "• ANS: 98% | Hora de recogida máxima: 3:00 PM\n• Capacidad Moto: 50×50×50 cm / hasta 50kg",
+  entregasOptimizadasCard:
+    "Entregas masivas con rutas inteligentes agrupadas por sector geográfico. Maximizamos el número de entregas efectivas por jornada con trazabilidad en tiempo real.",
   entregasOptimizadasDesc:
     "Servicio de entregas masivas optimizadas con rutas inteligentes. Agrupamos los envíos por sectores geográficos garantizando el mayor número de entregas efectivas por jornada con trazabilidad en tiempo real.",
   entregasOptimizadasAns:
