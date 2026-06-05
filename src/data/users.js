@@ -50,38 +50,66 @@ export const USERS_STORAGE_KEY = "pibox_users";
 export const DEFAULT_USERS = [
   {
     id: "1",
-    nombre: "Admin PIBOX",
-    email: "admin@pibox.app",
+    nombre: "Liliana Andrea Peña",
+    email: "lpena@pibox.app",
     password: "pibox2026",
     rol: ROLES.ADMIN,
     activo: true,
-    cargo: "Administrador",
-    celular: "",
+    cargo: "Head of Sales",
+    celular: "3107872609",
     telefono: "",
     permisosCustom: {},
   },
   {
     id: "2",
-    nombre: "KAM Ejemplo",
-    email: "kam@pibox.app",
-    password: "kam2026",
+    nombre: "Jaime Girón",
+    email: "jgiron@pibox.app",
+    password: "KAM2026",
     rol: ROLES.KAM,
     activo: true,
     cargo: "Key Account Manager",
-    celular: "",
+    celular: "3154051883",
     telefono: "",
-    permisosCustom: {},
+    permisosCustom: { verTarifario: true, editarTarifas: true },
+  },
+  {
+    id: "3",
+    nombre: "Juliana Rojas",
+    email: "jrojas@pibox.app",
+    password: "KAM2026",
+    rol: ROLES.KAM,
+    activo: true,
+    cargo: "Key Account Manager",
+    celular: "3232278047",
+    telefono: "",
+    permisosCustom: { verTarifario: true, editarTarifas: true },
   },
 ];
 
 export function loadUsers() {
   try {
+    const base = JSON.parse(JSON.stringify(DEFAULT_USERS));
     const saved = localStorage.getItem(USERS_STORAGE_KEY);
-    if (!saved) return JSON.parse(JSON.stringify(DEFAULT_USERS));
-    return JSON.parse(saved).map((u) => ({
+    if (!saved) return base;
+    const local = JSON.parse(saved).map((u) => ({
       cargo: "", celular: "", telefono: "", permisosCustom: {},
       ...u,
     }));
+    // Merge: los del código siempre presentes (localStorage puede editarlos),
+    // más cualquier usuario adicional creado desde la app
+    const merged = [...base];
+    const baseEmails = new Set(base.map((u) => u.email.toLowerCase()));
+    // Sobreescribir datos del código con ediciones del localStorage
+    for (const lu of local) {
+      const idx = merged.findIndex((m) => m.email.toLowerCase() === lu.email.toLowerCase());
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...lu };
+      } else {
+        // Usuario nuevo creado desde la app — agregarlo
+        merged.push(lu);
+      }
+    }
+    return merged;
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_USERS));
   }
@@ -94,7 +122,7 @@ export function saveUsers(users) {
 export function authenticate(users, email, password) {
   return users.find(
     (u) => u.email.toLowerCase() === email.toLowerCase() &&
-           u.password === password && u.activo
+           u.password.toLowerCase() === password.toLowerCase() && u.activo
   ) || null;
 }
 
