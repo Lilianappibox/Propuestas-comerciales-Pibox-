@@ -45,7 +45,7 @@ body {
   }
 
   #propuesta-preview {
-    padding: 12mm 14mm !important;
+    padding: 20mm 16mm 16mm 16mm !important;
     max-width: none !important;
     width: 100% !important;
     background: #ffffff !important;
