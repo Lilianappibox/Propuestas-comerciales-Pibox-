@@ -173,7 +173,9 @@ export default function App() {
 
   const handleExportPdf = () => {
     setExportingPdf(true);
-    setTimeout(() => { window.print(); setExportingPdf(false); }, 200);
+    const prevTitle = document.title;
+    document.title = " ";
+    setTimeout(() => { window.print(); document.title = prevTitle; setExportingPdf(false); }, 200);
   };
 
   const handleExportWord = async () => {

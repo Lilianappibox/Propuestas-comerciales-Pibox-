@@ -68,6 +68,6 @@ body {
 
   @page {
     size: A4;
-    margin: 10mm 14mm;
+    margin: 0;
   }
 }
