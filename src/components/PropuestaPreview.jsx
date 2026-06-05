@@ -182,7 +182,9 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
       {/* Propuesta Comercial */}
       <Section title="Propuesta Comercial">
         <p className="text-sm text-gray-700 mb-4">
-          {T.propuestaIntro.replace("su marca", cliente ? `${cliente}` : "su marca")}
+          {(T.propuestaIntro || "")
+            .replace(/\bsu marca\b/gi, cliente || "su marca")
+            .replace(/\bempresa\b/gi, cliente || "su empresa")}
         </p>
 
         {/* ON DEMAND */}
