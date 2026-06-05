@@ -623,18 +623,18 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
       )}
 
       {/* Cierre */}
-      <div className="mt-8 pt-4 border-t border-purple-100 text-sm text-gray-700">
-        <p className="mb-4">{T.cierreParrafo}</p>
-        <p className="font-semibold text-gray-500">Cordialmente,</p>
-        <div className="mt-4 flex items-end justify-between flex-wrap gap-4">
+      <div className="mt-12 pt-6 border-t border-purple-100 text-sm text-gray-700">
+        <p className="mb-6">{T.cierreParrafo}</p>
+        <p className="font-semibold text-gray-500 mb-6">Cordialmente,</p>
+        <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
             {currentUser ? (
               <>
-                <p className="font-bold text-base" style={{ color: PURPLE }}>{currentUser.nombre}</p>
-                {currentUser.cargo && <p className="text-sm text-gray-600">{currentUser.cargo}</p>}
+                <p className="font-bold text-lg mb-1" style={{ color: PURPLE }}>{currentUser.nombre}</p>
+                {currentUser.cargo && <p className="text-sm text-gray-600 mb-0.5">{currentUser.cargo}</p>}
                 <p className="text-xs text-gray-500">{currentUser.email}</p>
                 {currentUser.celular && <p className="text-xs text-gray-500">📱 {currentUser.celular}</p>}
-                <p className="text-xs text-gray-400 mt-1">{RS} | www.pibox.app</p>
+                <p className="text-xs text-gray-400 mt-2">{RS} | www.pibox.app</p>
               </>
             ) : (
               <>
