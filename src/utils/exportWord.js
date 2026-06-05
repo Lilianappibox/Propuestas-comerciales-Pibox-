@@ -117,22 +117,10 @@ export async function exportToWord(propuesta, tarifas, modulos) {
 
   // Header info
   children.push(
-    new Paragraph({
-      children: [new TextRun({ text: "PIBOX", bold: true, size: 36, color: BLUE, font: "Arial" })],
-      spacing: { after: 40 },
-    }),
-    new Paragraph({
-      children: [new TextRun({ text: "Digital Platforms Colombia SAS", size: 18, color: "888888", font: "Arial" })],
-      spacing: { after: 200 },
-    }),
-    new Paragraph({
-      children: [new TextRun({ text: `Bogotá, ${fechaFmt}${ciudad ? " — " + ciudad : ""}`, size: 20, font: "Arial" })],
-      spacing: { after: 120 },
-    }),
     contacto ? new Paragraph({ children: [new TextRun({ text: `Señor(a): ${contacto}`, size: 20, bold: true, font: "Arial" })], spacing: { after: 60 } }) : null,
     cliente ? new Paragraph({ children: [new TextRun({ text: cliente, size: 24, bold: true, color: BLUE, font: "Arial" })], spacing: { after: 60 } }) : null,
     ciudad ? new Paragraph({ children: [new TextRun({ text: `Ciudad: ${ciudad}`, size: 20, font: "Arial" })], spacing: { after: 60 } }) : null,
-    new Paragraph({ children: [new TextRun({ text: "Asunto: Propuesta Comercial PIBOX", size: 20, bold: true, font: "Arial" })], spacing: { after: 200 } }),
+    new Paragraph({ children: [new TextRun({ text: "Asunto: Propuesta Comercial", size: 20, bold: true, font: "Arial" })], spacing: { after: 200 } }),
   ).filter(Boolean);
 
   // Intro
@@ -273,28 +261,13 @@ export async function exportToWord(propuesta, tarifas, modulos) {
     new Paragraph({ children: [], spacing: { before: 400 } }),
     p("Quedamos atentos a sus comentarios y disponibles para una reunión de presentación detallada."),
     p("Cordialmente,"),
-    new Paragraph({ children: [new TextRun({ text: "Equipo Comercial PIBOX", bold: true, size: 22, color: BLUE, font: "Arial" })], spacing: { before: 200, after: 60 } }),
-    note("Digital Platforms Colombia SAS | www.pibox.app"),
+    new Paragraph({ children: [new TextRun({ text: "Equipo Comercial", bold: true, size: 22, color: BLUE, font: "Arial" })], spacing: { before: 200, after: 60 } }),
   );
 
   const doc = new Document({
     sections: [{
       properties: {
         page: { size: { width: 12240, height: 15840 }, margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } },
-      },
-      headers: {
-        default: new Header({
-          children: [
-            new Paragraph({
-              children: [
-                new TextRun({ text: "PIBOX", bold: true, size: 20, color: BLUE, font: "Arial" }),
-                new TextRun({ text: "  |  Propuesta Comercial", size: 18, color: "999999", font: "Arial" }),
-                ...(cliente ? [new TextRun({ text: `  |  ${cliente}`, size: 18, color: "999999", font: "Arial" })] : []),
-              ],
-              border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: BLUE, space: 1 } },
-            }),
-          ],
-        }),
       },
       footers: {
         default: new Footer({
@@ -303,10 +276,8 @@ export async function exportToWord(propuesta, tarifas, modulos) {
               children: [
                 new TextRun({ text: "Pág. ", size: 16, font: "Arial", color: "999999" }),
                 new TextRun({ children: [PageNumber.CURRENT], size: 16, font: "Arial", color: "999999" }),
-                new TextRun({ text: " | www.pibox.app | info@pibox.app", size: 16, font: "Arial", color: "999999" }),
               ],
               alignment: AlignmentType.CENTER,
-              border: { top: { style: BorderStyle.SINGLE, size: 4, color: BLUE, space: 1 } },
             }),
           ],
         }),
@@ -316,6 +287,6 @@ export async function exportToWord(propuesta, tarifas, modulos) {
   });
 
   const buffer = await Packer.toBuffer(doc);
-  const filename = `Propuesta_PIBOX_${(cliente || "Cliente").replace(/\s+/g, "_")}_${fecha || new Date().toISOString().slice(0, 10)}.docx`;
+  const filename = `Propuesta_${(cliente || "Cliente").replace(/\s+/g, "_")}.docx`;
   saveAs(new Blob([buffer]), filename);
 }

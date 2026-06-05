@@ -372,13 +372,58 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
           <div className="mb-8">
             <h3 className="font-bold text-purple-700 text-base mb-3">📦 Pibox Storage</h3>
             <p className="text-sm text-gray-700 mb-3">{T.storageDesc}</p>
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-xs text-gray-700 space-y-2">
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-xs text-gray-700 space-y-2 mb-4">
               <p>✅ Almacenamiento por posición / m²</p>
               <p>✅ Cross-docking y distribución de última milla</p>
               <p>✅ Trazabilidad integrada con la plataforma PIBOX</p>
               <p>✅ Disponibilidad en Bogotá, Medellín y Cali</p>
-              <p className="text-gray-500 italic mt-2">* {T.storageNotas}</p>
             </div>
+
+            {/* Tabla de Almacenamiento */}
+            {(tarifas.storage?.almacenamiento || []).length > 0 && (
+              <>
+                <p className="text-xs font-semibold text-gray-700 mb-2">Almacenamiento:</p>
+                <DataTable
+                  headers={["Ciudad", "Ítem", "Capacidad Unitaria", "Peso Máximo Unitario", "Negociación", "Tarifa"]}
+                  rows={tarifas.storage.almacenamiento.map((a) => [
+                    a.ciudad, a.item, a.capacidadUnitaria, a.pesoMaximo, a.negociacion, fmt(a.tarifa),
+                  ])}
+                />
+              </>
+            )}
+
+            {/* Tabla de Alistamientos */}
+            {(tarifas.storage?.alistamientos || []).length > 0 && (
+              <>
+                <p className="text-xs font-semibold text-gray-700 mb-2 mt-4">Alistamientos:</p>
+                {tarifas.storage.alistamientos.map((al, idx) => (
+                  <div key={idx} className="mb-4">
+                    <p className="text-xs text-gray-600 mb-1">
+                      <span className="font-semibold">Tipo:</span> {al.tipo}
+                      {al.descripcion && <> — {al.descripcion}</>}
+                    </p>
+                    <DataTable
+                      headers={["Rango (alistamientos / mes)", "Tarifa"]}
+                      rows={(al.rangos || []).map((r) => [r.rango, fmt(r.tarifa)])}
+                    />
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Términos de negociación */}
+            {(tarifas.storage?.terminos || []).length > 0 && (
+              <>
+                <p className="text-xs font-semibold text-gray-700 mb-2 mt-4">Términos de negociación Storage / Crossdocking:</p>
+                <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 mb-4">
+                  {tarifas.storage.terminos.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            <p className="text-gray-500 italic text-xs">* {T.storageNotas}</p>
           </div>
         )}
       </Section>

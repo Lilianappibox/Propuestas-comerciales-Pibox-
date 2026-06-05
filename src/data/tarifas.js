@@ -67,19 +67,42 @@ export const TARIFAS_DEFAULT = {
     },
   },
   storage: {
-    ciudades: [
+    // ── Tabla de Almacenamiento ────────────────────────
+    almacenamiento: [
       {
         ciudad: "Bogotá",
-        tarifaPosicionPallet: 35000,
-        tarifaPosicionCaja: 15000,
-        tarifaM2Mes: 18000,
-        picking: 800,
-        crossDocking: 2500,
-        facturaMinima: 500000,
+        item: "Estante / Estiba",
+        capacidadUnitaria: "1 m * 1,20 m * 1,20 m Altura 2 m",
+        pesoMaximo: "1000 kg",
+        negociacion: "3 Estantes",
+        tarifa: "N.A",
       },
     ],
+    // ── Tabla de Alistamientos ─────────────────────────
+    alistamientos: [
+      {
+        tipo: "Simple",
+        descripcion: "Especificar el proceso o los pasos",
+        rangos: [
+          { rango: "1 - 100",   tarifa: "N.A" },
+          { rango: "101 - 250", tarifa: "N.A" },
+          { rango: "251 - 500", tarifa: "N.A" },
+          { rango: "> 500",     tarifa: "N.A" },
+        ],
+      },
+    ],
+    // ── Términos de negociación ────────────────────────
+    terminos: [
+      "Si se requiere ampliar la ocupación es preciso comunicar con cinco días hábiles de anticipación con el fin de validar el espacio disponible.",
+      "La liquidación de alistamientos se harán de acuerdo a la tabla mensualmente descrita en la propuesta.",
+      "El material de alistamiento y empaque lo deberá proveer el cliente y el espacio que ocupe el mismo se tendrá en cuenta dentro de los costos de almacenamiento.",
+      "La disponibilidad de la bodega está sujeta a la fecha de inicio de operación.",
+      "Las tarifas descritas, no incluyen el IVA.",
+      "Para el retiro total del inventario se deberá estar a paz y salvo por todo concepto.",
+    ],
+    // ── Seguro (compartido con tab Seguro) ────────────
     seguro: [
-      { unidad: "Pibox", montoDesde: 0, montoHasta: 1000000, costoSeguro: "Incluido ($300)" },
+      { unidad: "Pibox", montoDesde: 0,       montoHasta: 1000000, costoSeguro: "Incluido ($300)" },
       { unidad: "Pibox", montoDesde: 1000001, montoHasta: 2000000, costoSeguro: "0,03%" },
       { unidad: "Pibox", montoDesde: 2000001, montoHasta: 5000000, costoSeguro: "0,02%" },
     ],

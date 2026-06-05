@@ -413,37 +413,131 @@ export default function TarifasEditor({ tarifas, onChange }) {
 
         {/* ── STORAGE ── */}
         {tab === "storage" && (
-          <div>
-            <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-700">
-              📦 Las tarifas de Storage se presentan según volumetría y acuerdo con el cliente. Configure los valores base aquí.
+          <div className="space-y-6">
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-700">
+              📦 Configura las tarifas de almacenamiento, alistamientos y los términos de negociación.
+              Escribe <strong>"N.A"</strong> para indicar que no aplica.
             </div>
-            <SectionHeader label="Tarifas por Ciudad" onAdd={() => addRow("storage", "ciudades")} />
-            {tarifas.storage.ciudades.map((c, i) => (
-              <CityCard key={i} title={c.ciudad} onDelete={() => removeRow("storage", "ciudades", i)}>
-                <Row label="Ciudad">
-                  <Input value={c.ciudad} type="text" onChange={(v) => update(`storage.ciudades.${i}.ciudad`, v)} />
-                </Row>
-                <Row label="Posición Pallet / mes ($)">
-                  <Input value={c.tarifaPosicionPallet} onChange={(v) => update(`storage.ciudades.${i}.tarifaPosicionPallet`, v)} prefix="$" />
-                </Row>
-                <Row label="Posición Caja / mes ($)">
-                  <Input value={c.tarifaPosicionCaja} onChange={(v) => update(`storage.ciudades.${i}.tarifaPosicionCaja`, v)} prefix="$" />
-                </Row>
-                <Row label="Tarifa m² / mes ($)">
-                  <Input value={c.tarifaM2Mes} onChange={(v) => update(`storage.ciudades.${i}.tarifaM2Mes`, v)} prefix="$" />
-                </Row>
-                <Row label="Picking / unidad ($)">
-                  <Input value={c.picking} onChange={(v) => update(`storage.ciudades.${i}.picking`, v)} prefix="$" />
-                </Row>
-                <Row label="Cross-docking ($)">
-                  <Input value={c.crossDocking} onChange={(v) => update(`storage.ciudades.${i}.crossDocking`, v)} prefix="$" />
-                </Row>
-                <Row label="Facturación mínima ($)">
-                  <Input value={c.facturaMinima} onChange={(v) => update(`storage.ciudades.${i}.facturaMinima`, v)} prefix="$" />
-                </Row>
-              </CityCard>
-            ))}
 
+            {/* ── Almacenamiento ── */}
+            <div>
+              <SectionHeader label="Almacenamiento" onAdd={() => {
+                const cp = deepClone(tarifas);
+                cp.storage.almacenamiento = cp.storage.almacenamiento || [];
+                cp.storage.almacenamiento.push({ ciudad: "Nueva Ciudad", item: "", capacidadUnitaria: "", pesoMaximo: "", negociacion: "", tarifa: "N.A" });
+                onChange(cp);
+              }} />
+              {(tarifas.storage.almacenamiento || []).map((c, i) => (
+                <CityCard key={i} title={`${c.ciudad} — ${c.item || "Ítem"}`} onDelete={() => {
+                  const cp = deepClone(tarifas); cp.storage.almacenamiento.splice(i, 1); onChange(cp);
+                }}>
+                  <Row label="Ciudad">
+                    <Input value={c.ciudad} type="text" onChange={(v) => update(`storage.almacenamiento.${i}.ciudad`, v)} />
+                  </Row>
+                  <Row label="Ítem">
+                    <Input value={c.item} type="text" onChange={(v) => update(`storage.almacenamiento.${i}.item`, v)} placeholder="Ej: Estante / Estiba" />
+                  </Row>
+                  <Row label="Capacidad Unitaria">
+                    <Input value={c.capacidadUnitaria} type="text" onChange={(v) => update(`storage.almacenamiento.${i}.capacidadUnitaria`, v)} placeholder="Ej: 1m * 1,20m * 1,20m" />
+                  </Row>
+                  <Row label="Peso Máximo Unitario">
+                    <Input value={c.pesoMaximo} type="text" onChange={(v) => update(`storage.almacenamiento.${i}.pesoMaximo`, v)} placeholder="Ej: 1000 kg" />
+                  </Row>
+                  <Row label="Negociación">
+                    <Input value={c.negociacion} type="text" onChange={(v) => update(`storage.almacenamiento.${i}.negociacion`, v)} placeholder="Ej: 3 Estantes" />
+                  </Row>
+                  <Row label="Tarifa ($)">
+                    <Input value={c.tarifa} onChange={(v) => update(`storage.almacenamiento.${i}.tarifa`, v)} prefix="$" />
+                  </Row>
+                </CityCard>
+              ))}
+            </div>
+
+            {/* ── Alistamientos ── */}
+            <div>
+              <SectionHeader label="Alistamientos" onAdd={() => {
+                const cp = deepClone(tarifas);
+                cp.storage.alistamientos = cp.storage.alistamientos || [];
+                cp.storage.alistamientos.push({
+                  tipo: "Simple", descripcion: "",
+                  rangos: [
+                    { rango: "1 - 100", tarifa: "N.A" }, { rango: "101 - 250", tarifa: "N.A" },
+                    { rango: "251 - 500", tarifa: "N.A" }, { rango: "> 500", tarifa: "N.A" },
+                  ],
+                });
+                onChange(cp);
+              }} />
+              {(tarifas.storage.alistamientos || []).map((a, i) => (
+                <CityCard key={i} title={`${a.tipo} — ${a.descripcion || "sin descripción"}`} onDelete={() => {
+                  const cp = deepClone(tarifas); cp.storage.alistamientos.splice(i, 1); onChange(cp);
+                }}>
+                  {/* Tipo: Simple / Especial */}
+                  <Row label="Tipo de alistamiento">
+                    <div className="flex gap-2">
+                      {["Simple", "Especial"].map((t) => (
+                        <label key={t} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
+                          a.tipo === t ? "bg-purple-50 border-purple-400 text-purple-700 font-semibold" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                        }`}>
+                          <input type="radio" checked={a.tipo === t}
+                            onChange={() => update(`storage.alistamientos.${i}.tipo`, t)}
+                            className="accent-purple-600" />
+                          {t}
+                        </label>
+                      ))}
+                    </div>
+                  </Row>
+                  <Row label="Descripción">
+                    <Input value={a.descripcion} type="text" onChange={(v) => update(`storage.alistamientos.${i}.descripcion`, v)} placeholder="Especificar el proceso o los pasos" />
+                  </Row>
+                  {/* Rangos de alistamiento */}
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-500 mb-2 font-medium">Tarifas por rango de alistamientos / mes:</p>
+                    <div className="space-y-1">
+                      {(a.rangos || []).map((r, j) => (
+                        <Row key={j} label={`Rango ${r.rango}`}>
+                          <Input value={r.tarifa} onChange={(v) => update(`storage.alistamientos.${i}.rangos.${j}.tarifa`, v)} prefix="$" />
+                        </Row>
+                      ))}
+                    </div>
+                  </div>
+                </CityCard>
+              ))}
+            </div>
+
+            {/* ── Términos de negociación ── */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Términos de negociación Storage / Crossdocking</p>
+                <button onClick={() => {
+                  const cp = deepClone(tarifas);
+                  cp.storage.terminos = [...(cp.storage.terminos || []), ""];
+                  onChange(cp);
+                }} className="text-xs text-purple-600 hover:text-purple-800 border border-purple-200 rounded-lg px-3 py-1 hover:bg-purple-50">
+                  + Agregar término
+                </button>
+              </div>
+              <div className="space-y-2">
+                {(tarifas.storage.terminos || []).map((t, i) => (
+                  <div key={i} className="flex gap-2 items-start">
+                    <span className="text-gray-400 text-xs mt-2 shrink-0">*</span>
+                    <input
+                      type="text" value={t}
+                      onChange={(e) => {
+                        const cp = deepClone(tarifas);
+                        cp.storage.terminos[i] = e.target.value;
+                        onChange(cp);
+                      }}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    />
+                    <button onClick={() => {
+                      const cp = deepClone(tarifas);
+                      cp.storage.terminos.splice(i, 1);
+                      onChange(cp);
+                    }} className="text-red-400 hover:text-red-600 text-xs mt-2 shrink-0">✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
