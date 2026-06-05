@@ -9,6 +9,7 @@ import TemplateEditor from "./components/TemplateEditor";
 import Login from "./components/Login";
 import PropuestasSaved, { loadSaved, storeSaved } from "./components/PropuestasSaved";
 import PiboxLogo from "./components/PiboxLogo";
+import SyncData from "./components/SyncData";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -22,6 +23,7 @@ const TAB_TARIFARIO= "tarifario";
 const TAB_PLANTILLA= "plantilla";
 const TAB_SAVED    = "saved";
 const TAB_USUARIOS = "usuarios";
+const TAB_SYNC     = "sync";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700",
@@ -193,7 +195,8 @@ export default function App() {
     { id: TAB_SAVED,     label: "📁 Mis Propuestas",visible: true },
     { id: TAB_TARIFARIO, label: "📊 Tarifario",    visible: permisos.verTarifario },
     { id: TAB_PLANTILLA, label: "📝 Plantilla",    visible: permisos.editarPlantilla },
-    { id: TAB_USUARIOS,  label: "👥 Usuarios",     visible: permisos.gestionarUsuarios },
+    { id: TAB_USUARIOS,  label: "👥 Usuarios",        visible: permisos.gestionarUsuarios },
+    { id: TAB_SYNC,      label: "🔄 Sincronización",  visible: permisos.gestionarUsuarios },
   ].filter((t) => t.visible);
 
   return (
@@ -442,6 +445,11 @@ export default function App() {
         {/* ── USUARIOS ── */}
         {tab === TAB_USUARIOS && permisos.gestionarUsuarios && (
           <UserManager users={users} onSave={handleSaveUsers} />
+        )}
+
+        {/* ── SINCRONIZACIÓN ── */}
+        {tab === TAB_SYNC && permisos.gestionarUsuarios && (
+          <SyncData />
         )}
       </main>
     </div>
