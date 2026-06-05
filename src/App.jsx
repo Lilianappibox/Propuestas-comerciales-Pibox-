@@ -54,9 +54,9 @@ function loadTarifas() {
 function loadPropuesta() {
   try {
     const s = localStorage.getItem(SK_PROPUESTA);
-    const base = { cliente: "", ciudad: "", fecha: new Date().toISOString().slice(0,10), contacto: "", email: "", notas: "" };
+    const base = { cliente: "", ciudad: "", fecha: new Date().toISOString().slice(0,10), contacto: "", email: "", notas: "", razonSocial: "Digital Platforms Colombia S.A.S." };
     return s ? { ...base, ...JSON.parse(s) } : base;
-  } catch { return { cliente: "", ciudad: "", fecha: new Date().toISOString().slice(0,10), contacto: "", email: "", notas: "" }; }
+  } catch { return { cliente: "", ciudad: "", fecha: new Date().toISOString().slice(0,10), contacto: "", email: "", notas: "", razonSocial: "Digital Platforms Colombia S.A.S." }; }
 }
 
 function loadModulos() {
@@ -281,6 +281,42 @@ export default function App() {
                     <input type="date" value={propuesta.fecha}
                       onChange={(e) => setPropuesta((p) => ({ ...p, fecha: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+
+                  {/* Razón Social */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-2 block">
+                      🏛️ Razón Social
+                    </label>
+                    <div className="space-y-2">
+                      {[
+                        "Digital Platforms Colombia S.A.S.",
+                        "Digital Network Colombia S.A.S.",
+                      ].map((rs) => (
+                        <label
+                          key={rs}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                            propuesta.razonSocial === rs
+                              ? "border-purple-400 bg-purple-50"
+                              : "border-gray-200 hover:border-gray-300 bg-gray-50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="razonSocial"
+                            value={rs}
+                            checked={propuesta.razonSocial === rs}
+                            onChange={() => setPropuesta((p) => ({ ...p, razonSocial: rs }))}
+                            className="accent-purple-600"
+                          />
+                          <span className={`text-sm font-medium ${
+                            propuesta.razonSocial === rs ? "text-purple-700" : "text-gray-600"
+                          }`}>
+                            {rs}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

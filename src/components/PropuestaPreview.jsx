@@ -79,6 +79,16 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
   const T = { ...TEMPLATE_DEFAULT, ...(textsProp || {}) };
   const { cliente, ciudad, fecha, contacto, email, notas } = propuesta;
 
+  // Razón social activa — reemplaza dinámicamente en todos los textos
+  const RS = propuesta.razonSocial || "Digital Platforms Colombia S.A.S.";
+
+  // intro1 ajustado según la razón social seleccionada
+  const intro1 = T.intro1
+    .replace(/Digital Platforms Colombia(?: \/ Digital Network Colombia)? SAS/gi, RS)
+    .replace(/Digital Network Colombia(?: \/ Digital Platforms Colombia)? SAS/gi, RS)
+    .replace(/Digital Platforms Colombia S\.A\.S\./gi, RS)
+    .replace(/Digital Network Colombia S\.A\.S\./gi, RS);
+
   const fechaFmt = fecha
     ? new Date(fecha + "T12:00:00").toLocaleDateString("es-CO", {
         day: "numeric", month: "long", year: "numeric",
@@ -97,7 +107,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
         <div className="text-right text-white">
           <p className="text-sm font-semibold">Bogotá, {fechaFmt}</p>
           {ciudad && <p className="text-xs text-white/80">{ciudad}</p>}
-          <p className="text-xs text-white/60 mt-1">Digital Platforms Colombia SAS</p>
+          <p className="text-xs text-white/60 mt-1">{RS}</p>
         </div>
       </div>
 
@@ -112,7 +122,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
 
       {/* Intro */}
       <div className="mb-6 text-sm text-gray-700 leading-relaxed space-y-3">
-        <p>{T.intro1}</p>
+        <p>{intro1}</p>
         <p>{T.intro2}</p>
         <p>{T.intro3}</p>
       </div>
@@ -528,12 +538,12 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
                 {currentUser.cargo && <p className="text-sm text-gray-600">{currentUser.cargo}</p>}
                 <p className="text-xs text-gray-500">{currentUser.email}</p>
                 {currentUser.celular && <p className="text-xs text-gray-500">📱 {currentUser.celular}</p>}
-                <p className="text-xs text-gray-400 mt-1">{T.cierreSubtitulo}</p>
+                <p className="text-xs text-gray-400 mt-1">{RS} | www.pibox.app</p>
               </>
             ) : (
               <>
                 <p className="font-bold" style={{ color: PURPLE }}>{T.cierreFirma}</p>
-                <p className="text-xs text-gray-500">{T.cierreSubtitulo}</p>
+                <p className="text-xs text-gray-500">{RS} | www.pibox.app</p>
               </>
             )}
           </div>
