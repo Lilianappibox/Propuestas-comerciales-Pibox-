@@ -104,6 +104,7 @@ export default function TarifasEditor({ tarifas, onChange }) {
     { id: "entregasOptimizadas",   label: "🚀 Entregas Opt." },
     { id: "picarga",               label: "🚚 Picarga" },
     { id: "storage",               label: "📦 Storage" },
+    { id: "seguro",                label: "🛡️ Seguro" },
   ];
 
   return (
@@ -443,34 +444,100 @@ export default function TarifasEditor({ tarifas, onChange }) {
               </CityCard>
             ))}
 
-            <SectionHeader label="Tarifa por Seguro" />
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse mb-2">
-                <thead>
-                  <tr className="bg-gray-700 text-white">
-                    {["Unidad de Negocio", "Monto Desde", "Monto Hasta", "Costo de Seguro"].map((h) => (
-                      <th key={h} className="px-3 py-2 text-left border border-gray-600">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(tarifas.storage.seguro || []).map((row, i) => (
-                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="px-3 py-2 border border-gray-200">{row.unidad}</td>
-                      <td className="px-3 py-2 border border-gray-200">
-                        <Input value={row.montoDesde} onChange={(v) => update(`storage.seguro.${i}.montoDesde`, v)} prefix="$" />
-                      </td>
-                      <td className="px-3 py-2 border border-gray-200">
-                        <Input value={row.montoHasta} onChange={(v) => update(`storage.seguro.${i}.montoHasta`, v)} prefix="$" />
-                      </td>
-                      <td className="px-3 py-2 border border-gray-200">
-                        <Input value={row.costoSeguro} type="text" onChange={(v) => update(`storage.seguro.${i}.costoSeguro`, v)} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          </div>
+        )}
+
+        {/* ── SEGURO ── */}
+        {tab === "seguro" && (
+          <div>
+            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+              🛡️ La tarifa de seguro se calcula sobre el <strong>valor declarado</strong> de cada servicio (Ruta / Booking).
+              Escribe <strong>"N.A"</strong> en Costo de Seguro para indicar que no aplica en ese rango.
             </div>
+
+            {/* Botón agregar fila */}
+            <div className="flex justify-between items-center mb-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Rangos de valor declarado</p>
+              <button
+                onClick={() => {
+                  const cp = deepClone(tarifas);
+                  cp.storage.seguro = cp.storage.seguro || [];
+                  cp.storage.seguro.push({ unidad: "Pibox", montoDesde: 0, montoHasta: 0, costoSeguro: "N.A" });
+                  onChange(cp);
+                }}
+                className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50 transition-colors"
+              >
+                + Agregar rango
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {(tarifas.storage.seguro || []).map((row, i) => (
+                <div key={i} className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-gray-700">Rango {i + 1}</span>
+                    <button
+                      onClick={() => {
+                        const cp = deepClone(tarifas);
+                        cp.storage.seguro.splice(i, 1);
+                        onChange(cp);
+                      }}
+                      className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded px-2 py-0.5 hover:bg-red-50"
+                    >
+                      ✕ Eliminar
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Row label="Unidad de Negocio">
+                      <Input value={row.unidad} type="text" onChange={(v) => update(`storage.seguro.${i}.unidad`, v)} />
+                    </Row>
+                    <Row label="Costo de Seguro">
+                      <Input value={row.costoSeguro} type="text" onChange={(v) => update(`storage.seguro.${i}.costoSeguro`, v)} placeholder="Ej: $300, 0.03% ó N.A" />
+                    </Row>
+                    <Row label="Monto Desde ($)">
+                      <Input value={row.montoDesde} onChange={(v) => update(`storage.seguro.${i}.montoDesde`, v)} prefix="$" />
+                    </Row>
+                    <Row label="Monto Hasta ($)">
+                      <Input value={row.montoHasta} onChange={(v) => update(`storage.seguro.${i}.montoHasta`, v)} prefix="$" />
+                    </Row>
+                  </div>
+                </div>
+              ))}
+
+              {(tarifas.storage.seguro || []).length === 0 && (
+                <div className="text-center py-10 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-xl">
+                  No hay rangos configurados. Haz clic en <strong>"+ Agregar rango"</strong> para comenzar.
+                </div>
+              )}
+            </div>
+
+            {/* Resumen visual */}
+            {(tarifas.storage.seguro || []).length > 0 && (
+              <div className="mt-6">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vista previa de la tabla</p>
+                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-blue-700 text-white">
+                        {["Unidad de Negocio", "Monto Desde", "Monto Hasta", "Costo de Seguro"].map((h) => (
+                          <th key={h} className="px-3 py-2 text-left border border-blue-800">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(tarifas.storage.seguro || []).map((row, i) => (
+                        <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-blue-50"}>
+                          <td className="px-3 py-2 border border-gray-200">{row.unidad}</td>
+                          <td className="px-3 py-2 border border-gray-200">${Number(row.montoDesde || 0).toLocaleString("es-CO")}</td>
+                          <td className="px-3 py-2 border border-gray-200">${Number(row.montoHasta || 0).toLocaleString("es-CO")}</td>
+                          <td className="px-3 py-2 border border-gray-200 font-medium">{row.costoSeguro}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
