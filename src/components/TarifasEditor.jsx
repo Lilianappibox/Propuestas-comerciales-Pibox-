@@ -61,6 +61,20 @@ const Row = ({ label, children }) => (
 
 const VEHICULOS_PICARGA = ["Carry", "NHR", "NKR", "NPR", "Turbo", "Furgón", "Camioneta"];
 
+const InputConUnidad = ({ value, unidad, onChangeValue, onChangeUnidad }) => (
+  <div className="flex gap-1 items-center">
+    <Input value={value} onChange={onChangeValue} prefix={unidad === "$" ? "$" : ""} />
+    <div className="flex shrink-0 border border-gray-300 rounded overflow-hidden">
+      {["$", "%"].map((u) => (
+        <button key={u} type="button" onClick={() => onChangeUnidad(u)}
+          className={`px-2 py-1 text-xs font-medium transition-colors ${
+            unidad === u ? "bg-blue-600 text-white" : "bg-white text-gray-500 hover:bg-gray-100"
+          }`}>{u}</button>
+      ))}
+    </div>
+  </div>
+);
+
 const VehiculoSelect = ({ value, onChange }) => {
   const isCustom = value && !VEHICULOS_PICARGA.includes(value);
   const [showCustom, setShowCustom] = useState(isCustom);
@@ -244,8 +258,13 @@ export default function TarifasEditor({ tarifas, onChange }) {
               <Row label="% Recaudo Ida/Vuelta">
                 <Input value={tarifas.programadoBloqueHoras.adicionales.recaudoIdaVuelta} onChange={(v) => update("programadoBloqueHoras.adicionales.recaudoIdaVuelta", v)} />
               </Row>
-              <Row label="Parada en Falso ($)">
-                <Input value={tarifas.programadoBloqueHoras.adicionales.paradaEnFalso} onChange={(v) => update("programadoBloqueHoras.adicionales.paradaEnFalso", v)} prefix="$" />
+              <Row label="Parada en Falso">
+                <InputConUnidad
+                  value={tarifas.programadoBloqueHoras.adicionales.paradaEnFalso}
+                  unidad={tarifas.programadoBloqueHoras.adicionales.paradaEnFalsoUnidad || "$"}
+                  onChangeValue={(v) => update("programadoBloqueHoras.adicionales.paradaEnFalso", v)}
+                  onChangeUnidad={(u) => update("programadoBloqueHoras.adicionales.paradaEnFalsoUnidad", u)}
+                />
               </Row>
               <Row label="Recargo Periferia ($)">
                 <Input value={tarifas.programadoBloqueHoras.adicionales.recargo} onChange={(v) => update("programadoBloqueHoras.adicionales.recargo", v)} prefix="$" />
@@ -408,8 +427,13 @@ export default function TarifasEditor({ tarifas, onChange }) {
               <Row label="% Recaudo Ida/Vuelta">
                 <Input value={tarifas.picarga.adicionalesBH?.recaudoIdaVuelta ?? 5} onChange={(v) => update("picarga.adicionalesBH.recaudoIdaVuelta", v)} />
               </Row>
-              <Row label="Parada en Falso ($)">
-                <Input value={tarifas.picarga.adicionalesBH?.paradaEnFalso ?? "N.A"} onChange={(v) => update("picarga.adicionalesBH.paradaEnFalso", v)} prefix="$" />
+              <Row label="Parada en Falso">
+                <InputConUnidad
+                  value={tarifas.picarga.adicionalesBH?.paradaEnFalso ?? "N.A"}
+                  unidad={tarifas.picarga.adicionalesBH?.paradaEnFalsoUnidad || "$"}
+                  onChangeValue={(v) => update("picarga.adicionalesBH.paradaEnFalso", v)}
+                  onChangeUnidad={(u) => update("picarga.adicionalesBH.paradaEnFalsoUnidad", u)}
+                />
               </Row>
               <Row label="Tarifa Auxiliar ($)">
                 <Input value={tarifas.picarga.adicionalesBH?.tarifaAuxiliar ?? "N.A"} onChange={(v) => update("picarga.adicionalesBH.tarifaAuxiliar", v)} prefix="$" />
@@ -423,6 +447,12 @@ export default function TarifasEditor({ tarifas, onChange }) {
             <SectionHeader label="Tarifas Adicionales — Distancia" />
             {tarifas.picarga.adicionales.map((a, i) => (
               <CityCard key={i} title={`${a.ciudad} — ${a.vehiculo}`}>
+                <Row label="Ciudad">
+                  <Input value={a.ciudad} type="text" onChange={(v) => update(`picarga.adicionales.${i}.ciudad`, v)} />
+                </Row>
+                <Row label="Vehículo">
+                  <VehiculoSelect value={a.vehiculo} onChange={(v) => update(`picarga.adicionales.${i}.vehiculo`, v)} />
+                </Row>
                 <Row label="Tarifa Minuto ($)">
                   <Input value={a.tarifaMinuto} onChange={(v) => update(`picarga.adicionales.${i}.tarifaMinuto`, v)} prefix="$" />
                 </Row>

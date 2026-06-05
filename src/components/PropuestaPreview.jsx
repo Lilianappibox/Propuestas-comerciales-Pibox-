@@ -9,6 +9,11 @@ const MAGENTA  = "#C026D3";
 const STRIPE   = "#FAF5FF";  // purple-50
 const GRADIENT = "linear-gradient(135deg, #7C22D4, #C026D3)";
 
+const fmtU = (value, unidad) => {
+  if (value === "N.A" || value === 0 || value === "" || value == null) return fmt(value);
+  return unidad === "%" ? `${value}%` : fmt(value);
+};
+
 const Section = ({ title, children }) => (
   <div className="mb-8">
     <h2
@@ -238,7 +243,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
               rows={[[
                 "Ida y vuelta",
                 `${tarifas.programadoBloqueHoras.adicionales.recaudoIdaVuelta}%`,
-                fmt(tarifas.programadoBloqueHoras.adicionales.paradaEnFalso),
+                fmtU(tarifas.programadoBloqueHoras.adicionales.paradaEnFalso, tarifas.programadoBloqueHoras.adicionales.paradaEnFalsoUnidad || "$"),
                 fmt(tarifas.programadoBloqueHoras.adicionales.recargo),
               ]]}
             />
@@ -336,7 +341,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
                   headers={["% Recaudo Ida/Vuelta", "Parada en Falso", "Tarifa Auxiliar", "Hora Extra Auxiliar"]}
                   rows={[[
                     `${tarifas.picarga.adicionalesBH?.recaudoIdaVuelta ?? 5}%`,
-                    fmt(tarifas.picarga.adicionalesBH?.paradaEnFalso ?? "N.A"),
+                    fmtU(tarifas.picarga.adicionalesBH?.paradaEnFalso ?? "N.A", tarifas.picarga.adicionalesBH?.paradaEnFalsoUnidad || "$"),
                     fmt(tarifas.picarga.adicionalesBH?.tarifaAuxiliar ?? "N.A"),
                     fmt(tarifas.picarga.adicionalesBH?.horaExtraAuxiliar ?? "N.A"),
                   ]]}
