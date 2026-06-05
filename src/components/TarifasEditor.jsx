@@ -1,17 +1,29 @@
 import { useState } from "react";
 
-const Input = ({ value, onChange, prefix = "", type = "number", className = "", placeholder = "" }) => (
-  <div className="flex items-center gap-1">
-    {prefix && <span className="text-xs text-gray-400">{prefix}</span>}
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(type === "number" ? Number(e.target.value) : e.target.value)}
-      placeholder={placeholder}
-      className={`w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${className}`}
-    />
-  </div>
-);
+// Convierte el valor: si es "N.A" lo guarda como texto, si no como número
+const parseVal = (raw, isNum) => {
+  if (typeof raw === "string" && raw.trim().toUpperCase() === "N.A") return "N.A";
+  return isNum ? (raw === "" ? "" : Number(raw)) : raw;
+};
+
+const Input = ({ value, onChange, prefix = "", type = "number", className = "", placeholder = "" }) => {
+  const isNum = type === "number";
+  const isNA  = value === "N.A";
+  return (
+    <div className="flex items-center gap-1">
+      {prefix && !isNA && <span className="text-xs text-gray-400">{prefix}</span>}
+      <input
+        type="text"
+        value={value ?? ""}
+        onChange={(e) => onChange(parseVal(e.target.value, isNum))}
+        placeholder={placeholder || (isNum ? "0 ó N.A" : "")}
+        className={`w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition-colors ${
+          isNA ? "border-gray-300 bg-gray-100 text-gray-400 italic" : "border-gray-300"
+        } ${className}`}
+      />
+    </div>
+  );
+};
 
 const Row = ({ label, children }) => (
   <div className="flex items-center gap-2 py-1 border-b border-gray-100 last:border-0">
@@ -25,7 +37,8 @@ const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
 
 const cityTemplate = {
   onDemand: { ciudad: "Nueva Ciudad", vehiculo: "Motocicleta", kmBase: 3, tarifaKmBase: 9800, tarifaKmExtra: 1200, paradaAdicional: 2500, vdRuta: 5000000 },
-  picarga:  { ciudad: "Nueva Ciudad", vehiculo: "Carry",        kmBase: 10, tarifaKmBase: 65000, tarifaKmExtra: 4500, paradaAdicional: 15000, vdRuta: 5000000 },
+  picarga:         { ciudad: "Nueva Ciudad", vehiculo: "Carry", kmBase: 10, tarifaKmBase: 65000, tarifaKmExtra: 4500, paradaAdicional: 15000, vdRuta: 5000000 },
+  picargaReserva:  { ciudad: "Nueva Ciudad", vehiculo: "Carry", vehiculos: 1, horasDia: 8, tarifaHora: 65000, cobertura: "Ciudad", vdRuta: 5000000, recaudoRuta: 1500000 },
   programadoBloqueHoras:  { ciudad: "Nueva Ciudad", pilotos: 1, horasDia: 4, tarifaHora: 15500, cobertura: "8Km", vdRuta: 5000000, recaudoRuta: 1500000 },
   programadoRutas:        { ciudad: "Nueva Ciudad", paquetesPorRuta: 10, paquetesDia: 50, tarifaPaquete: 8500, vdRuta: 5000000, recaudoRuta: 1500000 },
   entregasOptimizadas:    { ciudad: "Nueva Ciudad", paquetesPorRuta: 10, paquetesDia: 50, tarifaPaquete: 8500, vdRuta: 5000000, recaudoRuta: 1500000 },
@@ -286,7 +299,62 @@ export default function TarifasEditor({ tarifas, onChange }) {
                 </Row>
               </CityCard>
             ))}
-            <SectionHeader label="Tarifas Adicionales" />
+            {/* ── Bloque de Horas ── */}
+            <SectionHeader label="Bloque de Horas" onAdd={() => {
+              const cp = deepClone(tarifas);
+              cp.picarga.reservas = cp.picarga.reservas || [];
+              cp.picarga.reservas.push(deepClone(cityTemplate.picargaReserva));
+              onChange(cp);
+            }} />
+            <p className="text-xs text-gray-400 mb-3 italic">Escribe "N.A" en cualquier campo para indicar que no aplica.</p>
+            {(tarifas.picarga.reservas || []).map((r, i) => (
+              <CityCard key={i} title={`${r.ciudad} — ${r.vehiculo}`} onDelete={() => {
+                const cp = deepClone(tarifas); cp.picarga.reservas.splice(i, 1); onChange(cp);
+              }}>
+                <Row label="Ciudad">
+                  <Input value={r.ciudad} type="text" onChange={(v) => update(`picarga.reservas.${i}.ciudad`, v)} />
+                </Row>
+                <Row label="Vehículo">
+                  <Input value={r.vehiculo} type="text" onChange={(v) => update(`picarga.reservas.${i}.vehiculo`, v)} />
+                </Row>
+                <Row label="Cantidad vehículos">
+                  <Input value={r.vehiculos} onChange={(v) => update(`picarga.reservas.${i}.vehiculos`, v)} />
+                </Row>
+                <Row label="Horas al Día">
+                  <Input value={r.horasDia} onChange={(v) => update(`picarga.reservas.${i}.horasDia`, v)} />
+                </Row>
+                <Row label="Tarifa / Hora ($)">
+                  <Input value={r.tarifaHora} onChange={(v) => update(`picarga.reservas.${i}.tarifaHora`, v)} prefix="$" />
+                </Row>
+                <Row label="Cobertura">
+                  <Input value={r.cobertura} type="text" onChange={(v) => update(`picarga.reservas.${i}.cobertura`, v)} />
+                </Row>
+                <Row label="VD / Ruta ($)">
+                  <Input value={r.vdRuta} onChange={(v) => update(`picarga.reservas.${i}.vdRuta`, v)} prefix="$" />
+                </Row>
+                <Row label="Recaudo / Ruta ($)">
+                  <Input value={r.recaudoRuta} onChange={(v) => update(`picarga.reservas.${i}.recaudoRuta`, v)} prefix="$" />
+                </Row>
+              </CityCard>
+            ))}
+            <SectionHeader label="Adicionales Bloque de Horas" />
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <Row label="% Recaudo Ida/Vuelta">
+                <Input value={tarifas.picarga.adicionalesBH?.recaudoIdaVuelta ?? 5} onChange={(v) => update("picarga.adicionalesBH.recaudoIdaVuelta", v)} />
+              </Row>
+              <Row label="Parada en Falso ($)">
+                <Input value={tarifas.picarga.adicionalesBH?.paradaEnFalso ?? "N.A"} onChange={(v) => update("picarga.adicionalesBH.paradaEnFalso", v)} prefix="$" />
+              </Row>
+              <Row label="Tarifa Auxiliar ($)">
+                <Input value={tarifas.picarga.adicionalesBH?.tarifaAuxiliar ?? "N.A"} onChange={(v) => update("picarga.adicionalesBH.tarifaAuxiliar", v)} prefix="$" />
+              </Row>
+              <Row label="Hora Extra Auxiliar ($)">
+                <Input value={tarifas.picarga.adicionalesBH?.horaExtraAuxiliar ?? "N.A"} onChange={(v) => update("picarga.adicionalesBH.horaExtraAuxiliar", v)} prefix="$" />
+              </Row>
+            </div>
+
+            {/* ── Tarifas Adicionales Distancia ── */}
+            <SectionHeader label="Tarifas Adicionales — Distancia" />
             {tarifas.picarga.adicionales.map((a, i) => (
               <CityCard key={i} title={`${a.ciudad} — ${a.vehiculo}`}>
                 <Row label="Tarifa Minuto ($)">
@@ -294,6 +362,21 @@ export default function TarifasEditor({ tarifas, onChange }) {
                 </Row>
                 <Row label="Bonificación ($)">
                   <Input value={a.bonificacion} onChange={(v) => update(`picarga.adicionales.${i}.bonificacion`, v)} prefix="$" />
+                </Row>
+                <Row label="Recargo Periferia ($)">
+                  <Input value={a.periferia ?? "N.A"} onChange={(v) => update(`picarga.adicionales.${i}.periferia`, v)} prefix="$" />
+                </Row>
+                <Row label="Recargo Aledaños ($)">
+                  <Input value={a.aledanos ?? "N.A"} onChange={(v) => update(`picarga.adicionales.${i}.aledanos`, v)} prefix="$" />
+                </Row>
+                <Row label="Recargo Lejanía ($)">
+                  <Input value={a.lejania ?? "N.A"} onChange={(v) => update(`picarga.adicionales.${i}.lejania`, v)} prefix="$" />
+                </Row>
+                <Row label="Tarifa Auxiliar ($)">
+                  <Input value={a.tarifaAuxiliar ?? "N.A"} onChange={(v) => update(`picarga.adicionales.${i}.tarifaAuxiliar`, v)} prefix="$" />
+                </Row>
+                <Row label="Hora Extra Auxiliar ($)">
+                  <Input value={a.horaExtraAuxiliar ?? "N.A"} onChange={(v) => update(`picarga.adicionales.${i}.horaExtraAuxiliar`, v)} prefix="$" />
                 </Row>
               </CityCard>
             ))}

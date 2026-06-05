@@ -32,13 +32,28 @@ export const TARIFAS_DEFAULT = {
     },
   },
   picarga: {
+    // ── Tarifas por distancia (Km) ─────────────────────
     ciudades: [
-      { ciudad: "Bogotá", vehiculo: "Carry", kmBase: 10, tarifaKmBase: 65000, tarifaKmExtra: 4500, paradaAdicional: 15000, vdRuta: 5000000 },
+      { ciudad: "Bogotá",   vehiculo: "Carry", kmBase: 10, tarifaKmBase: 65000, tarifaKmExtra: 4500, paradaAdicional: 15000, vdRuta: 5000000 },
       { ciudad: "Medellín", vehiculo: "Carry", kmBase: 10, tarifaKmBase: 65000, tarifaKmExtra: 4500, paradaAdicional: 15000, vdRuta: 5000000 },
     ],
-    adicionales: [
-      { ciudad: "Nacional", vehiculo: "Carry, NHR", tiempoEspera: "5 minutos", tarifaMinuto: 1500, bonificacion: 5000 },
+    // ── Bloque de Horas ────────────────────────────────
+    reservas: [
+      { ciudad: "Bogotá", vehiculo: "Carry", vehiculos: 1, horasDia: 8, tarifaHora: 65000, cobertura: "Ciudad", vdRuta: 5000000, recaudoRuta: 1500000 },
     ],
+    // ── Tarifas adicionales distancia ─────────────────
+    adicionales: [
+      { ciudad: "Nacional", vehiculo: "Carry, NHR", tiempoEspera: "5 minutos", tarifaMinuto: 1500, bonificacion: 5000,
+        periferia: "N.A", aledanos: "N.A", lejania: "N.A",
+        tarifaAuxiliar: "N.A", horaExtraAuxiliar: "N.A" },
+    ],
+    // ── Tarifas adicionales bloque de horas ───────────
+    adicionalesBH: {
+      recaudoIdaVuelta: 5,
+      paradaEnFalso: 0,
+      tarifaAuxiliar: "N.A",
+      horaExtraAuxiliar: "N.A",
+    },
   },
   entregasOptimizadas: {
     rutas: [

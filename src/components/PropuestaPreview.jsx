@@ -312,19 +312,50 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
           <div className="mb-8">
             <h3 className="font-bold text-orange-700 text-base mb-3">🚚 Picarga</h3>
             <p className="text-xs text-gray-600 mb-3">{T.picargaDesc}</p>
+
+            {/* Tarifas por distancia */}
+            <p className="text-xs font-semibold text-gray-700 mb-2">Tarifas por Distancia:</p>
             <DataTable
-              headers={["Ciudad", "Vehículo", "Km Base", "Tarifa Km Base", "Tarifa Km Extra", "Parada Adicional", "VD / Ruta"]}
+              headers={["Ciudad", "Vehículo", "Km Base", "Tarifa Km Base", "Km Extra", "Parada Adicional", "VD / Ruta"]}
               rows={tarifas.picarga.ciudades.map((c) => [
                 c.ciudad, c.vehiculo, `${c.kmBase} Km`, fmt(c.tarifaKmBase), fmt(c.tarifaKmExtra), fmt(c.paradaAdicional), fmt(c.vdRuta),
               ])}
             />
-            <p className="text-xs font-semibold text-gray-700 mb-2">Tarifas Adicionales:</p>
+
+            {/* Bloque de horas */}
+            {(tarifas.picarga.reservas || []).length > 0 && (
+              <>
+                <p className="text-xs font-semibold text-gray-700 mb-2 mt-4">Bloque de Horas:</p>
+                <DataTable
+                  headers={["Ciudad", "Vehículo", "Vehículos", "Horas/Día", "Tarifa Hora", "Cobertura", "VD / Ruta", "Recaudo / Ruta"]}
+                  rows={(tarifas.picarga.reservas || []).map((r) => [
+                    r.ciudad, r.vehiculo, r.vehiculos, r.horasDia, fmt(r.tarifaHora), r.cobertura, fmt(r.vdRuta), fmt(r.recaudoRuta),
+                  ])}
+                />
+                <DataTable
+                  headers={["% Recaudo Ida/Vuelta", "Parada en Falso", "Tarifa Auxiliar", "Hora Extra Auxiliar"]}
+                  rows={[[
+                    `${tarifas.picarga.adicionalesBH?.recaudoIdaVuelta ?? 5}%`,
+                    fmt(tarifas.picarga.adicionalesBH?.paradaEnFalso ?? "N.A"),
+                    fmt(tarifas.picarga.adicionalesBH?.tarifaAuxiliar ?? "N.A"),
+                    fmt(tarifas.picarga.adicionalesBH?.horaExtraAuxiliar ?? "N.A"),
+                  ]]}
+                />
+              </>
+            )}
+
+            {/* Adicionales distancia */}
+            <p className="text-xs font-semibold text-gray-700 mb-2 mt-4">Tarifas Adicionales:</p>
             <DataTable
-              headers={["Ciudad", "Vehículo", "Tiempo Espera", "Tarifa Minuto Adicional", "Bonificación"]}
+              headers={["Ciudad", "Vehículo", "T. Espera", "Tarifa Minuto", "Bonificación", "Periferia", "Aledaños", "Lejanía", "Auxiliar", "Hora Extra Aux."]}
               rows={tarifas.picarga.adicionales.map((a) => [
-                a.ciudad, a.vehiculo, a.tiempoEspera, fmt(a.tarifaMinuto), fmt(a.bonificacion),
+                a.ciudad, a.vehiculo, a.tiempoEspera,
+                fmt(a.tarifaMinuto), fmt(a.bonificacion),
+                fmt(a.periferia ?? "N.A"), fmt(a.aledanos ?? "N.A"), fmt(a.lejania ?? "N.A"),
+                fmt(a.tarifaAuxiliar ?? "N.A"), fmt(a.horaExtraAuxiliar ?? "N.A"),
               ])}
             />
+
             <PolicyTable rows={[
               ["Condiciones de Entrega", "La entrega se realiza frente al domicilio/comercio. El ingreso a residencias no está incluido."],
               ["Carga/Descarga", "Si se requiere asistencia para subir la carga, deberá pagar un auxiliar de carga."],
