@@ -45,11 +45,17 @@ body {
   }
 
   #propuesta-preview {
-    padding: 0 !important;
+    padding: 30mm 16mm 16mm 16mm !important;
     max-width: none !important;
     width: 100% !important;
     background: #ffffff !important;
     box-shadow: none !important;
+  }
+
+  /* Espaciado superior en cada salto de página */
+  #propuesta-preview .mb-8,
+  #propuesta-preview > div > div.mb-8 {
+    break-inside: avoid;
   }
 
   /* Preserve brand colours in print */
@@ -64,10 +70,9 @@ body {
 
   h2 { page-break-after: avoid; }
   table { page-break-inside: avoid; }
-  .mb-8 { page-break-inside: avoid; }
 
   @page {
     size: A4;
-    margin: 30mm 16mm 16mm 16mm;
+    margin: 0;
   }
 }
