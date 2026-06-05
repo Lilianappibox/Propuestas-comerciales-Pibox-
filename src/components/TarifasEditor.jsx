@@ -1,24 +1,51 @@
 import { useState } from "react";
 
-// Convierte el valor: si es "N.A" lo guarda como texto, si no como número
-const parseVal = (raw, isNum) => {
-  if (typeof raw === "string" && raw.trim().toUpperCase() === "N.A") return "N.A";
-  return isNum ? (raw === "" ? "" : Number(raw)) : raw;
-};
-
 const Input = ({ value, onChange, prefix = "", type = "number", className = "", placeholder = "" }) => {
   const isNum = type === "number";
-  const isNA  = value === "N.A";
+  // raw: lo que el usuario está escribiendo en el campo
+  const [raw, setRaw] = useState(null); // null = usar value externo
+  const isNA = value === "N.A";
+
+  const displayed = raw !== null ? raw : (value ?? "");
+
+  const handleChange = (e) => {
+    setRaw(e.target.value); // siempre actualiza lo que se ve
+  };
+
+  const handleBlur = () => {
+    const trimmed = (raw ?? "").trim().toUpperCase();
+    if (trimmed === "N.A" || trimmed === "NA") {
+      onChange("N.A");
+    } else if (raw === "" || raw === null) {
+      onChange(isNum ? 0 : "");
+    } else if (isNum) {
+      const n = Number(raw);
+      onChange(isNaN(n) ? "N.A" : n);
+    } else {
+      onChange(raw);
+    }
+    setRaw(null); // vuelve al valor controlado
+  };
+
+  const handleFocus = () => {
+    // Al enfocar, empieza a editar desde el valor actual
+    setRaw(value === "N.A" ? "" : String(value ?? ""));
+  };
+
   return (
     <div className="flex items-center gap-1">
       {prefix && !isNA && <span className="text-xs text-gray-400">{prefix}</span>}
       <input
         type="text"
-        value={value ?? ""}
-        onChange={(e) => onChange(parseVal(e.target.value, isNum))}
-        placeholder={placeholder || (isNum ? "0 ó N.A" : "")}
+        value={displayed}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        placeholder={placeholder || (isNum ? "Valor ó N.A" : "")}
         className={`w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 transition-colors ${
-          isNA ? "border-gray-300 bg-gray-100 text-gray-400 italic" : "border-gray-300"
+          isNA && raw === null
+            ? "border-dashed border-gray-300 bg-gray-50 text-gray-400"
+            : "border-gray-300 bg-white"
         } ${className}`}
       />
     </div>
