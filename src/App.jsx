@@ -38,6 +38,7 @@ const INITIAL_MODULOS = {
   onDemand: true, programadoBloqueHoras: false, programadoRutas: false,
   entregasOptimizadas: false, picarga: false, storage: false,
   adnTecnologico: true, terminosCondiciones: true, cobertura: true,
+  coberturaTodasCiudades: false,
 };
 
 function loadTarifas() {
@@ -348,17 +349,27 @@ export default function App() {
                 <p className="text-xs text-gray-500 mb-4">{modulosActivos} módulo(s) seleccionado(s)</p>
                 <div className="space-y-2">
                   {MODULOS_CONFIG.map((m) => (
-                    <label key={m.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${
-                        modulos[m.id] ? "bg-blue-50 border-blue-300" : "bg-gray-50 border-gray-200 hover:border-gray-300"}`}>
-                      <input type="checkbox" checked={modulos[m.id] || false}
-                        onChange={() => setModulos((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
-                        className="mt-0.5 accent-blue-600" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-800">{m.label}</p>
-                        <p className="text-xs text-gray-500">{m.desc}</p>
-                      </div>
-                    </label>
+                    <div key={m.id}>
+                      <label
+                        className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${
+                          modulos[m.id] ? "bg-blue-50 border-blue-300" : "bg-gray-50 border-gray-200 hover:border-gray-300"}`}>
+                        <input type="checkbox" checked={modulos[m.id] || false}
+                          onChange={() => setModulos((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                          className="mt-0.5 accent-blue-600" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{m.label}</p>
+                          <p className="text-xs text-gray-500">{m.desc}</p>
+                        </div>
+                      </label>
+                      {m.id === "cobertura" && modulos.cobertura && (
+                        <label className="flex items-center gap-2 ml-8 mt-1 mb-1 cursor-pointer">
+                          <input type="checkbox" checked={modulos.coberturaTodasCiudades || false}
+                            onChange={() => setModulos((prev) => ({ ...prev, coberturaTodasCiudades: !prev.coberturaTodasCiudades }))}
+                            className="accent-purple-600" />
+                          <span className="text-xs text-purple-700 font-medium">Incluir todas las ciudades de cobertura</span>
+                        </label>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -411,7 +422,7 @@ export default function App() {
                 </div>
                 <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
                   <div style={{ transform: "scale(0.75)", transformOrigin: "top left", width: "133.3%" }}>
-                    <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} />
+                    <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} coberturaTodasCiudades={modulos.coberturaTodasCiudades} />
                   </div>
                 </div>
               </div>
@@ -433,7 +444,7 @@ export default function App() {
               </div>
             </div>
             <div className="bg-white shadow-xl rounded-xl overflow-hidden">
-              <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} />
+              <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} coberturaTodasCiudades={modulos.coberturaTodasCiudades} />
             </div>
           </div>
         )}

@@ -75,7 +75,7 @@ const ML = ({ text, className = "" }) => (
 );
 
 
-export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: textsProp, currentUser }) {
+export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: textsProp, currentUser, coberturaTodasCiudades }) {
   const T = { ...TEMPLATE_DEFAULT, ...(textsProp || {}) };
   const { cliente, ciudad, fecha, contacto, email, notas } = propuesta;
 
@@ -480,33 +480,51 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
       )}
 
       {/* COBERTURA */}
-      {modulos.cobertura && (
-        <Section title="📍 Cobertura Pibox">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr style={{ background: GRADIENT }}>
-                  {["Ciudad", "Origen / Área Metropolitana", "Periferia", "Aledaños", "Lejanías", "Zonas Rojas / No Acceso"].map((h, i) => (
-                    <th key={i} className="px-2 py-2 text-left font-semibold text-white border border-purple-900">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {COBERTURA.map((row, i) => (
-                  <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : STRIPE }}>
-                    <td className="px-2 py-2 border border-purple-100 font-semibold" style={{ color: PURPLE }}>{row.ciudad}</td>
-                    <td className="px-2 py-2 border border-purple-100">{row.origen}{row.metropolitana ? `, ${row.metropolitana}` : ""}</td>
-                    <td className="px-2 py-2 border border-purple-100">{row.periferia || "—"}</td>
-                    <td className="px-2 py-2 border border-purple-100">{row.aledanos || "—"}</td>
-                    <td className="px-2 py-2 border border-purple-100">—</td>
-                    <td className="px-2 py-2 border border-purple-100 text-red-600">{row.zonasRojas || "—"}</td>
+      {modulos.cobertura && (() => {
+        // Extraer ciudades usadas en las tarifas de la propuesta
+        const ciudadesSet = new Set();
+        if (modulos.onDemand) tarifas.onDemand?.ciudades?.forEach((c) => ciudadesSet.add(c.ciudad));
+        if (modulos.programadoBloqueHoras) tarifas.programadoBloqueHoras?.reservas?.forEach((r) => ciudadesSet.add(r.ciudad));
+        if (modulos.programadoRutas) tarifas.programadoRutas?.rutas?.forEach((r) => ciudadesSet.add(r.ciudad));
+        if (modulos.entregasOptimizadas) tarifas.entregasOptimizadas?.rutas?.forEach((r) => ciudadesSet.add(r.ciudad));
+        if (modulos.picarga) {
+          tarifas.picarga?.ciudades?.forEach((c) => ciudadesSet.add(c.ciudad));
+          tarifas.picarga?.reservas?.forEach((r) => ciudadesSet.add(r.ciudad));
+        }
+        // Normalizar para comparar (ej: "Bogotá" vs "bogotá")
+        const ciudadesNorm = new Set([...ciudadesSet].map((c) => c.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+        const coberturaFiltrada = coberturaTodasCiudades
+          ? COBERTURA
+          : COBERTURA.filter((row) => ciudadesNorm.has(row.ciudad.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+
+        return coberturaFiltrada.length > 0 ? (
+          <Section title="📍 Cobertura Pibox">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr style={{ background: GRADIENT }}>
+                    {["Ciudad", "Origen / Área Metropolitana", "Periferia", "Aledaños", "Lejanías", "Zonas Rojas / No Acceso"].map((h, i) => (
+                      <th key={i} className="px-2 py-2 text-left font-semibold text-white border border-purple-900">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Section>
-      )}
+                </thead>
+                <tbody>
+                  {coberturaFiltrada.map((row, i) => (
+                    <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : STRIPE }}>
+                      <td className="px-2 py-2 border border-purple-100 font-semibold" style={{ color: PURPLE }}>{row.ciudad}</td>
+                      <td className="px-2 py-2 border border-purple-100">{row.origen}{row.metropolitana ? `, ${row.metropolitana}` : ""}</td>
+                      <td className="px-2 py-2 border border-purple-100">{row.periferia || "—"}</td>
+                      <td className="px-2 py-2 border border-purple-100">{row.aledanos || "—"}</td>
+                      <td className="px-2 py-2 border border-purple-100">—</td>
+                      <td className="px-2 py-2 border border-purple-100 text-red-600">{row.zonasRojas || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        ) : null;
+      })()}
 
       {/* Notas de negociación */}
       {notas && (
