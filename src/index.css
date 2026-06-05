@@ -45,16 +45,14 @@ body {
   }
 
   #propuesta-preview {
-    padding: 30mm 16mm 16mm 16mm !important;
+    padding: 10mm 16mm 10mm 16mm !important;
     max-width: none !important;
     width: 100% !important;
     background: #ffffff !important;
     box-shadow: none !important;
   }
 
-  /* Espaciado superior en cada salto de página */
-  #propuesta-preview .mb-8,
-  #propuesta-preview > div > div.mb-8 {
+  #propuesta-preview .mb-8 {
     break-inside: avoid;
   }
 
@@ -73,6 +71,16 @@ body {
 
   @page {
     size: A4;
-    margin: 0;
+    margin: 20mm 0 10mm 0;
+  }
+
+  /* Ocultar marcas de agua del navegador (fecha, URL, título, nro página) */
+  @page {
+    @top-left   { content: ""; color: white; }
+    @top-center { content: ""; color: white; }
+    @top-right  { content: ""; color: white; }
+    @bottom-left   { content: ""; color: white; }
+    @bottom-center { content: ""; color: white; }
+    @bottom-right  { content: ""; color: white; }
   }
 }
