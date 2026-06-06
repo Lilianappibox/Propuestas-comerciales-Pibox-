@@ -21,12 +21,25 @@ export default function Configuracion({ data, onSave }) {
   const handleKAMChange = (idx, field, value) => {
     setForm((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
-      next.kams[idx][field] = isNaN(value) ? value : Number(value);
+      // nombre es texto; los demás campos son números
+      next.kams[idx][field] = field === "nombre" ? value : (isNaN(value) ? value : Number(value));
       next.kams[idx].cumplimiento = next.kams[idx].meta > 0
         ? Number(((next.kams[idx].gmv / next.kams[idx].meta) * 100).toFixed(2))
         : 0;
       return next;
     });
+  };
+
+  const addKAM = () => {
+    setForm((prev) => ({
+      ...prev,
+      kams: [...prev.kams, { nombre: "Nuevo KAM", meta: 0, gmv: 0, okr: 0, cumplimiento: 0,
+        crecimientoVsMes: 0, crecimientoVsMesPct: 0, crecimientoVsAnio: 0, crecimientoVsAnioPct: 0 }],
+    }));
+  };
+
+  const removeKAM = (idx) => {
+    setForm((prev) => ({ ...prev, kams: prev.kams.filter((_, i) => i !== idx) }));
   };
 
   const handleSave = () => {
@@ -134,19 +147,44 @@ export default function Configuracion({ data, onSave }) {
       {tab === "kams" && (
         <div className="space-y-4">
           {form.kams.map((k, i) => (
-            <div key={k.nombre} className="border border-purple-100 rounded-xl p-4">
-              <p className="font-bold text-purple-700 mb-3">{k.nombre}</p>
+            <div key={i} className="border border-purple-100 rounded-xl p-4">
+              {/* Nombre del KAM — editable */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-400 mb-1">Nombre del KAM</label>
+                  <input
+                    value={k.nombre}
+                    onChange={(e) => handleKAMChange(i, "nombre", e.target.value)}
+                    className="w-full border border-purple-200 rounded-lg px-3 py-1.5 text-sm font-bold text-purple-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-300 bg-purple-50"
+                    placeholder="Nombre del KAM"
+                  />
+                </div>
+                <button
+                  onClick={() => removeKAM(i)}
+                  className="mt-4 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg px-2 py-1 text-xs font-semibold transition"
+                >
+                  ✕ Eliminar
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Field label="Meta" value={k.meta} onChange={(v) => handleKAMChange(i, "meta", v)} />
-                <Field label="GMV" value={k.gmv} onChange={(v) => handleKAMChange(i, "gmv", v)} />
-                <Field label="OKR %" value={k.okr} onChange={(v) => handleKAMChange(i, "okr", v)} />
-                <div className="rounded-lg bg-purple-50 p-2 text-center">
+                <Field label="Meta ($)" value={k.meta} onChange={(v) => handleKAMChange(i, "meta", v)} />
+                <Field label="GMV ($)"  value={k.gmv}  onChange={(v) => handleKAMChange(i, "gmv",  v)} />
+                <Field label="OKR %"    value={k.okr}  onChange={(v) => handleKAMChange(i, "okr",  v)} />
+                <div className="rounded-lg bg-purple-50 p-2 text-center flex flex-col justify-center">
                   <p className="text-xs text-gray-500">Cumplimiento</p>
-                  <p className="text-lg font-bold text-purple-700">{k.cumplimiento.toFixed(1)}%</p>
+                  <p className="text-lg font-bold text-purple-700">{(k.cumplimiento ?? 0).toFixed(1)}%</p>
                 </div>
               </div>
             </div>
           ))}
+
+          <button
+            onClick={addKAM}
+            className="w-full py-2 border-2 border-dashed border-purple-300 text-purple-600 rounded-xl text-sm font-semibold hover:bg-purple-50 transition"
+          >
+            + Agregar KAM
+          </button>
         </div>
       )}
 
