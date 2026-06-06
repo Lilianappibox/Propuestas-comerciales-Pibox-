@@ -10,6 +10,7 @@ import Login from "./components/Login";
 import PropuestasSaved, { loadSaved, storeSaved } from "./components/PropuestasSaved";
 import PiboxLogo from "./components/PiboxLogo";
 import SyncData from "./components/SyncData";
+import CierreComercial from "./components/CierreComercial";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -24,6 +25,7 @@ const TAB_PLANTILLA= "plantilla";
 const TAB_SAVED    = "saved";
 const TAB_USUARIOS = "usuarios";
 const TAB_SYNC     = "sync";
+const TAB_CIERRE   = "cierre";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700",
@@ -200,6 +202,7 @@ export default function App() {
     { id: TAB_PLANTILLA, label: "📝 Plantilla",    visible: permisos.editarPlantilla },
     { id: TAB_USUARIOS,  label: "👥 Usuarios",        visible: permisos.gestionarUsuarios },
     { id: TAB_SYNC,      label: "🔄 Sincronización",  visible: permisos.gestionarUsuarios },
+    { id: TAB_CIERRE,    label: "📊 Cierre Comercial", visible: !!permisos.verCierreComercial },
   ].filter((t) => t.visible);
 
   return (
@@ -499,6 +502,13 @@ export default function App() {
         {/* ── SINCRONIZACIÓN ── */}
         {tab === TAB_SYNC && permisos.gestionarUsuarios && (
           <SyncData />
+        )}
+
+        {/* ── CIERRE COMERCIAL ── */}
+        {tab === TAB_CIERRE && (
+          <div className="-mx-4 -my-6">
+            <CierreComercial />
+          </div>
         )}
       </main>
     </div>
