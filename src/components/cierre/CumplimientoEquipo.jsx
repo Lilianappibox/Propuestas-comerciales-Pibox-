@@ -76,8 +76,19 @@ export default function CumplimientoEquipo({ data }) {
               </p>
             </div>
             <div className="bg-purple-50 rounded-xl p-3 col-span-2">
-              <p className="text-gray-500 text-xs">Utilidad Bruta Estimada (15%)</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-gray-500 text-xs">Utilidad Bruta</p>
+                <span className="text-xs font-bold bg-purple-200 text-purple-800 rounded-full px-2 py-0.5">
+                  {((c.utilidadBruta / c.gmv) * 100).toFixed(1)}% sobre GMV
+                </span>
+              </div>
               <p className="font-bold text-purple-700 text-base">{M(c.utilidadBruta)}</p>
+              <div className="mt-1.5 h-1.5 bg-purple-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-purple-600 rounded-full"
+                  style={{ width: `${Math.min((c.utilidadBruta / c.gmv) * 100 * 4, 100)}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>
