@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { fmtM } from "./utils";
+import { parseExcelFile, PARSERS } from "./excelParser";
 
 export default function Configuracion({ data, onSave }) {
   const [form, setForm] = useState({ ...data });
@@ -48,11 +49,23 @@ export default function Configuracion({ data, onSave }) {
     setTimeout(() => setMsg(""), 3000);
   };
 
-  const handleExcelUpload = (e) => {
+  const handleExcelUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setMsg(`📂 Archivo "${file.name}" cargado. Procesando datos... (integración Excel disponible)`);
-    setTimeout(() => setMsg(""), 4000);
+    e.target.value = "";
+    setMsg(`⏳ Leyendo "${file.name}"...`);
+    try {
+      const rows   = await parseExcelFile(file);
+      const parser = PARSERS[tab];
+      if (!parser) { setMsg("⚠️ No hay parser definido para este tab."); return; }
+      const nuevo  = parser(rows, form);
+      if (!nuevo)  { setMsg("⚠️ No se encontraron datos reconocibles en el archivo. Revisa las cabeceras."); return; }
+      setForm(nuevo);
+      setMsg(`✅ ${file.name} cargado — ${rows.length} filas importadas. Haz clic en Guardar para confirmar.`);
+    } catch (err) {
+      setMsg(`❌ Error al leer el archivo: ${err.message}`);
+    }
+    setTimeout(() => setMsg(""), 6000);
   };
 
   const handleExportJSON = () => {
