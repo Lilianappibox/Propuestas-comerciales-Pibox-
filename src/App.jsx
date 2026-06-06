@@ -198,7 +198,7 @@ export default function App() {
     { id: TAB_BUILDER,   label: "✏️ Propuesta",   visible: true },
     { id: TAB_PREVIEW,   label: "👁️ Vista Previa", visible: true },
     { id: TAB_SAVED,     label: "📁 Mis Propuestas",visible: true },
-    { id: TAB_TARIFARIO, label: "📊 Tarifario",    visible: permisos.verTarifario },
+    { id: TAB_TARIFARIO, label: "💰 Tarifario",    visible: permisos.verTarifario },
     { id: TAB_PLANTILLA, label: "📝 Plantilla",    visible: permisos.editarPlantilla },
     { id: TAB_USUARIOS,  label: "👥 Usuarios",        visible: permisos.gestionarUsuarios },
     { id: TAB_SYNC,      label: "🔄 Sincronización",  visible: permisos.gestionarUsuarios },
