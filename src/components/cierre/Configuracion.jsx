@@ -81,52 +81,86 @@ export default function Configuracion({ data, onSave }) {
     reader.readAsText(file);
   };
 
-  const TABS = ["general", "kams", "top 10", "clientes nuevos", "clientes perdidos", "líneas", "ciudades", "tendencias"];
+  const TABS = [
+    { id: "general",           label: "General"           },
+    { id: "kams",              label: "KAMs"              },
+    { id: "top 10",            label: "Top 10"            },
+    { id: "clientes nuevos",   label: "Clientes Nuevos"   },
+    { id: "clientes perdidos", label: "Clientes Perdidos" },
+    { id: "líneas",            label: "Líneas"            },
+    { id: "ciudades",          label: "Ciudades"          },
+    { id: "tendencias",        label: "Tendencias"        },
+  ];
+
+  const tabLabel = TABS.find((t) => t.id === tab)?.label ?? tab;
 
   return (
     <section className="bg-white rounded-2xl shadow-md p-6">
+      {/* ── Header global ── */}
       <div className="flex flex-wrap gap-3 items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-purple-800">⚙️ Módulo de Configuración</h2>
         <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition"
-          >
-            📥 Cargar Excel
-          </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelUpload} />
-          <button
-            onClick={handleExportJSON}
-            className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
-          >
+          <button onClick={handleExportJSON}
+            className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
             💾 Exportar JSON
           </button>
-          <label className="flex items-center gap-1 px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 transition cursor-pointer">
+          <label className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 transition cursor-pointer">
             📂 Importar JSON
             <input type="file" accept=".json" className="hidden" onChange={handleImportJSON} />
           </label>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-pink-600 text-white rounded-lg text-sm font-bold hover:bg-pink-700 transition"
-          >
-            Guardar Cambios
-          </button>
         </div>
       </div>
 
       {msg && <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-700 font-medium">{msg}</div>}
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-4 border-b border-purple-100 pb-2">
+      {/* ── Tabs ── */}
+      <div className="flex flex-wrap gap-1 mb-3 border-b border-purple-100 pb-2">
         {TABS.map((t) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1 rounded-t text-xs font-semibold capitalize transition ${tab === t ? "bg-purple-600 text-white" : "text-gray-500 hover:text-purple-700"}`}
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-1.5 rounded-t text-xs font-semibold transition ${tab === t.id ? "bg-purple-600 text-white" : "text-gray-500 hover:text-purple-700 hover:bg-purple-50"}`}
           >
-            {t}
+            {t.label}
           </button>
         ))}
+      </div>
+
+      {/* ── Barra de acciones del tab activo ── */}
+      <div className="flex flex-wrap gap-2 items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-5">
+        <div className="flex gap-2 flex-wrap items-center">
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition"
+          >
+            📥 Cargar Excel — {tabLabel}
+          </button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelUpload} />
+          {tab === "top 10" && (
+            <button
+              onClick={() => {
+                const totalGmv = form.top10Clientes.reduce((a, c) => a + (c.gmvActual || 0), 0);
+                const next = form.top10Clientes.map((c) => ({
+                  ...c,
+                  crecimiento:   c.gmvAnterior > 0 ? parseFloat((((c.gmvActual - c.gmvAnterior) / c.gmvAnterior) * 100).toFixed(2)) : 0,
+                  participacion: totalGmv > 0       ? parseFloat(((c.gmvActual / totalGmv) * 100).toFixed(2))                        : 0,
+                }));
+                setForm((p) => ({ ...p, top10Clientes: next }));
+                setMsg("🔄 Recalculado — guarda para confirmar");
+                setTimeout(() => setMsg(""), 3000);
+              }}
+              className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-semibold hover:bg-teal-700 transition"
+            >
+              🔄 Recalcular crec. y part.
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleSave}
+          className="px-5 py-1.5 bg-pink-600 text-white rounded-lg text-xs font-bold hover:bg-pink-700 transition shadow"
+        >
+          💾 Guardar {tabLabel}
+        </button>
       </div>
 
       {tab === "general" && (
@@ -305,27 +339,6 @@ export default function Configuracion({ data, onSave }) {
               className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-200 transition"
             >
               + Agregar cliente
-            </button>
-            <button
-              onClick={() => {
-                // Recalcula crecimiento y participación para todos
-                const totalGmv = form.top10Clientes.reduce((a, c) => a + (c.gmvActual || 0), 0);
-                const next = form.top10Clientes.map((c) => ({
-                  ...c,
-                  crecimiento: c.gmvAnterior > 0
-                    ? parseFloat((((c.gmvActual - c.gmvAnterior) / c.gmvAnterior) * 100).toFixed(2))
-                    : 0,
-                  participacion: totalGmv > 0
-                    ? parseFloat(((c.gmvActual / totalGmv) * 100).toFixed(2))
-                    : 0,
-                }));
-                setForm((p) => ({ ...p, top10Clientes: next }));
-                setMsg("✅ Crecimiento y participación recalculados");
-                setTimeout(() => setMsg(""), 3000);
-              }}
-              className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-semibold hover:bg-green-200 transition"
-            >
-              🔄 Recalcular crec. y participación
             </button>
           </div>
 
