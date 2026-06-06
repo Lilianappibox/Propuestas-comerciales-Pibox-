@@ -23,13 +23,19 @@ export function parseExcelFile(file) {
   });
 }
 
-/** Normaliza una cadena para comparar cabeceras */
+/** Normaliza una cadena para comparar cabeceras:
+ *  - trim, lowercase
+ *  - elimina tildes
+ *  - elimina emojis y cualquier carácter no alfanumérico
+ */
 const norm = (s) =>
   String(s ?? "")
+    .trim()
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]/g, "");
+    .replace(/[̀-ͯ]/g, "")   // tildes
+    .replace(/[^\x00-\x7F]/g, "")      // emojis / no-ASCII
+    .replace(/[^a-z0-9]/g, "");        // espacios, símbolos
 
 /** Busca en un objeto la primera clave cuya versión normalizada coincida */
 function val(row, ...aliases) {
@@ -43,7 +49,11 @@ function val(row, ...aliases) {
 }
 
 const num  = (v) => { const n = Number(String(v).replace(/[^0-9.-]/g, "")); return isNaN(n) ? 0 : n; };
-const str  = (v) => String(v ?? "").trim();
+// Limpia emojis y espacios extra del texto
+const str  = (v) => String(v ?? "")
+  .trim()
+  .replace(/[^\x00-\x7F]/g, "")   // emojis
+  .trim();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parsers por tab
@@ -144,20 +154,28 @@ export function parseKAMs(rows, formActual) {
  */
 export function parseTop10(rows, formActual) {
   if (!rows.length) return null;
-  const totalGmv = rows.reduce((a, r) => a + num(val(r, "gmv actual", "gmvactual", "gmv mes actual", "gmv")), 0);
+
+  // Aliases amplios para cada columna
+  const getCliente   = (r) => val(r, "cliente", "client", "company", "empresa", "nombre", "name");
+  const getGmvActual = (r) => val(r, "gmv actual", "gmvactual", "gmv mes actual", "gmvmesactual", "gmv");
+  const getGmvAnt    = (r) => val(r, "gmv anterior", "gmvanterior", "gmv mes anterior", "gmvmesanterior");
+  const getKam       = (r) => val(r, "kam");
+
+  const totalGmv = rows.reduce((a, r) => a + num(getGmvActual(r)), 0);
+
   const top10 = rows
-    .filter((r) => str(val(r, "cliente", "client")) !== "")
+    .filter((r) => str(getCliente(r)) !== "")
     .map((r) => {
-      const gmvActual   = num(val(r, "gmv actual", "gmvactual", "gmv mes actual", "gmv"));
-      const gmvAnterior = num(val(r, "gmv anterior", "gmvanterior", "gmv mes anterior"));
+      const gmvActual   = num(getGmvActual(r));
+      const gmvAnterior = num(getGmvAnt(r));
       const crec = val(r, "crecimiento", "crec", "crec %", "crecimiento %");
-      const part = val(r, "participacion", "participación", "part %", "part");
+      const part = val(r, "participacion", "participacion %", "participación", "part %", "part");
       return {
-        cliente:      str(val(r, "cliente", "client")),
-        kam:          str(val(r, "kam", "kAM")),
+        cliente:       str(getCliente(r)),
+        kam:           str(getKam(r)),
         gmvActual,
         gmvAnterior,
-        crecimiento:  crec !== "" ? num(crec) : gmvAnterior > 0
+        crecimiento:   crec !== "" ? num(crec) : gmvAnterior > 0
           ? parseFloat((((gmvActual - gmvAnterior) / gmvAnterior) * 100).toFixed(2))
           : 0,
         participacion: part !== "" ? num(part) : totalGmv > 0
@@ -165,6 +183,7 @@ export function parseTop10(rows, formActual) {
           : 0,
       };
     });
+
   if (!top10.length) return null;
   return { ...JSON.parse(JSON.stringify(formActual)), top10Clientes: top10 };
 }
@@ -175,12 +194,12 @@ export function parseTop10(rows, formActual) {
 export function parseClientesNuevos(rows, formActual) {
   if (!rows.length) return null;
   const clientesNuevos = rows
-    .filter((r) => str(val(r, "cliente", "client")) !== "")
+    .filter((r) => str(val(r, "cliente", "client", "company", "empresa", "nombre")) !== "")
     .map((r) => ({
-      kam:      str(val(r, "kam")),
-      cliente:  str(val(r, "cliente", "client")),
-      gmv:      num(val(r, "gmv")),
-      servicios: num(val(r, "servicios", "services", "num servicios")),
+      kam:       str(val(r, "kam")),
+      cliente:   str(val(r, "cliente", "client", "company", "empresa", "nombre")),
+      gmv:       num(val(r, "gmv")),
+      servicios: num(val(r, "servicios", "services", "num servicios", "cantidad servicios")),
     }));
   if (!clientesNuevos.length) return null;
   return { ...JSON.parse(JSON.stringify(formActual)), clientesNuevos };
@@ -192,11 +211,11 @@ export function parseClientesNuevos(rows, formActual) {
 export function parseClientesPerdidos(rows, formActual) {
   if (!rows.length) return null;
   const clientesPerdidos = rows
-    .filter((r) => str(val(r, "cliente", "client")) !== "")
+    .filter((r) => str(val(r, "cliente", "client", "company", "empresa", "nombre")) !== "")
     .map((r) => ({
-      kam:              str(val(r, "kam")),
-      cliente:          str(val(r, "cliente", "client")),
-      gmvMesAnterior:   num(val(r, "gmv mes anterior", "gmv anterior", "gmvanterior", "gmv")),
+      kam:            str(val(r, "kam")),
+      cliente:        str(val(r, "cliente", "client", "company", "empresa", "nombre")),
+      gmvMesAnterior: num(val(r, "gmv mes anterior", "gmv anterior", "gmvanterior", "gmv")),
     }));
   if (!clientesPerdidos.length) return null;
   return { ...JSON.parse(JSON.stringify(formActual)), clientesPerdidos };
