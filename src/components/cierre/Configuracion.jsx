@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 // ── Configuración de cada tab ─────────────────────────────────────────────
 const TABS_CONFIG = [
@@ -51,6 +51,16 @@ export default function Configuracion({ data, onSave }) {
   const [form, setForm]   = useState(() => JSON.parse(JSON.stringify(data)));
   const [tab, setTab]     = useState("general");
   const [msg, setMsg]     = useState("");
+
+  // Sincroniza el form cuando el data del padre cambia externamente
+  // (ej: importar JSON desde el padre, o resetear datos)
+  const prevDataRef = useRef(data);
+  useEffect(() => {
+    if (prevDataRef.current !== data) {
+      prevDataRef.current = data;
+      setForm(JSON.parse(JSON.stringify(data)));
+    }
+  }, [data]);
 
   const toast = useCallback((m, ms = 3500) => {
     setMsg(m);
