@@ -14,19 +14,22 @@ import Insights from "./cierre/Insights";
 import Configuracion from "./cierre/Configuracion";
 import ExportPDF from "./cierre/ExportPDF";
 
-const SK_CIERRE = "pibox_cierre_data";
-
 // ── Persistencia ───────────────────────────────────────────────────────────
-function loadData() {
+const SK_SAVED = "pibox_cierre_data";
+const SK_DRAFT = "pibox_cierre_draft";
+
+const deepCopy = (obj) => JSON.parse(JSON.stringify(obj));
+
+function loadFromStorage(key, fallback) {
   try {
-    const raw = localStorage.getItem(SK_CIERRE);
+    const raw = localStorage.getItem(key);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
-  return dataInicial;
+  return deepCopy(fallback);
 }
 
-function saveData(d) {
-  try { localStorage.setItem(SK_CIERRE, JSON.stringify(d)); } catch { /* ignore */ }
+function persist(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
 // ── Secciones ──────────────────────────────────────────────────────────────
@@ -44,17 +47,16 @@ const SECCIONES = [
 ];
 
 // ── Tablero ────────────────────────────────────────────────────────────────
-function Tablero({ data, onSave }) {
+function Tablero({ savedData, draftForm, onDraftChange, onSave }) {
   const [seccionActiva, setSeccionActiva] = useState("cumplimiento");
-  const [modoVista, setModoVista]         = useState("nav");
-  const [toast, setToast]                 = useState("");
+  const [modoVista,     setModoVista]     = useState("nav");
+  const [toast,         setToast]         = useState("");
 
   const showToast = useCallback((msg) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3000);
   }, []);
 
-  // onSave con feedback
   const handleSave = useCallback((nuevaData) => {
     onSave(nuevaData);
     showToast("✅ Cambios guardados correctamente");
@@ -63,9 +65,8 @@ function Tablero({ data, onSave }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
 
-      {/* Toast global */}
       {toast && (
-        <div className="fixed top-4 right-4 z-[9999] bg-green-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg">
+        <div className="fixed top-4 right-4 z-[9999] bg-green-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg transition-all">
           {toast}
         </div>
       )}
@@ -79,7 +80,7 @@ function Tablero({ data, onSave }) {
             <div className="h-6 w-px bg-purple-200" />
             <div>
               <h1 className="font-bold text-gray-800 text-sm leading-tight">Cierre Comercial</h1>
-              <p className="text-xs text-purple-600 font-semibold">{data.mes}</p>
+              <p className="text-xs text-purple-600 font-semibold">{savedData.mes}</p>
             </div>
           </div>
           <BarraTRM />
@@ -90,11 +91,10 @@ function Tablero({ data, onSave }) {
             >
               {modoVista === "nav" ? "📋 Vista completa" : "🧭 Navegación"}
             </button>
-            <ExportPDF targetId="tablero-contenido" mes={data.mes} />
+            <ExportPDF targetId="tablero-contenido" mes={savedData.mes} />
           </div>
         </div>
 
-        {/* Nav tabs */}
         <div className="max-w-7xl mx-auto px-4 pb-2 flex gap-1 overflow-x-auto">
           {SECCIONES.map((s) => (
             <button
@@ -112,40 +112,42 @@ function Tablero({ data, onSave }) {
         </div>
       </div>
 
-      {/* Contenido — vista completa */}
+      {/* Vista completa */}
       {modoVista === "full" && (
         <div id="tablero-contenido" className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-          <CumplimientoEquipo data={data} />
-          <CumplimientoKAM    data={data} />
-          <Top10Clientes      data={data} />
-          <FacturacionLinea   data={data} />
-          <ClientesNuevos     data={data} />
-          <ClientesPerdidos   data={data} />
-          <MapaCiudades       data={data} />
-          <Tendencias         data={data} />
-          <Insights           data={data} />
+          <CumplimientoEquipo data={savedData} />
+          <CumplimientoKAM    data={savedData} />
+          <Top10Clientes      data={savedData} />
+          <FacturacionLinea   data={savedData} />
+          <ClientesNuevos     data={savedData} />
+          <ClientesPerdidos   data={savedData} />
+          <MapaCiudades       data={savedData} />
+          <Tendencias         data={savedData} />
+          <Insights           data={savedData} />
         </div>
       )}
 
-      {/* Contenido — navegación por sección
-          IMPORTANTE: Configuracion se mantiene SIEMPRE montada (display:none cuando
-          no está activa) para que su estado interno no se pierda al cambiar de tab. */}
+      {/* Vista por sección */}
       {modoVista === "nav" && (
         <div id="tablero-contenido" className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-          {seccionActiva === "cumplimiento" && <CumplimientoEquipo data={data} />}
-          {seccionActiva === "kams"         && <CumplimientoKAM    data={data} />}
-          {seccionActiva === "top10"        && <Top10Clientes      data={data} />}
-          {seccionActiva === "lineas"       && <FacturacionLinea   data={data} />}
-          {seccionActiva === "nuevos"       && <ClientesNuevos     data={data} />}
-          {seccionActiva === "perdidos"     && <ClientesPerdidos   data={data} />}
-          {seccionActiva === "mapa"         && <MapaCiudades       data={data} />}
-          {seccionActiva === "tendencias"   && <Tendencias         data={data} />}
-          {seccionActiva === "insights"     && <Insights           data={data} />}
+          {seccionActiva === "cumplimiento" && <CumplimientoEquipo data={savedData} />}
+          {seccionActiva === "kams"         && <CumplimientoKAM    data={savedData} />}
+          {seccionActiva === "top10"        && <Top10Clientes      data={savedData} />}
+          {seccionActiva === "lineas"       && <FacturacionLinea   data={savedData} />}
+          {seccionActiva === "nuevos"       && <ClientesNuevos     data={savedData} />}
+          {seccionActiva === "perdidos"     && <ClientesPerdidos   data={savedData} />}
+          {seccionActiva === "mapa"         && <MapaCiudades       data={savedData} />}
+          {seccionActiva === "tendencias"   && <Tendencias         data={savedData} />}
+          {seccionActiva === "insights"     && <Insights           data={savedData} />}
 
-          {/* Configuracion: siempre montada, oculta visualmente cuando no está activa */}
-          <div style={{ display: seccionActiva === "config" ? "block" : "none" }}>
-            <Configuracion data={data} onSave={handleSave} />
-          </div>
+          {/* Config: recibe el draft del padre — nunca pierde estado */}
+          {seccionActiva === "config" && (
+            <Configuracion
+              form={draftForm}
+              onFormChange={onDraftChange}
+              onSave={handleSave}
+            />
+          )}
         </div>
       )}
     </div>
@@ -154,17 +156,32 @@ function Tablero({ data, onSave }) {
 
 // ── Root ───────────────────────────────────────────────────────────────────
 export default function CierreComercial() {
-  // Carga desde localStorage (persiste entre recargas y navegación)
-  const [data, setData] = useState(loadData);
+  // savedData: lo que ven los módulos de visualización (guardado y persistido)
+  const [savedData, setSavedData] = useState(() => loadFromStorage(SK_SAVED, dataInicial));
 
-  // Persiste en localStorage cada vez que cambia
-  useEffect(() => {
-    saveData(data);
-  }, [data]);
+  // draftForm: borrador de edición en Configuracion (vive en el padre, nunca se desmonta)
+  const [draftForm, setDraftForm] = useState(() => loadFromStorage(SK_DRAFT, loadFromStorage(SK_SAVED, dataInicial)));
+
+  // Persiste savedData cada vez que cambia
+  useEffect(() => { persist(SK_SAVED, savedData); }, [savedData]);
+
+  // Persiste draftForm cada vez que cambia (auto-save del borrador)
+  useEffect(() => { persist(SK_DRAFT, draftForm); }, [draftForm]);
+
+  // Cuando el usuario guarda: savedData = draftForm, sincroniza draft
+  const handleSave = useCallback((nuevaData) => {
+    setSavedData(nuevaData);
+    setDraftForm(nuevaData);
+  }, []);
 
   return (
     <MonedaProvider>
-      <Tablero data={data} onSave={setData} />
+      <Tablero
+        savedData={savedData}
+        draftForm={draftForm}
+        onDraftChange={setDraftForm}
+        onSave={handleSave}
+      />
     </MonedaProvider>
   );
 }
