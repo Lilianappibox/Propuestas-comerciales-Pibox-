@@ -80,7 +80,7 @@ function predecirSiguienteMes(tendencias) {
 
   return {
     mes: sigLabel,
-    gmvPrediccion: prediccion,
+    gmvPrediccion: prediccionGmv,
     serviciosPrediccion: predServicios,
     crecInteranual: parseFloat((crecInteranual * 100).toFixed(1)),
     indiceEstacional: indices[sigMesIdx],
