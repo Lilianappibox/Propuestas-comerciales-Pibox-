@@ -7,16 +7,29 @@ import { useMoneda } from "./MonedaContext";
 import { TooltipMetaGMV } from "./TooltipCustom";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const MESES_CORTO = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const MESES_LARGO = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const MESES_UPPER = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
 
 function parseMes(label) {
   const parts = label.trim().split(/\s+/);
-  const mesIdx = MESES.indexOf(parts[0]);
+  const nombre = parts[0];
+  // Buscar en abreviado, completo y mayúsculas
+  let mesIdx = MESES_CORTO.indexOf(nombre);
+  if (mesIdx < 0) mesIdx = MESES_LARGO.indexOf(nombre);
+  if (mesIdx < 0) mesIdx = MESES_UPPER.indexOf(nombre.toUpperCase());
+  if (mesIdx < 0) {
+    // Buscar por las primeras 3 letras
+    const n3 = nombre.slice(0, 3).toLowerCase();
+    mesIdx = MESES_CORTO.findIndex((m) => m.toLowerCase() === n3);
+  }
   const raw = parseInt(parts[1] || "0");
-  // Soporta "25", "2025", "26", "2026", etc.
   const anio = raw < 100 ? 2000 + raw : raw;
   return { mesIdx, anio, mesNum: mesIdx + 1 };
 }
+
+// Para generar labels siempre usamos el formato corto
+const MESES = MESES_CORTO;
 
 function calcEstacionalidad(tendencias) {
   // Índice estacional: promedio del GMV de cada mes / promedio general
