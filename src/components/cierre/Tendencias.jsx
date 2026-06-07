@@ -105,39 +105,39 @@ function predecirSiguienteMes(tendencias) {
 }
 
 // ── Datos de contexto del mercado colombiano ──────────────────────────────
-// Fuentes: CCCE (Cámara Colombiana de Comercio Electrónico), MinTIC, DANE
+// Fuentes verificadas: CCCE, Valora Analitik, Portafolio — datos 2025-2026
 const CONTEXTO_MERCADO = [
   {
-    titulo: "E-commerce Colombia (CCCE)",
+    titulo: "E-commerce Colombia 2025",
     datos: [
-      "El comercio electrónico en Colombia creció 12.4% en 2024 alcanzando $72 billones COP",
-      "Logística de última milla representa el 53% del costo total de envío e-commerce",
-      "68% de los compradores esperan entrega en menos de 48 horas",
-      "Categorías líderes: moda (22%), tecnología (18%), alimentos (15%)",
+      "E-commerce alcanzó $27,3 billones COP en Q1 2025, crecimiento del 8,3% interanual",
+      "Colombia consolida 9,3 millones de compradores digitales activos",
+      "E-commerce internacional ya mueve USD $7.800M (15% del total), proyección +18% en 2025",
+      "Economía digital colombiana proyectada por encima de USD $52.000M al cierre de 2025",
     ],
-    fuente: "CCCE — Informe de comercio electrónico 2024",
+    fuente: "CCCE — Informes trimestrales Q1-Q2 2025 / Portafolio",
     color: "blue",
   },
   {
-    titulo: "Transformación Digital (MinTIC)",
+    titulo: "Sector Mensajería y Última Milla",
     datos: [
-      "73% de las MiPyMEs colombianas ya venden por canales digitales",
-      "Penetración internet: 78.2% de hogares colombianos conectados",
-      "El gobierno proyecta 85% de penetración para 2026",
-      "Programa 'Última Milla Digital' busca conectar zonas rurales",
+      "Inter Rapidísimo lidera con $1,2B en ingresos (+31,2% vs 2024); Servientrega cae al 4° puesto (-3,9%)",
+      "El sector de mensajería crece ~15% anual, impulsado por e-commerce y expansión de última milla",
+      "Las empresas colombianas destinan $15,6 de cada $100 facturados a actividades logísticas",
+      "Hay oportunidad para operadores tecnológicos frente a jugadores con menor agilidad digital",
     ],
-    fuente: "MinTIC — Colombia Digital 2024-2026",
+    fuente: "Valora Analitik — Ranking Mensajería y Logística Colombia 2025",
     color: "green",
   },
   {
-    titulo: "Oportunidades Última Milla",
+    titulo: "Logística 2026: IA y Digitalización",
     datos: [
-      "Mercado de última milla en LATAM: USD $8.2B (crecimiento 18% anual)",
-      "Colombia es el 4° mercado de e-commerce en LATAM",
-      "Picos estacionales: Nov-Dic (+40%), May (Día Madre +25%), Jun (Día Padre +15%)",
-      "Tendencia: micro-fulfillment y dark stores en ciudades principales",
+      "La IA es el habilitador principal en 2026: optimización de rutas, predicción de demanda, reducción de costos",
+      "La tecnología podría reducir costos logísticos hasta 20% en los próximos 3 años (Foro Económico Mundial)",
+      "El sector logístico colombiano proyecta reducir 20% los tiempos de entrega gracias a digitalización",
+      "El alza del salario mínimo 2026 redefine costos y acelera la adopción tecnológica como compensación",
     ],
-    fuente: "Análisis sectorial — Logística e-commerce Colombia",
+    fuente: "Portafolio — Logística en Colombia: digitalización, IA y visibilidad operativa 2026",
     color: "purple",
   },
 ];
