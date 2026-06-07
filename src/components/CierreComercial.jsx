@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { dataInicial } from "../data/cierreComercial";
 import { MonedaProvider } from "./cierre/MonedaContext";
 import BarraTRM from "./cierre/BarraTRM";
@@ -49,6 +49,7 @@ export default function CierreComercial() {
   const [data, setData] = useState(leer);
   const [seccion, setSeccion] = useState("cumplimiento");
   const [toast, setToast] = useState("");
+  const [printing, setPrinting] = useState(false);
 
   const actualizar = (nuevaData) => {
     setData(nuevaData);
@@ -65,19 +66,30 @@ export default function CierreComercial() {
     mostrarToast("✅ Cambios guardados");
   };
 
+  const handlePrint = useCallback(() => {
+    setPrinting(true);
+    const prevTitle = document.title;
+    document.title = " ";
+    setTimeout(() => {
+      window.print();
+      document.title = prevTitle;
+      setPrinting(false);
+    }, 300);
+  }, []);
+
   return (
     <MonedaProvider>
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+      <div className={`min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 ${printing ? "cierre-printing" : ""}`}>
 
         {/* Toast */}
         {toast && (
-          <div className="fixed top-4 right-4 z-[9999] bg-green-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg">
+          <div className="fixed top-4 right-4 z-[9999] bg-green-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg print:hidden">
             {toast}
           </div>
         )}
 
         {/* Header */}
-        <div className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-purple-100 shadow-sm">
+        <div className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-purple-100 shadow-sm print:hidden">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap gap-3 items-center justify-between">
             <div className="flex items-center gap-3">
               <PiboxLogo size="xs" white={false} />
@@ -89,7 +101,7 @@ export default function CierreComercial() {
             </div>
             <BarraTRM />
             <div className="flex gap-2 items-center">
-              <ExportPDF targetId="tablero-contenido" mes={data.mes} />
+              <ExportPDF mes={data.mes} onPrint={handlePrint} />
             </div>
           </div>
 
@@ -111,22 +123,51 @@ export default function CierreComercial() {
           </div>
         </div>
 
+        {/* Print header — solo visible al imprimir */}
+        <div className="hidden print:block px-8 pt-6 pb-4 border-b-2 border-purple-200 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <PiboxLogo size="sm" white={false} />
+              <div>
+                <h1 className="text-xl font-bold text-purple-800">Cierre Comercial</h1>
+                <p className="text-sm text-purple-600 font-semibold">{data.mes}</p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">Informe ejecutivo</p>
+          </div>
+        </div>
+
         {/* Contenido */}
-        <div id="tablero-contenido" className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-          {seccion === "cumplimiento" && <CumplimientoEquipo data={data} />}
-          {seccion === "kams"         && <CumplimientoKAM    data={data} />}
-          {seccion === "top10"        && <Top10Clientes      data={data} />}
-          {seccion === "lineas"       && <FacturacionLinea   data={data} />}
-          {seccion === "nuevos"       && <ClientesNuevos     data={data} />}
-          {seccion === "perdidos"     && <ClientesPerdidos   data={data} />}
-          {seccion === "mapa"         && <MapaCiudades       data={data} />}
-          {seccion === "tendencias"   && <Tendencias         data={data} />}
-          {seccion === "insights"     && <Insights           data={data} />}
-          {seccion === "config"       && (
-            <Configuracion
-              data={data}
-              onSave={handleSave}
-            />
+        <div id="tablero-contenido" className="max-w-7xl mx-auto px-4 py-6 space-y-6 print:px-6 print:max-w-none">
+          {printing ? (
+            /* Modo impresión: todas las secciones */
+            <>
+              <CumplimientoEquipo data={data} />
+              <CumplimientoKAM    data={data} />
+              <Top10Clientes      data={data} />
+              <FacturacionLinea   data={data} />
+              <ClientesNuevos     data={data} />
+              <ClientesPerdidos   data={data} />
+              <MapaCiudades       data={data} />
+              <Tendencias         data={data} />
+              <Insights           data={data} />
+            </>
+          ) : (
+            /* Modo normal: sección activa */
+            <>
+              {seccion === "cumplimiento" && <CumplimientoEquipo data={data} />}
+              {seccion === "kams"         && <CumplimientoKAM    data={data} />}
+              {seccion === "top10"        && <Top10Clientes      data={data} />}
+              {seccion === "lineas"       && <FacturacionLinea   data={data} />}
+              {seccion === "nuevos"       && <ClientesNuevos     data={data} />}
+              {seccion === "perdidos"     && <ClientesPerdidos   data={data} />}
+              {seccion === "mapa"         && <MapaCiudades       data={data} />}
+              {seccion === "tendencias"   && <Tendencias         data={data} />}
+              {seccion === "insights"     && <Insights           data={data} />}
+              {seccion === "config"       && (
+                <Configuracion data={data} onSave={handleSave} />
+              )}
+            </>
           )}
         </div>
       </div>
