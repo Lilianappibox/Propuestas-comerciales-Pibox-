@@ -121,12 +121,12 @@ const CONTEXTO_MERCADO = [
   {
     titulo: "Sector Mensajería y Última Milla",
     datos: [
-      "Inter Rapidísimo lidera con $1,2B en ingresos (+31,2% vs 2024); Servientrega cae al 4° puesto (-3,9%)",
-      "El sector de mensajería crece ~15% anual, impulsado por e-commerce y expansión de última milla",
-      "Las empresas colombianas destinan $15,6 de cada $100 facturados a actividades logísticas",
-      "Hay oportunidad para operadores tecnológicos frente a jugadores con menor agilidad digital",
+      "Mercado de última milla en Colombia: ~USD $740M (2024), crecimiento ~10% CAGR hasta 2030",
+      "Pibox: único operador postal tech autorizado por MinTIC, +500 clientes empresariales (MercadoLibre, Amazon, DHL), +200K drivers en LatAm",
+      "Competencia directa: Mensajeros Urbanos (~1,5M envíos/mes), Rappi (domina quick-commerce), Zubale, Cabify Envíos, Didi — Pibox se diferencia con API B2B y reducción de costos logísticos del 50-70%",
+      "Couriers tradicionales pierden terreno: Servientrega cae al 4° puesto (-3,9%); el sector tech-enabled crece 15% anual",
     ],
-    fuente: "Valora Analitik — Ranking Mensajería y Logística Colombia 2025",
+    fuente: "Valora Analitik 2025 / La República / Bonafide Research / El Tiempo",
     color: "green",
   },
   {
