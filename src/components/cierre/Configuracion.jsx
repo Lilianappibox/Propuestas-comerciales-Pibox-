@@ -413,7 +413,8 @@ export default function Configuracion({ data, onSave }) {
       {tab === "líneas" && (
         <EditableTable
           rows={form.facturacionLinea}
-          columns={["linea", "gmv", "servicios"]}
+          columns={["linea", "gmv", "servicios", "paquetes", "gmvAnt", "serviciosAnt", "paquetesAnt"]}
+          columnLabels={{ linea: "Línea", gmv: "GMV", servicios: "Servicios", paquetes: "Paquetes", gmvAnt: "GMV Anterior", serviciosAnt: "Serv. Anterior", paquetesAnt: "Paq. Anterior" }}
           onChange={(rows) => setForm((p) => ({ ...p, facturacionLinea: rows }))}
         />
       )}
@@ -451,7 +452,7 @@ function Field({ label, value, onChange, type = "number" }) {
   );
 }
 
-function EditableTable({ rows, columns, onChange }) {
+function EditableTable({ rows, columns, onChange, columnLabels = {} }) {
   const handleCell = (rowIdx, col, val) => {
     const next = rows.map((r, i) =>
       i === rowIdx ? { ...r, [col]: isNaN(val) ? val : Number(val) } : r
@@ -473,7 +474,7 @@ function EditableTable({ rows, columns, onChange }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-purple-50">
-              {columns.map((c) => <th key={c} className="text-left p-2 text-purple-700 capitalize">{c}</th>)}
+              {columns.map((c) => <th key={c} className="text-left p-2 text-purple-700 capitalize text-xs">{columnLabels[c] || c}</th>)}
               <th className="p-2"></th>
             </tr>
           </thead>

@@ -222,16 +222,20 @@ export function parseClientesPerdidos(rows, formActual) {
 }
 
 /**
- * Líneas — columnas: Línea, GMV, Servicios
+ * Líneas — columnas: Línea, GMV, Servicios, Paquetes, GMV Anterior, Servicios Anterior, Paquetes Anterior
  */
 export function parseLineas(rows, formActual) {
   if (!rows.length) return null;
   const facturacionLinea = rows
     .filter((r) => str(val(r, "lineas", "líneas", "linea", "línea", "line", "servicio", "categoria")) !== "")
     .map((r) => ({
-      linea:     str(val(r, "lineas", "líneas", "linea", "línea", "line", "servicio", "categoria")),
-      gmv:       num(val(r, "gmv actual", "gmvactual", "gmv")),
-      servicios: num(val(r, "servicios", "services", "cantidad", "num servicios")),
+      linea:        str(val(r, "lineas", "líneas", "linea", "línea", "line", "servicio", "categoria")),
+      gmv:          num(val(r, "gmv actual", "gmvactual", "gmv")),
+      servicios:    num(val(r, "servicios", "services", "cantidad", "num servicios")),
+      paquetes:     num(val(r, "paquetes", "packages", "num paquetes", "cantidad paquetes")),
+      gmvAnt:       num(val(r, "gmv anterior", "gmvanterior", "gmv mes anterior")),
+      serviciosAnt: num(val(r, "servicios anterior", "serviciosanterior", "servicios ant", "serv anterior")),
+      paquetesAnt:  num(val(r, "paquetes anterior", "paquetesanterior", "paquetes ant", "paq anterior")),
     }));
   if (!facturacionLinea.length) return null;
   return { ...JSON.parse(JSON.stringify(formActual)), facturacionLinea };
@@ -285,7 +289,7 @@ export const PARSERS = {
   "top 10":          parseTop10,
   "clientes nuevos": parseClientesNuevos,
   "clientes perdidos": parseClientesPerdidos,
-  lineas:            parseLineas,
+  "líneas":          parseLineas,
   ciudades:          parseCiudades,
   tendencias:        parseTendencias,
 };
