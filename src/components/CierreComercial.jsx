@@ -13,6 +13,7 @@ import Tendencias from "./cierre/Tendencias";
 import Insights from "./cierre/Insights";
 import Configuracion from "./cierre/Configuracion";
 import ExportPDF from "./cierre/ExportPDF";
+import PiboxLogo from "./PiboxLogo";
 
 // ── localStorage — clave única ─────────────────────────────────────────────
 const SK = "pibox_cierre_v2";
@@ -80,8 +81,7 @@ export default function CierreComercial() {
         <div className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-purple-100 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap gap-3 items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white font-black text-sm">P</div>
-              <span className="font-black text-lg bg-gradient-to-r from-purple-700 to-pink-500 bg-clip-text text-transparent">pibox</span>
+              <PiboxLogo size="xs" white={false} />
               <div className="h-6 w-px bg-purple-200" />
               <div>
                 <h1 className="font-bold text-gray-800 text-sm leading-tight">Cierre Comercial</h1>
