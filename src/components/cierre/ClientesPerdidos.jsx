@@ -15,7 +15,9 @@ export default function ClientesPerdidos({ data }) {
   const totalMesAnteriorEquipo = data.cumplimientoEquipo.mesPasadoGmv;
   const pesoEnFacturacion = ((totalGmv / totalMesAnteriorEquipo) * 100).toFixed(2);
 
-  const porKAM = ["Johana Navarrete", "Juliana Rojas", "Natalia Olivera", "Bavaria", "Pibox"].map((nombre, i) => {
+  // Extraer KAMs dinámicamente de los datos
+  const kamsUnicos = [...new Set(data.clientesPerdidos.map((c) => c.kam))];
+  const porKAM = kamsUnicos.map((nombre, i) => {
     const clientes = data.clientesPerdidos.filter((c) => c.kam === nombre);
     return {
       kam: nombre.split(" ")[0],
@@ -25,7 +27,7 @@ export default function ClientesPerdidos({ data }) {
       gmvConv: clientes.reduce((a, c) => a + conv(c.gmvMesAnterior), 0),
       color: COLORES[i % COLORES.length],
     };
-  }).filter((k) => k.cantidad > 0);
+  }).filter((k) => k.cantidad > 0).sort((a, b) => b.gmv - a.gmv);
 
   const top3 = [...data.clientesPerdidos].sort((a, b) => b.gmvMesAnterior - a.gmvMesAnterior).slice(0, 3);
 
@@ -63,7 +65,7 @@ export default function ClientesPerdidos({ data }) {
       <div className="grid md:grid-cols-2 gap-4">
         <div>
           <h3 className="text-sm font-semibold text-gray-600 mb-2">GMV perdido por KAM</h3>
-          <ResponsiveContainer width="100%" height={160}>
+          <ResponsiveContainer width="100%" height={Math.max(160, porKAM.length * 50)}>
             <BarChart data={porKAM} layout="vertical">
               <XAxis type="number" tickFormatter={Mx} tick={{ fontSize: 10 }} />
               <YAxis type="category" dataKey="kam" tick={{ fontSize: 11 }} width={65} />
