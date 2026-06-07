@@ -78,12 +78,16 @@ function predecirSiguienteMes(tendencias) {
     predServicios = Math.round(ultServ * (1 + crecInteranual));
   }
 
+  // Índice estacional seguro (nunca 0)
+  const indiceDisplay = indiceEstacional > 0 ? indiceEstacional : 1;
+
   return {
     mes: sigLabel,
     gmvPrediccion: prediccionGmv,
     serviciosPrediccion: predServicios,
     crecInteranual: parseFloat((crecInteranual * 100).toFixed(1)),
-    indiceEstacional: indices[sigMesIdx],
+    indiceEstacional: indiceDisplay,
+    tieneHistorico: mismosAnios.length >= 1,
   };
 }
 
@@ -272,7 +276,10 @@ export default function Tendencias({ data }) {
                 <span className="text-sm font-bold text-purple-700">{prediccion.indiceEstacional.toFixed(3)}</span>
               </div>
               <p className="text-xs text-gray-400 border-t border-amber-200 pt-2">
-                Metodología: crecimiento interanual del mismo mes + ajuste por índice estacional calculado sobre {tendencias.length} meses de historia.
+                {prediccion.tieneHistorico
+                  ? `Metodología: GMV de ${prediccion.mes.split(" ")[0]} del año anterior × (1 + crecimiento interanual ${prediccion.crecInteranual >= 0 ? "+" : ""}${prediccion.crecInteranual}%). Basado en ${tendencias.length} meses de historia.`
+                  : `Metodología: GMV actual ajustado por ratio estacional relativo (${prediccion.indiceEstacional.toFixed(3)}). Sin datos históricos de ${prediccion.mes.split(" ")[0]} — se recomienda cargar más años para mejorar la predicción.`
+                }
               </p>
             </div>
           </div>
