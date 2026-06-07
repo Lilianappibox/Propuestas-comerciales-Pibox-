@@ -108,14 +108,14 @@ function predecirSiguienteMes(tendencias) {
 // Fuentes verificadas: CCCE, Valora Analitik, Portafolio — datos 2025-2026
 const CONTEXTO_MERCADO = [
   {
-    titulo: "E-commerce Colombia 2025",
+    titulo: "E-commerce Colombia 2026",
     datos: [
-      "E-commerce alcanzó $27,3 billones COP en Q1 2025, crecimiento del 8,3% interanual",
-      "Colombia consolida 9,3 millones de compradores digitales activos",
-      "E-commerce internacional ya mueve USD $7.800M (15% del total), proyección +18% en 2025",
-      "Economía digital colombiana proyectada por encima de USD $52.000M al cierre de 2025",
+      "Q1 2026: $39,7 billones COP en ventas (+14,5% YoY) con 186,4M de transacciones, récord desde 2019",
+      "Cierre 2025: $145,4 billones COP, 684,6M transacciones — récord histórico (+19,9% en operaciones)",
+      "Colombia crece al doble de la media global (14,5% vs 7,2%) con CAGR 2022-2026 de 27,9%",
+      "Mobile commerce alcanza ~USD $12.000M en 2026, casi duplicando años anteriores",
     ],
-    fuente: "CCCE — Informes trimestrales Q1-Q2 2025 / Portafolio",
+    fuente: "CCCE / Semana / Americas Market Intelligence — Q1 2026",
     color: "blue",
   },
   {
