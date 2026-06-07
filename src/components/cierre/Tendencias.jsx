@@ -10,9 +10,11 @@ import { TooltipMetaGMV } from "./TooltipCustom";
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
 function parseMes(label) {
-  const parts = label.split(" ");
+  const parts = label.trim().split(/\s+/);
   const mesIdx = MESES.indexOf(parts[0]);
-  const anio = parts[1] ? 2000 + parseInt(parts[1]) : 0;
+  const raw = parseInt(parts[1] || "0");
+  // Soporta "25", "2025", "26", "2026", etc.
+  const anio = raw < 100 ? 2000 + raw : raw;
   return { mesIdx, anio, mesNum: mesIdx + 1 };
 }
 
@@ -33,30 +35,46 @@ function predecirSiguienteMes(tendencias) {
   const indices = calcEstacionalidad(tendencias);
   const ult = tendencias[tendencias.length - 1];
   const { mesIdx: ultMesIdx, anio: ultAnio } = parseMes(ult.mes);
+
+  // El mes siguiente al último dato
   const sigMesIdx = (ultMesIdx + 1) % 12;
-  const sigAnio = sigMesIdx === 0 ? ultAnio + 1 : ultAnio;
+  const sigAnio = ultMesIdx === 11 ? ultAnio + 1 : ultAnio;
   const sigLabel = `${MESES[sigMesIdx]} ${String(sigAnio).slice(-2)}`;
 
-  // Buscar el mismo mes en años anteriores para calcular crecimiento interanual
+  // Buscar el mismo mes calendario en años anteriores para crecimiento interanual
   const mismosAnios = tendencias.filter((t) => parseMes(t.mes).mesIdx === sigMesIdx);
-  let crecInteranual = 0.15; // default 15% si no hay datos
+  let crecInteranual = 0.15; // default 15% si no hay datos históricos del mismo mes
   if (mismosAnios.length >= 2) {
-    const sorted = mismosAnios.sort((a, b) => parseMes(a.mes).anio - parseMes(b.mes).anio);
+    const sorted = [...mismosAnios].sort((a, b) => parseMes(a.mes).anio - parseMes(b.mes).anio);
     const ultimo = sorted[sorted.length - 1].gmv;
     const penultimo = sorted[sorted.length - 2].gmv;
     crecInteranual = penultimo > 0 ? (ultimo - penultimo) / penultimo : 0.15;
   }
 
-  // Predicción: último valor del mismo mes * (1 + crecimiento) ajustado por estacionalidad
-  const baseGmv = mismosAnios.length > 0 ? mismosAnios[mismosAnios.length - 1].gmv : ult.gmv;
-  const indiceEstacional = indices[sigMesIdx] || 1;
-  const prediccion = Math.round(baseGmv * (1 + crecInteranual) * (indiceEstacional > 0 ? 1 : 1));
+  // Base: GMV del mismo mes del año más reciente (o el último dato si no hay)
+  const baseGmv = mismosAnios.length > 0
+    ? [...mismosAnios].sort((a, b) => parseMes(a.mes).anio - parseMes(b.mes).anio).pop().gmv
+    : ult.gmv;
+
+  const indiceEstacional = indices[sigMesIdx] > 0 ? indices[sigMesIdx] : 1;
+
+  // Predicción: base * (1 + crecimiento interanual)
+  // Si hay datos del mismo mes del año anterior, usamos crecimiento interanual directo
+  // Si no, usamos el GMV actual ajustado por estacionalidad relativa
+  let prediccionGmv;
+  if (mismosAnios.length >= 1) {
+    prediccionGmv = Math.round(baseGmv * (1 + crecInteranual));
+  } else {
+    // Sin datos del mismo mes: usar último GMV * ratio estacional
+    const ultIndice = indices[ultMesIdx] > 0 ? indices[ultMesIdx] : 1;
+    prediccionGmv = Math.round(ult.gmv * (indiceEstacional / ultIndice));
+  }
 
   // Servicios predicción
   const mismosServ = tendencias.filter((t) => parseMes(t.mes).mesIdx === sigMesIdx && t.servicios);
   let predServicios = 0;
   if (mismosServ.length > 0) {
-    const ultServ = mismosServ[mismosServ.length - 1].servicios;
+    const ultServ = [...mismosServ].sort((a, b) => parseMes(a.mes).anio - parseMes(b.mes).anio).pop().servicios;
     predServicios = Math.round(ultServ * (1 + crecInteranual));
   }
 
