@@ -50,7 +50,6 @@ export default function CierreComercial() {
   const [seccion, setSeccion] = useState("cumplimiento");
   const [toast, setToast] = useState("");
 
-  // Única función de actualización: modifica estado Y persiste al mismo tiempo
   const actualizar = (nuevaData) => {
     setData(nuevaData);
     escribir(nuevaData);

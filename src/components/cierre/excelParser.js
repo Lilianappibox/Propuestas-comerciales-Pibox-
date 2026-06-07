@@ -227,11 +227,11 @@ export function parseClientesPerdidos(rows, formActual) {
 export function parseLineas(rows, formActual) {
   if (!rows.length) return null;
   const facturacionLinea = rows
-    .filter((r) => str(val(r, "linea", "línea", "line", "servicio")) !== "")
+    .filter((r) => str(val(r, "lineas", "líneas", "linea", "línea", "line", "servicio", "categoria")) !== "")
     .map((r) => ({
-      linea:     str(val(r, "linea", "línea", "line", "servicio")),
-      gmv:       num(val(r, "gmv")),
-      servicios: num(val(r, "servicios", "services", "cantidad")),
+      linea:     str(val(r, "lineas", "líneas", "linea", "línea", "line", "servicio", "categoria")),
+      gmv:       num(val(r, "gmv actual", "gmvactual", "gmv")),
+      servicios: num(val(r, "servicios", "services", "cantidad", "num servicios")),
     }));
   if (!facturacionLinea.length) return null;
   return { ...JSON.parse(JSON.stringify(formActual)), facturacionLinea };
