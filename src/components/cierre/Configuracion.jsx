@@ -430,7 +430,8 @@ export default function Configuracion({ data, onSave }) {
       {tab === "tendencias" && (
         <EditableTable
           rows={form.tendencias}
-          columns={["mes", "gmv", "meta"]}
+          columns={["mes", "gmv", "meta", "servicios"]}
+          columnLabels={{ mes: "Mes", gmv: "GMV", meta: "Meta", servicios: "Servicios" }}
           onChange={(rows) => setForm((p) => ({ ...p, tendencias: rows }))}
         />
       )}

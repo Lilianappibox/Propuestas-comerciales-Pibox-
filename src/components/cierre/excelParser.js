@@ -274,9 +274,10 @@ export function parseTendencias(rows, formActual) {
   const tendencias = rows
     .filter((r) => str(val(r, "mes", "month", "periodo")) !== "")
     .map((r) => ({
-      mes:  str(val(r, "mes", "month", "periodo")),
-      gmv:  num(val(r, "gmv")),
-      meta: num(val(r, "meta", "objetivo")),
+      mes:       str(val(r, "mes", "month", "periodo")),
+      gmv:       num(val(r, "gmv")),
+      meta:      num(val(r, "meta", "objetivo")),
+      servicios: num(val(r, "servicios", "services", "cantidad servicios")),
     }));
   if (!tendencias.length) return null;
   return { ...JSON.parse(JSON.stringify(formActual)), tendencias };

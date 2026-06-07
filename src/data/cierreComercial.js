@@ -145,12 +145,36 @@ export const dataInicial = {
   ],
 
   // ─── TENDENCIAS / HISTÓRICO ───────────────────────────────────────────────
+  // Datos mensuales: mes, gmv, meta, servicios (para análisis estacional y predicción)
   tendencias: [
-    { mes: "Sep 24", gmv: 1100000000, meta: 1200000000 },
-    { mes: "Oct 24", gmv: 1180000000, meta: 1250000000 },
-    { mes: "Nov 24", gmv: 1320000000, meta: 1300000000 },
-    { mes: "Dic 24", gmv: 1683790653, meta: 2248000000 },
-    { mes: "Ene 25", gmv: 1301423276, meta: 1550000000 },
+    // 2023
+    { mes: "Ene 23", gmv: 620000000,  meta: 700000000,  servicios: 3200 },
+    { mes: "Feb 23", gmv: 650000000,  meta: 720000000,  servicios: 3350 },
+    { mes: "Mar 23", gmv: 710000000,  meta: 750000000,  servicios: 3600 },
+    { mes: "Abr 23", gmv: 690000000,  meta: 740000000,  servicios: 3500 },
+    { mes: "May 23", gmv: 740000000,  meta: 760000000,  servicios: 3700 },
+    { mes: "Jun 23", gmv: 780000000,  meta: 800000000,  servicios: 3900 },
+    { mes: "Jul 23", gmv: 760000000,  meta: 810000000,  servicios: 3800 },
+    { mes: "Ago 23", gmv: 800000000,  meta: 830000000,  servicios: 4000 },
+    { mes: "Sep 23", gmv: 850000000,  meta: 870000000,  servicios: 4200 },
+    { mes: "Oct 23", gmv: 920000000,  meta: 900000000,  servicios: 4500 },
+    { mes: "Nov 23", gmv: 1050000000, meta: 980000000,  servicios: 5100 },
+    { mes: "Dic 23", gmv: 1280000000, meta: 1350000000, servicios: 6200 },
+    // 2024
+    { mes: "Ene 24", gmv: 880000000,  meta: 950000000,  servicios: 4400 },
+    { mes: "Feb 24", gmv: 920000000,  meta: 980000000,  servicios: 4600 },
+    { mes: "Mar 24", gmv: 980000000,  meta: 1020000000, servicios: 4900 },
+    { mes: "Abr 24", gmv: 960000000,  meta: 1000000000, servicios: 4800 },
+    { mes: "May 24", gmv: 1020000000, meta: 1050000000, servicios: 5100 },
+    { mes: "Jun 24", gmv: 1080000000, meta: 1100000000, servicios: 5400 },
+    { mes: "Jul 24", gmv: 1050000000, meta: 1080000000, servicios: 5250 },
+    { mes: "Ago 24", gmv: 1120000000, meta: 1150000000, servicios: 5600 },
+    { mes: "Sep 24", gmv: 1100000000, meta: 1200000000, servicios: 5500 },
+    { mes: "Oct 24", gmv: 1180000000, meta: 1250000000, servicios: 5900 },
+    { mes: "Nov 24", gmv: 1320000000, meta: 1300000000, servicios: 6600 },
+    { mes: "Dic 24", gmv: 1683790653, meta: 2248000000, servicios: 8400 },
+    // 2025
+    { mes: "Ene 25", gmv: 1301423276, meta: 1550000000, servicios: 6500 },
   ],
 };
 
