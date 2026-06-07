@@ -95,10 +95,13 @@ export const dataInicial = {
 
   // ─── FACTURACIÓN POR LÍNEA ────────────────────────────────────────────────
   facturacionLinea: [
-    { linea: "Servicios Carga", gmv: 780000000, servicios: 1250 },
-    { linea: "Servicios Moto", gmv: 310000000, servicios: 4800 },
-    { linea: "Servicios Rent", gmv: 130000000, servicios: 320 },
-    { linea: "Servicios Storage", gmv: 81423276, servicios: 95 },
+    { linea: "Bavaria",    gmv: 320000000, servicios: 890,  paquetes: 14200, gmvAnt: 298000000, serviciosAnt: 820,  paquetesAnt: 13100 },
+    { linea: "Carga",      gmv: 460000000, servicios: 1250, paquetes: 3800,  gmvAnt: 430000000, serviciosAnt: 1180, paquetesAnt: 3500 },
+    { linea: "Horas",      gmv: 185000000, servicios: 620,  paquetes: 0,     gmvAnt: 172000000, serviciosAnt: 580,  paquetesAnt: 0 },
+    { linea: "On Demand",  gmv: 125000000, servicios: 4800, paquetes: 5200,  gmvAnt: 138000000, serviciosAnt: 5100, paquetesAnt: 5600 },
+    { linea: "Paquetería", gmv: 98000000,  servicios: 2400, paquetes: 18500, gmvAnt: 85000000,  serviciosAnt: 2100, paquetesAnt: 16200 },
+    { linea: "Rent",       gmv: 72000000,  servicios: 320,  paquetes: 0,     gmvAnt: 68000000,  serviciosAnt: 290,  paquetesAnt: 0 },
+    { linea: "Storage",    gmv: 41423276,  servicios: 95,   paquetes: 1200,  gmvAnt: 38500000,  serviciosAnt: 88,   paquetesAnt: 1050 },
   ],
 
   // ─── CLIENTES NUEVOS ──────────────────────────────────────────────────────
