@@ -18,14 +18,18 @@ const SK_PROPUESTA = "pibox_propuesta_draft";
 const SK_SESSION   = "pibox_session";
 const SK_MODULOS   = "pibox_modulos_draft";
 
-const TAB_BUILDER  = "builder";
-const TAB_PREVIEW  = "preview";
-const TAB_TARIFARIO= "tarifario";
-const TAB_PLANTILLA= "plantilla";
-const TAB_SAVED    = "saved";
-const TAB_USUARIOS = "usuarios";
-const TAB_SYNC     = "sync";
-const TAB_CIERRE   = "cierre";
+// Sub-tabs dentro de Propuestas Comerciales
+const SUB_BUILDER   = "builder";
+const SUB_PREVIEW   = "preview";
+const SUB_SAVED     = "saved";
+const SUB_TARIFARIO = "tarifario";
+const SUB_PLANTILLA = "plantilla";
+const SUB_SYNC      = "sync";
+
+// Vistas principales
+const VIEW_PROPUESTAS = "propuestas";
+const VIEW_USUARIOS   = "usuarios";
+const VIEW_CIERRE     = "cierre";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700",
@@ -33,7 +37,6 @@ const ROLE_COLORS = {
 };
 const ROLE_ICONS = { [ROLES.ADMIN]: "🛡️", [ROLES.KAM]: "💼" };
 
-// Colores de marca PIBOX
 const BRAND_GRADIENT = "linear-gradient(135deg, #5B17A8 0%, #7C22D4 50%, #C026D3 100%)";
 
 const INITIAL_MODULOS = {
@@ -75,7 +78,8 @@ export default function App() {
     try { const s = localStorage.getItem(SK_SESSION); return s ? JSON.parse(s) : null; }
     catch { return null; }
   });
-  const [tab, setTab]               = useState(TAB_BUILDER);
+  const [view, setView]             = useState(VIEW_PROPUESTAS);
+  const [subTab, setSubTab]         = useState(SUB_BUILDER);
   const [propuesta, setPropuesta]   = useState(loadPropuesta);
   const [tarifas, setTarifas]       = useState(loadTarifas);
   const [template, setTemplate]     = useState(loadTemplate);
@@ -88,7 +92,6 @@ export default function App() {
 
   const permisos = currentUser ? getPermisos(currentUser) : {};
 
-  // Auto-save drafts
   useEffect(() => { localStorage.setItem(SK_PROPUESTA, JSON.stringify(propuesta)); }, [propuesta]);
   useEffect(() => { localStorage.setItem(SK_TARIFAS, JSON.stringify(tarifas)); }, [tarifas]);
   useEffect(() => { localStorage.setItem(SK_MODULOS, JSON.stringify(modulos)); }, [modulos]);
@@ -99,12 +102,11 @@ export default function App() {
 
   const toast = (msg) => { setSavedMsg(msg); setTimeout(() => setSavedMsg(""), 3000); };
 
-  const handleLogin = (user) => { setCurrentUser(user); setTab(TAB_BUILDER); };
-  const handleLogout = () => { setCurrentUser(null); setTab(TAB_BUILDER); };
+  const handleLogin = (user) => { setCurrentUser(user); setView(VIEW_PROPUESTAS); setSubTab(SUB_BUILDER); };
+  const handleLogout = () => { setCurrentUser(null); setView(VIEW_PROPUESTAS); };
 
   const handleSaveUsers = (updated) => {
     setUsers(updated); saveUsers(updated);
-    // Refresca la sesión del usuario actual para que los nuevos permisos apliquen al instante
     if (currentUser) {
       const r = updated.find((u) => u.id === currentUser.id);
       if (r && r.activo) { setCurrentUser(r); localStorage.setItem(SK_SESSION, JSON.stringify(r)); }
@@ -121,7 +123,6 @@ export default function App() {
     toast(`✓ Plantilla actualizada (${camposDirty.length} campo${camposDirty.length > 1 ? "s" : ""})`);
   };
 
-  // ── Saved proposals ──────────────────────────────────────
   const handleSaveProposal = () => {
     const id = Date.now().toString(36);
     const now = new Date().toISOString();
@@ -149,7 +150,7 @@ export default function App() {
     setModulos(p.modulos);
     setTarifas(p.tarifasSnapshot);
     setTemplate(p.templateSnapshot);
-    setTab(TAB_BUILDER);
+    setSubTab(SUB_BUILDER);
     toast(`📂 Cargada: ${p.clienteNombre}`);
   };
 
@@ -194,43 +195,46 @@ export default function App() {
 
   const modulosActivos = MODULOS_CONFIG.filter((m) => modulos[m.id]).length;
 
-  const navTabs = [
-    { id: TAB_BUILDER,   label: "✏️ Propuesta",   visible: true },
-    { id: TAB_PREVIEW,   label: "👁️ Vista Previa", visible: true },
-    { id: TAB_SAVED,     label: "📁 Mis Propuestas",visible: true },
-    { id: TAB_TARIFARIO, label: "💰 Tarifario",    visible: permisos.verTarifario },
-    { id: TAB_PLANTILLA, label: "📝 Plantilla",    visible: permisos.editarPlantilla },
-    { id: TAB_USUARIOS,  label: "👥 Usuarios",        visible: permisos.gestionarUsuarios },
-    { id: TAB_SYNC,      label: "🔄 Sincronización",  visible: permisos.gestionarUsuarios },
-    { id: TAB_CIERRE,    label: "📊 Cierre Comercial", visible: !!permisos.verCierreComercial },
-  ].filter((t) => t.visible);
+  // ── Vistas principales del topbar ──
+  const mainViews = [
+    { id: VIEW_PROPUESTAS, label: "📋 Propuestas Comerciales", visible: true },
+    { id: VIEW_USUARIOS,   label: "👥 Usuarios",               visible: permisos.gestionarUsuarios },
+    { id: VIEW_CIERRE,     label: "📊 Cierre Comercial",       visible: !!permisos.verCierreComercial },
+  ].filter((v) => v.visible);
+
+  // ── Sub-tabs de Propuestas Comerciales ──
+  const propSubTabs = [
+    { id: SUB_BUILDER,   label: "✏️ Propuesta",     icon: "✏️" },
+    { id: SUB_PREVIEW,   label: "👁️ Vista Previa",   icon: "👁️" },
+    { id: SUB_SAVED,     label: "📁 Mis Propuestas", icon: "📁" },
+    { id: SUB_TARIFARIO, label: "💰 Tarifario",      icon: "💰", visible: permisos.verTarifario },
+    { id: SUB_PLANTILLA, label: "📝 Plantilla",      icon: "📝", visible: permisos.editarPlantilla },
+    { id: SUB_SYNC,      label: "🔄 Sincronización", icon: "🔄", visible: permisos.gestionarUsuarios },
+  ].filter((t) => t.visible !== false);
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Topbar */}
+      {/* ── Topbar principal ── */}
       <header className="text-white shadow-lg print:hidden" style={{ background: BRAND_GRADIENT }}>
         <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-4">
-          {/* Logo */}
           <div className="flex items-center gap-3 shrink-0">
             <PiboxLogo size="sm" white />
             <span className="text-white/60 text-xs hidden sm:block tracking-wide">Tablero Comercial</span>
           </div>
 
-          {/* Nav */}
           <nav className="flex items-center gap-1 flex-1 justify-center flex-wrap">
-            {navTabs.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  tab === t.id
+            {mainViews.map((v) => (
+              <button key={v.id} onClick={() => setView(v.id)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  view === v.id
                     ? "bg-white text-purple-700 shadow"
                     : "text-white/80 hover:bg-white/15"
                 }`}>
-                {t.label}
+                {v.label}
               </button>
             ))}
           </nav>
 
-          {/* Usuario */}
           <div className="flex items-center gap-2 shrink-0">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold leading-tight">{currentUser.nombre}</p>
@@ -256,261 +260,257 @@ export default function App() {
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 py-6 print:p-0 print:max-w-none">
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: PROPUESTAS COMERCIALES
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_PROPUESTAS && (
+        <div className="min-h-[calc(100vh-56px)]">
+          {/* Sub-navegación interna */}
+          <div className="bg-white border-b border-gray-200 shadow-sm print:hidden">
+            <div className="max-w-7xl mx-auto px-4 py-2 flex gap-1 overflow-x-auto">
+              {propSubTabs.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSubTab(t.id)}
+                  className={`flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    subTab === t.id
+                      ? "bg-purple-600 text-white shadow"
+                      : "text-gray-600 hover:bg-purple-50"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* ── BUILDER ── */}
-        {tab === TAB_BUILDER && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 space-y-4">
+          <main className="max-w-7xl mx-auto px-4 py-6 print:p-0 print:max-w-none">
 
-              {/* Datos del cliente */}
-              <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
-                <h2 className="font-bold text-gray-800 mb-4 text-base flex items-center gap-2">
-                  <span className="bg-blue-100 text-blue-700 rounded-lg p-1">🏢</span> Datos del Cliente
-                </h2>
-                <div className="space-y-3">
-                  {[
-                    { label: "Empresa / Cliente *", field: "cliente", placeholder: "Ej: OUR Family SAS" },
-                    { label: "Contacto (persona)",  field: "contacto", placeholder: "Ej: María González" },
-                    { label: "Correo electrónico",  field: "email",    placeholder: "contacto@empresa.com", type: "email" },
-                    { label: "Ciudad",              field: "ciudad",   placeholder: "Ej: Bogotá, Medellín..." },
-                  ].map(({ label, field, placeholder, type = "text" }) => (
-                    <div key={field}>
-                      <label className="text-xs font-semibold text-gray-600 mb-1 block">{label}</label>
-                      <input type={type} placeholder={placeholder} value={propuesta[field]}
-                        onChange={(e) => setPropuesta((p) => ({ ...p, [field]: e.target.value }))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            {/* ── BUILDER ── */}
+            {subTab === SUB_BUILDER && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-4">
+
+                  {/* Datos del cliente */}
+                  <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
+                    <h2 className="font-bold text-gray-800 mb-4 text-base flex items-center gap-2">
+                      <span className="bg-blue-100 text-blue-700 rounded-lg p-1">🏢</span> Datos del Cliente
+                    </h2>
+                    <div className="space-y-3">
+                      {[
+                        { label: "Empresa / Cliente *", field: "cliente", placeholder: "Ej: OUR Family SAS" },
+                        { label: "Contacto (persona)",  field: "contacto", placeholder: "Ej: María González" },
+                        { label: "Correo electrónico",  field: "email",    placeholder: "contacto@empresa.com", type: "email" },
+                        { label: "Ciudad",              field: "ciudad",   placeholder: "Ej: Bogotá, Medellín..." },
+                      ].map(({ label, field, placeholder, type = "text" }) => (
+                        <div key={field}>
+                          <label className="text-xs font-semibold text-gray-600 mb-1 block">{label}</label>
+                          <input type={type} placeholder={placeholder} value={propuesta[field]}
+                            onChange={(e) => setPropuesta((p) => ({ ...p, [field]: e.target.value }))}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                        </div>
+                      ))}
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 mb-1 block">Fecha</label>
+                        <input type="date" value={propuesta.fecha}
+                          onChange={(e) => setPropuesta((p) => ({ ...p, fecha: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 mb-2 block">🏛️ Razón Social</label>
+                        <div className="space-y-2">
+                          {["Digital Platforms Colombia S.A.S.", "Digital Network Colombia S.A.S."].map((rs) => (
+                            <label key={rs}
+                              className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                                propuesta.razonSocial === rs ? "border-purple-400 bg-purple-50" : "border-gray-200 hover:border-gray-300 bg-gray-50"
+                              }`}>
+                              <input type="radio" name="razonSocial" value={rs} checked={propuesta.razonSocial === rs}
+                                onChange={() => setPropuesta((p) => ({ ...p, razonSocial: rs }))} className="accent-purple-600" />
+                              <span className={`text-sm font-medium ${propuesta.razonSocial === rs ? "text-purple-700" : "text-gray-600"}`}>{rs}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Fecha</label>
-                    <input type="date" value={propuesta.fecha}
-                      onChange={(e) => setPropuesta((p) => ({ ...p, fecha: e.target.value }))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   </div>
 
-                  {/* Razón Social */}
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 mb-2 block">
-                      🏛️ Razón Social
-                    </label>
+                  {/* Tu perfil */}
+                  <div className="rounded-xl p-4 text-white" style={{ background: BRAND_GRADIENT }}>
+                    <p className="text-xs font-semibold text-white/80 mb-2 flex items-center gap-1">💼 Tu firma en la propuesta</p>
+                    <p className="text-sm font-bold text-white">{currentUser.nombre}</p>
+                    {currentUser.cargo && <p className="text-xs text-white/80">{currentUser.cargo}</p>}
+                    <p className="text-xs text-white/70">{currentUser.email}</p>
+                    {currentUser.celular && <p className="text-xs text-white/70">📱 {currentUser.celular}</p>}
+                  </div>
+
+                  {/* Módulos */}
+                  <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
+                    <h2 className="font-bold text-gray-800 mb-1 text-base flex items-center gap-2">
+                      <span className="bg-green-100 text-green-700 rounded-lg p-1">🧩</span> Módulos
+                    </h2>
+                    <p className="text-xs text-gray-500 mb-4">{modulosActivos} módulo(s) seleccionado(s)</p>
                     <div className="space-y-2">
-                      {[
-                        "Digital Platforms Colombia S.A.S.",
-                        "Digital Network Colombia S.A.S.",
-                      ].map((rs) => (
-                        <label
-                          key={rs}
-                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                            propuesta.razonSocial === rs
-                              ? "border-purple-400 bg-purple-50"
-                              : "border-gray-200 hover:border-gray-300 bg-gray-50"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="razonSocial"
-                            value={rs}
-                            checked={propuesta.razonSocial === rs}
-                            onChange={() => setPropuesta((p) => ({ ...p, razonSocial: rs }))}
-                            className="accent-purple-600"
-                          />
-                          <span className={`text-sm font-medium ${
-                            propuesta.razonSocial === rs ? "text-purple-700" : "text-gray-600"
-                          }`}>
-                            {rs}
-                          </span>
-                        </label>
+                      {MODULOS_CONFIG.map((m) => (
+                        <div key={m.id}>
+                          <label className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${
+                            modulos[m.id] ? "bg-blue-50 border-blue-300" : "bg-gray-50 border-gray-200 hover:border-gray-300"}`}>
+                            <input type="checkbox" checked={modulos[m.id] || false}
+                              onChange={() => setModulos((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                              className="mt-0.5 accent-blue-600" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">{m.label}</p>
+                              <p className="text-xs text-gray-500">{m.desc}</p>
+                            </div>
+                          </label>
+                          {m.id === "cobertura" && modulos.cobertura && (
+                            <label className="flex items-center gap-2 ml-8 mt-1 mb-1 cursor-pointer">
+                              <input type="checkbox" checked={modulos.coberturaTodasCiudades || false}
+                                onChange={() => setModulos((prev) => ({ ...prev, coberturaTodasCiudades: !prev.coberturaTodasCiudades }))}
+                                className="accent-purple-600" />
+                              <span className="text-xs text-purple-700 font-medium">Incluir todas las ciudades de cobertura</span>
+                            </label>
+                          )}
+                        </div>
                       ))}
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Tu perfil como KAM */}
-              <div className="rounded-xl p-4 text-white" style={{ background: BRAND_GRADIENT }}>
-                <p className="text-xs font-semibold text-white/80 mb-2 flex items-center gap-1">
-                  💼 Tu firma en la propuesta
-                </p>
-                <p className="text-sm font-bold text-white">{currentUser.nombre}</p>
-                {currentUser.cargo && <p className="text-xs text-white/80">{currentUser.cargo}</p>}
-                <p className="text-xs text-white/70">{currentUser.email}</p>
-                {currentUser.celular && <p className="text-xs text-white/70">📱 {currentUser.celular}</p>}
-                {permisos.gestionarUsuarios && (
-                  <p className="text-xs text-white/60 mt-2 cursor-pointer hover:text-white underline"
-                    onClick={() => setTab(TAB_USUARIOS)}>
-                    Editar mis datos →
-                  </p>
-                )}
-              </div>
+                  {/* Notas */}
+                  <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
+                    <h2 className="font-bold text-gray-800 mb-3 text-base flex items-center gap-2">
+                      <span className="bg-yellow-100 text-yellow-700 rounded-lg p-1">📝</span> Notas de Negociación
+                    </h2>
+                    <textarea rows={5} value={propuesta.notas}
+                      onChange={(e) => setPropuesta((p) => ({ ...p, notas: e.target.value }))}
+                      placeholder="Condiciones especiales, descuentos, observaciones del cliente..."
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                  </div>
 
-              {/* Módulos */}
-              <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
-                <h2 className="font-bold text-gray-800 mb-1 text-base flex items-center gap-2">
-                  <span className="bg-green-100 text-green-700 rounded-lg p-1">🧩</span> Módulos
-                </h2>
-                <p className="text-xs text-gray-500 mb-4">{modulosActivos} módulo(s) seleccionado(s)</p>
-                <div className="space-y-2">
-                  {MODULOS_CONFIG.map((m) => (
-                    <div key={m.id}>
-                      <label
-                        className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${
-                          modulos[m.id] ? "bg-blue-50 border-blue-300" : "bg-gray-50 border-gray-200 hover:border-gray-300"}`}>
-                        <input type="checkbox" checked={modulos[m.id] || false}
-                          onChange={() => setModulos((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
-                          className="mt-0.5 accent-blue-600" />
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">{m.label}</p>
-                          <p className="text-xs text-gray-500">{m.desc}</p>
-                        </div>
-                      </label>
-                      {m.id === "cobertura" && modulos.cobertura && (
-                        <label className="flex items-center gap-2 ml-8 mt-1 mb-1 cursor-pointer">
-                          <input type="checkbox" checked={modulos.coberturaTodasCiudades || false}
-                            onChange={() => setModulos((prev) => ({ ...prev, coberturaTodasCiudades: !prev.coberturaTodasCiudades }))}
-                            className="accent-purple-600" />
-                          <span className="text-xs text-purple-700 font-medium">Incluir todas las ciudades de cobertura</span>
-                        </label>
-                      )}
+                  {/* Exportar */}
+                  <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
+                    <h2 className="font-bold text-gray-800 mb-3 text-base flex items-center gap-2">
+                      <span className="bg-purple-100 text-purple-700 rounded-lg p-1">⬇️</span> Exportar
+                    </h2>
+                    <div className="space-y-2">
+                      <button onClick={() => setSubTab(SUB_PREVIEW)}
+                        className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium">
+                        👁️ Ver propuesta completa
+                      </button>
+                      <button onClick={handleExportPdf} disabled={exportingPdf}
+                        className="w-full text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
+                        style={{ background: BRAND_GRADIENT }}>
+                        {exportingPdf ? "Preparando PDF..." : "⬇️ Descargar PDF"}
+                      </button>
+                      <button onClick={handleExportWord} disabled={exportingWord}
+                        className="w-full bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 transition-colors border border-purple-200">
+                        {exportingWord ? "Generando Word..." : "⬇️ Descargar Word (.docx)"}
+                      </button>
+                      <button onClick={handleSaveProposal}
+                        className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors">
+                        💾 Guardar propuesta
+                      </button>
                     </div>
-                  ))}
+                    <p className="text-xs text-gray-400 mt-3 text-center">Los datos se guardan automáticamente como borrador</p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Notas */}
-              <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
-                <h2 className="font-bold text-gray-800 mb-3 text-base flex items-center gap-2">
-                  <span className="bg-yellow-100 text-yellow-700 rounded-lg p-1">📝</span> Notas de Negociación
-                </h2>
-                <textarea rows={5} value={propuesta.notas}
-                  onChange={(e) => setPropuesta((p) => ({ ...p, notas: e.target.value }))}
-                  placeholder="Condiciones especiales, descuentos, observaciones del cliente..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
-              </div>
-
-              {/* Acciones */}
-              <div className="bg-white rounded-xl shadow border border-gray-200 p-5">
-                <h2 className="font-bold text-gray-800 mb-3 text-base flex items-center gap-2">
-                  <span className="bg-purple-100 text-purple-700 rounded-lg p-1">⬇️</span> Exportar
-                </h2>
-                <div className="space-y-2">
-                  <button onClick={() => setTab(TAB_PREVIEW)}
-                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium">
-                    👁️ Ver propuesta completa
-                  </button>
-                  <button onClick={handleExportPdf} disabled={exportingPdf}
-                    className="w-full text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
-                    style={{ background: BRAND_GRADIENT }}>
-                    {exportingPdf ? "Preparando PDF..." : "⬇️ Descargar PDF"}
-                  </button>
-                  <button onClick={handleExportWord} disabled={exportingWord}
-                    className="w-full bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 transition-colors border border-purple-200">
-                    {exportingWord ? "Generando Word..." : "⬇️ Descargar Word (.docx)"}
-                  </button>
-                  <button onClick={handleSaveProposal}
-                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors">
-                    💾 Guardar propuesta
-                  </button>
-                </div>
-                <p className="text-xs text-gray-400 mt-3 text-center">Los datos se guardan automáticamente como borrador</p>
-              </div>
-            </div>
-
-            {/* Preview panel */}
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
-                <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-600">Vista Previa</span>
-                  <button onClick={() => setTab(TAB_PREVIEW)} className="text-xs text-blue-600 hover:underline">Ver completa →</button>
-                </div>
-                <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
-                  <div style={{ transform: "scale(0.75)", transformOrigin: "top left", width: "133.3%" }}>
-                    <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} coberturaTodasCiudades={modulos.coberturaTodasCiudades} />
+                {/* Preview panel */}
+                <div className="lg:col-span-2">
+                  <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-600">Vista Previa</span>
+                      <button onClick={() => setSubTab(SUB_PREVIEW)} className="text-xs text-blue-600 hover:underline">Ver completa →</button>
+                    </div>
+                    <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
+                      <div style={{ transform: "scale(0.75)", transformOrigin: "top left", width: "133.3%" }}>
+                        <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} coberturaTodasCiudades={modulos.coberturaTodasCiudades} />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* ── PREVIEW ── */}
-        {tab === TAB_PREVIEW && (
-          <div>
-            <div className="flex items-center justify-between mb-4 print:hidden">
-              <button onClick={() => setTab(TAB_BUILDER)} className="text-sm text-blue-600 hover:underline">← Volver al editor</button>
-              <div className="flex gap-2">
-                <button onClick={handleExportPdf} className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-medium">⬇️ PDF</button>
-                <button onClick={handleExportWord} disabled={exportingWord} className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
-                  {exportingWord ? "..." : "⬇️ Word"}
-                </button>
-                <button onClick={handleSaveProposal} className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2 text-sm font-medium">💾 Guardar</button>
-              </div>
-            </div>
-            <div className="bg-white shadow-xl rounded-xl overflow-hidden">
-              <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} coberturaTodasCiudades={modulos.coberturaTodasCiudades} />
-            </div>
-          </div>
-        )}
-
-        {/* ── MIS PROPUESTAS ── */}
-        {tab === TAB_SAVED && (
-          <PropuestasSaved
-            saved={saved}
-            currentUser={currentUser}
-            onLoad={handleLoadProposal}
-            onDuplicate={handleDuplicateProposal}
-            onDelete={handleDeleteProposal}
-            onEstado={handleEstadoProposal}
-          />
-        )}
-
-        {/* ── TARIFARIO ── */}
-        {tab === TAB_TARIFARIO && permisos.verTarifario && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
+            {/* ── PREVIEW ── */}
+            {subTab === SUB_PREVIEW && (
               <div>
-                <h2 className="text-xl font-bold text-gray-800">Tarifario PIBOX 2026</h2>
-                <p className="text-sm text-gray-500">Se guardan automáticamente. Agrega o elimina ciudades libremente.</p>
-              </div>
-              {permisos.editarTarifas && (
-                <button onClick={() => { if (confirm("¿Restaurar tarifas por defecto?")) { setTarifas(JSON.parse(JSON.stringify(TARIFAS_DEFAULT))); toast("Tarifas restauradas"); } }}
-                  className="text-sm text-red-500 border border-red-300 rounded-lg px-3 py-1.5 hover:bg-red-50">
-                  🔄 Restaurar
-                </button>
-              )}
-            </div>
-            {permisos.editarTarifas ? (
-              <TarifasEditor tarifas={tarifas} onChange={(t) => { setTarifas(t); toast("✓ Tarifas guardadas"); }} />
-            ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
-                <p className="text-yellow-700 font-medium">🔒 Solo el Administrativo puede editar las tarifas.</p>
+                <div className="flex items-center justify-between mb-4 print:hidden">
+                  <button onClick={() => setSubTab(SUB_BUILDER)} className="text-sm text-blue-600 hover:underline">← Volver al editor</button>
+                  <div className="flex gap-2">
+                    <button onClick={handleExportPdf} className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-medium">⬇️ PDF</button>
+                    <button onClick={handleExportWord} disabled={exportingWord} className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
+                      {exportingWord ? "..." : "⬇️ Word"}
+                    </button>
+                    <button onClick={handleSaveProposal} className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2 text-sm font-medium">💾 Guardar</button>
+                  </div>
+                </div>
+                <div className="bg-white shadow-xl rounded-xl overflow-hidden">
+                  <PropuestaPreview propuesta={propuesta} tarifas={tarifas} modulos={modulos} texts={template} currentUser={currentUser} coberturaTodasCiudades={modulos.coberturaTodasCiudades} />
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* ── PLANTILLA ── */}
-        {tab === TAB_PLANTILLA && permisos.editarPlantilla && (
-          <TemplateEditor texts={template} history={history} onSave={handleSaveTemplate} currentUser={currentUser} />
-        )}
+            {/* ── MIS PROPUESTAS ── */}
+            {subTab === SUB_SAVED && (
+              <PropuestasSaved saved={saved} currentUser={currentUser}
+                onLoad={handleLoadProposal} onDuplicate={handleDuplicateProposal}
+                onDelete={handleDeleteProposal} onEstado={handleEstadoProposal} />
+            )}
 
-        {/* ── USUARIOS ── */}
-        {tab === TAB_USUARIOS && permisos.gestionarUsuarios && (
+            {/* ── TARIFARIO ── */}
+            {subTab === SUB_TARIFARIO && permisos.verTarifario && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-800">Tarifario PIBOX 2026</h2>
+                    <p className="text-sm text-gray-500">Se guardan automáticamente. Agrega o elimina ciudades libremente.</p>
+                  </div>
+                  {permisos.editarTarifas && (
+                    <button onClick={() => { if (confirm("¿Restaurar tarifas por defecto?")) { setTarifas(JSON.parse(JSON.stringify(TARIFAS_DEFAULT))); toast("Tarifas restauradas"); } }}
+                      className="text-sm text-red-500 border border-red-300 rounded-lg px-3 py-1.5 hover:bg-red-50">
+                      🔄 Restaurar
+                    </button>
+                  )}
+                </div>
+                {permisos.editarTarifas ? (
+                  <TarifasEditor tarifas={tarifas} onChange={(t) => { setTarifas(t); toast("✓ Tarifas guardadas"); }} />
+                ) : (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+                    <p className="text-yellow-700 font-medium">🔒 Solo el Administrativo puede editar las tarifas.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── PLANTILLA ── */}
+            {subTab === SUB_PLANTILLA && permisos.editarPlantilla && (
+              <TemplateEditor texts={template} history={history} onSave={handleSaveTemplate} currentUser={currentUser} />
+            )}
+
+            {/* ── SINCRONIZACIÓN ── */}
+            {subTab === SUB_SYNC && permisos.gestionarUsuarios && (
+              <SyncData />
+            )}
+          </main>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: USUARIOS
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_USUARIOS && permisos.gestionarUsuarios && (
+        <main className="max-w-7xl mx-auto px-4 py-6">
           <UserManager users={users} onSave={handleSaveUsers} />
-        )}
+        </main>
+      )}
 
-        {/* ── SINCRONIZACIÓN ── */}
-        {tab === TAB_SYNC && permisos.gestionarUsuarios && (
-          <SyncData />
-        )}
-
-        {/* ── CIERRE COMERCIAL ── */}
-        {tab === TAB_CIERRE && (
-          <div className="-mx-4 -my-6">
-            <CierreComercial />
-          </div>
-        )}
-      </main>
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: CIERRE COMERCIAL
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_CIERRE && (
+        <CierreComercial />
+      )}
     </div>
   );
 }
