@@ -73,7 +73,7 @@ export const DEFAULT_USERS = [
     cargo: "Key Account Manager",
     celular: "3154051883",
     telefono: "",
-    permisosCustom: { verTarifario: true, editarTarifas: true },
+    permisosCustom: { verTarifario: true, editarTarifas: true, verCierreComercial: true },
   },
   {
     id: "3",
@@ -85,7 +85,7 @@ export const DEFAULT_USERS = [
     cargo: "Key Account Manager",
     celular: "3232278047",
     telefono: "",
-    permisosCustom: { verTarifario: true, editarTarifas: true },
+    permisosCustom: { verTarifario: true, editarTarifas: true, verCierreComercial: true },
   },
 ];
 
@@ -103,12 +103,14 @@ export function loadUsers() {
     const merged = [...base];
     const baseEmails = new Set(base.map((u) => u.email.toLowerCase()));
     // Sobreescribir datos del código con ediciones del localStorage
+    // permisosCustom se fusiona: código + localStorage (código tiene prioridad en nuevos permisos)
     for (const lu of local) {
       const idx = merged.findIndex((m) => m.email.toLowerCase() === lu.email.toLowerCase());
       if (idx >= 0) {
-        merged[idx] = { ...merged[idx], ...lu };
+        const basePermisos = merged[idx].permisosCustom || {};
+        const localPermisos = lu.permisosCustom || {};
+        merged[idx] = { ...merged[idx], ...lu, permisosCustom: { ...localPermisos, ...basePermisos } };
       } else {
-        // Usuario nuevo creado desde la app — agregarlo
         merged.push(lu);
       }
     }
