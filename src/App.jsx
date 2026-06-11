@@ -509,7 +509,7 @@ export default function App() {
            VISTA: CIERRE COMERCIAL
          ══════════════════════════════════════════════════════════════════════ */}
       {view === VIEW_CIERRE && (
-        <CierreComercial />
+        <CierreComercial currentUser={currentUser} />
       )}
     </div>
   );

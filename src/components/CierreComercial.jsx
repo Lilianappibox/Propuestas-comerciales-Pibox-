@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { dataInicial } from "../data/cierreComercial";
 import { MonedaProvider } from "./cierre/MonedaContext";
 import BarraTRM from "./cierre/BarraTRM";
@@ -15,23 +15,42 @@ import Configuracion from "./cierre/Configuracion";
 import ExportPDF from "./cierre/ExportPDF";
 import PiboxLogo from "./PiboxLogo";
 
-// ── localStorage — clave única ─────────────────────────────────────────────
+// ── localStorage — claves ─────────────────────────────────────────────────
 const SK = "pibox_cierre_v2";
+// Clave compartida: cuando el Admin guarda, también escribe aquí
+// Los KAMs leen de esta clave para ver los datos del Admin
+const SK_SHARED = "pibox_cierre_shared";
 
-function leer() {
+function leer(isAdmin) {
   try {
-    const s = localStorage.getItem(SK);
-    if (s) return JSON.parse(s);
+    // Admin lee sus propios datos editables
+    if (isAdmin) {
+      const s = localStorage.getItem(SK);
+      if (s) return JSON.parse(s);
+    } else {
+      // KAM lee los datos compartidos por el Admin, si existen
+      const shared = localStorage.getItem(SK_SHARED);
+      if (shared) return JSON.parse(shared);
+      // Fallback: datos locales o iniciales
+      const s = localStorage.getItem(SK);
+      if (s) return JSON.parse(s);
+    }
   } catch {}
   return JSON.parse(JSON.stringify(dataInicial));
 }
 
-function escribir(data) {
-  try { localStorage.setItem(SK, JSON.stringify(data)); } catch {}
+function escribir(data, isAdmin) {
+  try {
+    localStorage.setItem(SK, JSON.stringify(data));
+    // El Admin también escribe en la clave compartida
+    if (isAdmin) {
+      localStorage.setItem(SK_SHARED, JSON.stringify(data));
+    }
+  } catch {}
 }
 
 // ── Secciones ──────────────────────────────────────────────────────────────
-const SECCIONES = [
+const SECCIONES_ALL = [
   { id: "cumplimiento", label: "Cumplimiento", icon: "🎯" },
   { id: "kams",         label: "KAMs",         icon: "👥" },
   { id: "top10",        label: "Top 10",        icon: "🏆" },
@@ -41,19 +60,34 @@ const SECCIONES = [
   { id: "mapa",         label: "Mapa",          icon: "🗺️" },
   { id: "tendencias",   label: "Tendencias",    icon: "📈" },
   { id: "insights",     label: "Insights",      icon: "💡" },
-  { id: "config",       label: "Config",        icon: "⚙️" },
+  { id: "config",       label: "Config",        icon: "⚙️", adminOnly: true },
 ];
 
 // ── App ─────────────────────────────────────────────────────────────────────
-export default function CierreComercial() {
-  const [data, setData] = useState(leer);
+export default function CierreComercial({ currentUser }) {
+  const isAdmin = currentUser?.rol === "Administrativo";
+  const [data, setData] = useState(() => leer(isAdmin));
   const [seccion, setSeccion] = useState("cumplimiento");
   const [toast, setToast] = useState("");
   const [printing, setPrinting] = useState(false);
 
+  // KAMs: recargar datos compartidos cuando la pestaña obtiene foco
+  // (por si el Admin actualizó en otro momento)
+  useEffect(() => {
+    if (isAdmin) return;
+    const handleFocus = () => {
+      const fresh = leer(false);
+      setData(fresh);
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [isAdmin]);
+
+  const secciones = SECCIONES_ALL.filter((s) => !s.adminOnly || isAdmin);
+
   const actualizar = (nuevaData) => {
     setData(nuevaData);
-    escribir(nuevaData);
+    escribir(nuevaData, isAdmin);
   };
 
   const mostrarToast = (msg) => {
@@ -63,7 +97,7 @@ export default function CierreComercial() {
 
   const handleSave = (nuevaData) => {
     actualizar(nuevaData);
-    mostrarToast("✅ Cambios guardados");
+    mostrarToast("✅ Cambios guardados y compartidos con el equipo");
   };
 
   const handlePrint = useCallback(() => {
@@ -101,13 +135,16 @@ export default function CierreComercial() {
             </div>
             <BarraTRM />
             <div className="flex gap-2 items-center">
+              {!isAdmin && (
+                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">Solo lectura</span>
+              )}
               <ExportPDF mes={data.mes} onPrint={handlePrint} />
             </div>
           </div>
 
           {/* Nav */}
           <div className="max-w-7xl mx-auto px-4 pb-2 flex gap-1 overflow-x-auto">
-            {SECCIONES.map((s) => (
+            {secciones.map((s) => (
               <button
                 key={s.id}
                 onClick={() => setSeccion(s.id)}
@@ -123,7 +160,7 @@ export default function CierreComercial() {
           </div>
         </div>
 
-        {/* Print header — solo visible al imprimir */}
+        {/* Print header */}
         <div className="hidden print:block px-8 pt-6 pb-4 border-b-2 border-purple-200 mb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -140,7 +177,6 @@ export default function CierreComercial() {
         {/* Contenido */}
         <div id="tablero-contenido" className="max-w-7xl mx-auto px-4 py-6 space-y-6 print:px-6 print:max-w-none">
           {printing ? (
-            /* Modo impresión: todas las secciones */
             <>
               <CumplimientoEquipo data={data} />
               <CumplimientoKAM    data={data} />
@@ -153,7 +189,6 @@ export default function CierreComercial() {
               <Insights           data={data} />
             </>
           ) : (
-            /* Modo normal: sección activa */
             <>
               {seccion === "cumplimiento" && <CumplimientoEquipo data={data} />}
               {seccion === "kams"         && <CumplimientoKAM    data={data} />}
@@ -164,7 +199,7 @@ export default function CierreComercial() {
               {seccion === "mapa"         && <MapaCiudades       data={data} />}
               {seccion === "tendencias"   && <Tendencias         data={data} />}
               {seccion === "insights"     && <Insights           data={data} />}
-              {seccion === "config"       && (
+              {seccion === "config" && isAdmin && (
                 <Configuracion data={data} onSave={handleSave} />
               )}
             </>
