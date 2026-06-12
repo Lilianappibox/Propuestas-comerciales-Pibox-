@@ -320,36 +320,62 @@ export default function MetricasRiesgo() {
 
       {/* Filtros + tabla de riesgo */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-        <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-700 text-sm">🗂️ Ranking de riesgo</h3>
-          <div className="flex flex-wrap gap-2 items-center">
-            {/* Semáforo */}
-            {["Todos","🔴 Rojo","🟡 Amarillo","🟢 Verde"].map(s=>(
-              <button key={s} onClick={()=>setFiltroSem(s)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
-                  filtroSem===s?"bg-purple-600 text-white border-purple-600"
-                              :"border-gray-200 text-gray-600 hover:bg-purple-50"}`}>
-                {s}
-              </button>
-            ))}
-            {/* Ejecutivo */}
+        {/* Título + contador */}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-gray-700 text-sm">🗂️ Ranking de riesgo
+            <span className="ml-2 text-xs font-normal text-gray-400">({empresasFiltradas.length} empresas)</span>
+          </h3>
+          {(filtroSem!=="Todos"||filtroKam!=="Todos"||filtroFactor!=="Todos"||busca) && (
+            <button onClick={()=>{setFiltroSem("Todos");setFiltroKam("Todos");setFiltroFactor("Todos");setBusca("");setEmpresaSel(null);}}
+              className="text-xs text-purple-600 hover:underline">✕ Limpiar filtros</button>
+          )}
+        </div>
+
+        {/* Barra de filtros */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+          {/* Semáforo */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">🚦 Semáforo</p>
+            <div className="flex flex-wrap gap-1">
+              {["Todos","🔴 Rojo","🟡 Amarillo","🟢 Verde"].map(s=>(
+                <button key={s} onClick={()=>setFiltroSem(s)}
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border transition ${
+                    filtroSem===s?"bg-purple-600 text-white border-purple-600"
+                                :"border-gray-200 text-gray-600 hover:bg-purple-50"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Ejecutivo */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">👤 Ejecutivo</p>
             <select value={filtroKam} onChange={e=>{setFiltroKam(e.target.value);setEmpresaSel(null);}}
-              className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
               {kamsDisponibles.map(k=>(
-                <option key={k} value={k}>{k==="Todos" ? "👤 Todos los ejecutivos" : `👤 ${k}`}</option>
+                <option key={k} value={k}>{k==="Todos" ? "Todos los ejecutivos" : k}</option>
               ))}
             </select>
-            {/* Factor de riesgo */}
+          </div>
+
+          {/* Factor de riesgo */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">⚠️ Factor de riesgo</p>
             <select value={filtroFactor} onChange={e=>{setFiltroFactor(e.target.value);setEmpresaSel(null);}}
-              className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
               {FACTORES_CATALOGO.map(f=>(
                 <option key={f.key} value={f.key}>{f.label}</option>
               ))}
             </select>
-            {/* Buscar */}
+          </div>
+
+          {/* Buscar empresa */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">🔍 Buscar empresa</p>
             <input value={busca} onChange={e=>setBusca(e.target.value)}
-              placeholder="🔍 Buscar empresa..."
-              className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300"/>
+              placeholder="Nombre de empresa..."
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300"/>
           </div>
         </div>
 
