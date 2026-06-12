@@ -107,11 +107,25 @@ export default function InformeEmpresa() {
         <>
           {/* Aviso re-subida si faltan datos de usuario/sede */}
           {(!empData.topUsuarios?.length && !empData.topSedes?.length) && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-amber-800 text-sm flex items-start gap-3">
-              <span className="text-xl">⚠️</span>
-              <div>
-                <b>Datos de usuario y sede no disponibles.</b>
-                <p className="mt-1">Ve a <b>⚙️ Configuración</b>, elimina <b>{dataMes?.label}</b> y vuelve a subir el archivo para ver las tablas por usuario y sede.</p>
+            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-6">
+              <div className="flex items-start gap-4">
+                <span className="text-3xl">⚠️</span>
+                <div className="flex-1">
+                  <p className="font-bold text-amber-800 text-base mb-1">
+                    Debes re-subir el archivo para ver las tablas por usuario y sede
+                  </p>
+                  <p className="text-amber-700 text-sm mb-4">
+                    El archivo de <b>{dataMes?.label}</b> fue procesado con una versión anterior
+                    que no guardaba los campos <code className="bg-amber-100 px-1 rounded">passenger_name</code> y <code className="bg-amber-100 px-1 rounded">service_cost</code>.
+                  </p>
+                  <div className="bg-white border border-amber-200 rounded-xl p-4 text-sm text-amber-800 space-y-1">
+                    <p className="font-semibold mb-2">📋 Pasos para activarlo:</p>
+                    <p>1. Ve a la pestaña <b>⚙️ Configuración</b></p>
+                    <p>2. Haz clic en 🗑️ junto a <b>{dataMes?.label}</b></p>
+                    <p>3. Vuelve a subir el mismo archivo Excel</p>
+                    <p>4. Regresa a <b>📄 Informe por Empresa</b> y selecciona la empresa</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
