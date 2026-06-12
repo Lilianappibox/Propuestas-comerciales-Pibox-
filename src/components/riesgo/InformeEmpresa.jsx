@@ -13,23 +13,51 @@ const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 10
 const COLORS = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7","#6366F1","#EC4899","#8B5CF6"];
 
 // ── Tabla siempre visible ────────────────────────────────────────────────────
-function TablaUsuariosSedes({ empData, mesLabel }) {
-  const usuarios = empData?.topUsuarios || [];
-  const sedes    = empData?.topSedes    || [];
-  const sinDatos = !usuarios.length && !sedes.length;
+function TablaUsuariosSedes({ empData, prevData, mesLabel, prevLabel }) {
+  const usuarios     = empData?.topUsuarios || [];
+  const sedes        = empData?.topSedes    || [];
+  const prevUsuarios = prevData?.topUsuarios || [];
+  const prevSedes    = prevData?.topSedes    || [];
+  const sinDatos     = !usuarios.length && !sedes.length;
 
-  const thStyle = { background: PIBOX_PURPLE };
-  const rowEven = "bg-white";
-  const rowOdd  = "bg-purple-50/40";
-  const tfootRow= "bg-purple-100 font-bold border-t-2 border-purple-200";
+  const thStyle  = { background: PIBOX_PURPLE };
+  const rowEven  = "bg-white";
+  const rowOdd   = "bg-purple-50/40";
+  const tfootRow = "bg-purple-100 font-bold border-t-2 border-purple-200";
 
-  function Tabla({ titulo, icono, filas, keyField, borderColor }) {
+  // Celda de variación de costo vs mes anterior
+  function DeltaCosto({ curr, prevList, matchKey }) {
+    const prevItem = prevList.find(p => (p.usuario ?? p.sede) === matchKey);
+    if (!prevItem || !prevLabel) return <td className="px-3 py-2 text-right text-gray-300">—</td>;
+    const prevCost = prevItem.service_cost || 0;
+    if (prevCost === 0) return <td className="px-3 py-2 text-right text-gray-400 text-xs">Sin prev.</td>;
+    const delta = (curr - prevCost) / prevCost;
+    const isUp  = delta >= 0;
+    return (
+      <td className="px-3 py-2 text-right font-bold whitespace-nowrap"
+          style={{ color: isUp ? SEM_VERDE : SEM_ROJO }}>
+        {isUp ? "▲" : "▼"} {Math.abs(delta * 100).toFixed(1)}%
+      </td>
+    );
+  }
+
+  function Tabla({ titulo, icono, filas, prevFilas, keyField, borderColor }) {
+    const totalCostAct  = filas.reduce((s, f) => s + f.service_cost, 0);
+    const totalCostPrev = prevFilas.reduce((s, f) => s + f.service_cost, 0);
+    const totalDelta    = prevLabel && totalCostPrev > 0
+      ? (totalCostAct - totalCostPrev) / totalCostPrev : null;
+
     return (
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2"
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between"
              style={{ borderLeft: `4px solid ${borderColor}` }}>
-          <span className="text-base">{icono}</span>
-          <h4 className="font-bold text-gray-700 text-sm">{titulo}</h4>
+          <div className="flex items-center gap-2">
+            <span className="text-base">{icono}</span>
+            <h4 className="font-bold text-gray-700 text-sm">{titulo}</h4>
+          </div>
+          {prevLabel && (
+            <span className="text-xs text-gray-400">▲▼ vs {prevLabel}</span>
+          )}
         </div>
 
         {filas.length === 0 ? (
@@ -37,7 +65,7 @@ function TablaUsuariosSedes({ empData, mesLabel }) {
             <p className="text-2xl mb-2">📭</p>
             <p className="font-medium text-gray-500 mb-1">Sin datos disponibles</p>
             <p className="text-xs">Ve a <b>⚙️ Configuración</b>, elimina <b>{mesLabel}</b><br/>
-            y vuelve a subir el archivo Excel para activar esta tabla.</p>
+              y vuelve a subir el archivo Excel.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -46,29 +74,32 @@ function TablaUsuariosSedes({ empData, mesLabel }) {
                 <tr style={thStyle} className="text-white">
                   <th className="px-3 py-2.5 text-left font-semibold">{keyField}</th>
                   <th className="px-3 py-2.5 text-right font-semibold">Completados</th>
-                  <th className="px-3 py-2.5 text-right font-semibold">Total servicios</th>
-                  <th className="px-3 py-2.5 text-right font-semibold">% Completado</th>
-                  <th className="px-3 py-2.5 text-right font-semibold">Costo (service_cost)</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Total</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">%</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Costo</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">▲▼ vs mes ant.</th>
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f, i) => (
-                  <tr key={i} className={i % 2 === 0 ? rowEven : rowOdd}>
-                    <td className="px-3 py-2 font-medium text-gray-700 max-w-[180px] truncate">
-                      {f.usuario ?? f.sede}
-                    </td>
-                    <td className="px-3 py-2 text-right font-bold" style={{ color: SEM_VERDE }}>
-                      {f.completados.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right text-gray-500">{f.total.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right font-semibold" style={{ color: SEM_VERDE }}>
-                      {f.total > 0 ? fmtPct(f.completados / f.total) : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right font-bold" style={{ color: PIBOX_PURPLE }}>
-                      {fmtFull(f.service_cost)}
-                    </td>
-                  </tr>
-                ))}
+                {filas.map((f, i) => {
+                  const nombre = f.usuario ?? f.sede;
+                  return (
+                    <tr key={i} className={i % 2 === 0 ? rowEven : rowOdd}>
+                      <td className="px-3 py-2 font-medium text-gray-700 max-w-[160px] truncate">{nombre}</td>
+                      <td className="px-3 py-2 text-right font-bold" style={{ color: SEM_VERDE }}>
+                        {f.completados.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-500">{f.total.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right font-semibold" style={{ color: SEM_VERDE }}>
+                        {f.total > 0 ? fmtPct(f.completados / f.total) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold" style={{ color: PIBOX_PURPLE }}>
+                        {fmtFull(f.service_cost)}
+                      </td>
+                      <DeltaCosto curr={f.service_cost} prevList={prevFilas} matchKey={nombre}/>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className={tfootRow + " text-xs"}>
@@ -80,13 +111,16 @@ function TablaUsuariosSedes({ empData, mesLabel }) {
                     {filas.reduce((s, f) => s + f.total, 0).toLocaleString()}
                   </td>
                   <td className="px-3 py-2 text-right" style={{ color: SEM_VERDE }}>
-                    {fmtPct(
-                      filas.reduce((s, f) => s + f.completados, 0) /
-                      Math.max(filas.reduce((s, f) => s + f.total, 0), 1)
-                    )}
+                    {fmtPct(filas.reduce((s,f)=>s+f.completados,0) / Math.max(filas.reduce((s,f)=>s+f.total,0),1))}
                   </td>
                   <td className="px-3 py-2 text-right" style={{ color: PIBOX_PURPLE }}>
-                    {fmtFull(filas.reduce((s, f) => s + f.service_cost, 0))}
+                    {fmtFull(totalCostAct)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-bold"
+                      style={{ color: totalDelta !== null ? (totalDelta >= 0 ? SEM_VERDE : SEM_ROJO) : "#9CA3AF" }}>
+                    {totalDelta !== null
+                      ? `${totalDelta >= 0 ? "▲" : "▼"} ${Math.abs(totalDelta * 100).toFixed(1)}%`
+                      : "—"}
                   </td>
                 </tr>
               </tfoot>
@@ -111,12 +145,12 @@ function TablaUsuariosSedes({ empData, mesLabel }) {
         </div>
       )}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Tabla titulo="Servicios completados y costo por usuario"
-               icono="👤" filas={usuarios} keyField="Usuario"
-               borderColor={PIBOX_PURPLE}/>
-        <Tabla titulo="Servicios completados y costo por sede"
-               icono="🏢" filas={sedes} keyField="Sede"
-               borderColor={PIBOX_PINK}/>
+        <Tabla titulo="Por usuario" icono="👤"
+               filas={usuarios} prevFilas={prevUsuarios}
+               keyField="Usuario" borderColor={PIBOX_PURPLE}/>
+        <Tabla titulo="Por sede" icono="🏢"
+               filas={sedes} prevFilas={prevSedes}
+               keyField="Sede" borderColor={PIBOX_PINK}/>
       </div>
     </div>
   );
@@ -216,7 +250,8 @@ export default function InformeEmpresa() {
       {empData && score && (
         <>
           {/* ── Tablas Usuario / Sede ── siempre visibles ─────────────────── */}
-          <TablaUsuariosSedes empData={empData} mesLabel={dataMes?.label}/>
+          <TablaUsuariosSedes empData={empData} prevData={prevData}
+            mesLabel={dataMes?.label} prevLabel={mesPrevMeta?.label}/>
 
           {/* Botón de descarga */}
           <div className="flex gap-3">
