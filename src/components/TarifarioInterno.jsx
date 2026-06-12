@@ -1,4 +1,5 @@
 import { useState } from "react";
+import IncrementoTarifas from "./IncrementoTarifas";
 
 const TABS = [
   { id: "distancia", label: "Distancia (Km)" },
@@ -11,6 +12,7 @@ const TABS = [
   { id: "rent", label: "Rent B2B" },
   { id: "cobertura", label: "Cobertura" },
   { id: "calculadora", label: "🧮 Calculadora" },
+  { id: "incremento", label: "📈 Incremento Tarifas" },
 ];
 
 const fmt = (v) => {
@@ -617,6 +619,8 @@ export default function TarifarioInterno({ currentUser }) {
       {/* Contenido */}
       {tab === "calculadora" ? (
         <Calculadora />
+      ) : tab === "incremento" ? (
+        <IncrementoTarifas />
       ) : (
         <>
           {editing && isAdmin ? (
