@@ -65,12 +65,14 @@ export function procesarDatos(rows) {
   for (const row of rows) {
     const empresa  = toStr(row["company"] || row["Company"] || "Sin empresa");
     const city     = toStr(row["city"]    || row["City"]    || "Sin ciudad");
-    const sede     = toStr(row["sede"]    || "");
+    const sede     = toStr(row["sede"]    || "Sin sede");
     const op       = toStr(row["operation_type"] || "Otro");
     const status   = toStr(row["service_status"] || "");
     const gmv      = toNum(row["gmv"]);
+    const cost     = toNum(row["service_cost"]);
     const pkgs     = toNum(row["packages"]);
     const exec     = toStr(row["account_manager"] || "Sin asignar");
+    const usuario  = toStr(row["passenger_name"]  || "Sin usuario");
 
     // Semana del mes (1–5): qué semana dentro del mes calendario
     let semana = 0;
@@ -96,8 +98,8 @@ export function procesarDatos(rows) {
     if (!empMap[empresa]) {
       empMap[empresa] = {
         empresa, total:0, completados:0, cancelados:0, expirados:0,
-        gmv:0, paquetes:0, ejecutivo: exec,
-        ciudades: {}, ops: {}, weekly: {},
+        gmv:0, paquetes:0, service_cost:0, ejecutivo: exec,
+        ciudades: {}, ops: {}, weekly: {}, usuarios: {}, sedes: {},
       };
     }
     const e = empMap[empresa];
@@ -105,9 +107,20 @@ export function procesarDatos(rows) {
     if (esCompletado) e.completados++;
     if (esCancelado)  e.cancelados++;
     if (esExpirado)   e.expirados++;
-    e.gmv      += gmv;
-    e.paquetes += pkgs;
+    e.gmv          += gmv;
+    e.service_cost += cost;
+    e.paquetes     += pkgs;
     if (exec && exec !== "Sin asignar") e.ejecutivo = exec;
+
+    // por usuario (passenger_name)
+    if (!e.usuarios[usuario]) e.usuarios[usuario] = {total:0,completados:0,service_cost:0};
+    e.usuarios[usuario].total++;
+    if (esCompletado) { e.usuarios[usuario].completados++; e.usuarios[usuario].service_cost += cost; }
+
+    // por sede
+    if (!e.sedes[sede]) e.sedes[sede] = {total:0,completados:0,service_cost:0};
+    e.sedes[sede].total++;
+    if (esCompletado) { e.sedes[sede].completados++; e.sedes[sede].service_cost += cost; }
 
     // ciudades
     if (!e.ciudades[city]) e.ciudades[city] = { gmv:0, count:0 };
@@ -200,13 +213,22 @@ export function procesarDatos(rows) {
       }))
       .sort((a,b)=>a.semana-b.semana);
 
+    const topUsuarios = Object.entries(e.usuarios)
+      .map(([u,v])=>({usuario:u, ...v}))
+      .sort((a,b)=>b.completados-a.completados)
+      .slice(0,30);
+
+    const topSedes = Object.entries(e.sedes)
+      .map(([s,v])=>({sede:s, ...v}))
+      .sort((a,b)=>b.service_cost-a.service_cost);
+
     return {
       empresa: e.empresa, total: e.total,
       completados: e.completados, cancelados: e.cancelados, expirados: e.expirados,
-      gmv: e.gmv, paquetes: e.paquetes,
+      gmv: e.gmv, service_cost: e.service_cost, paquetes: e.paquetes,
       ciudad: ciudadTop, ejecutivo: e.ejecutivo,
       tasa_completado: tc, tasa_cancelacion: tca, tasa_expirado: te,
-      topCiudades, topOps, weekly,
+      topCiudades, topOps, weekly, topUsuarios, topSedes,
     };
   });
 
