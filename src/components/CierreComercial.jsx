@@ -97,9 +97,15 @@ export default function CierreComercial({ currentUser }) {
     setPrinting(true);
     const prevTitle = document.title;
     document.title = " ";
+    // Inyectar @page landscape temporalmente
+    const style = document.createElement("style");
+    style.id = "cierre-print-landscape";
+    style.textContent = "@page { size: A4 landscape; margin: 12mm 10mm 10mm 10mm; }";
+    document.head.appendChild(style);
     setTimeout(() => {
       window.print();
       document.title = prevTitle;
+      style.remove();
       setPrinting(false);
     }, 300);
   }, []);
