@@ -64,8 +64,14 @@ export default function AnalisisCiudad() {
   const dataMes  = useMemo(()=> mesKey ? loadMesData(mesKey)   : null, [mesKey]);
   const dataPrev = useMemo(()=> mesPrevMeta ? loadMesData(mesPrevMeta.key) : null, [mesPrevMeta]);
 
-  const ciudadesDisp = useMemo(()=>
-    (dataMes?.ciudades||[]).map(c=>c.city).sort(), [dataMes]);
+  // Si ciudades no existe aún (datos viejos), derivar lista de topCiudades
+  const tieneCiudades = !!(dataMes?.ciudades?.length > 0);
+  const ciudadesDisp = useMemo(()=>{
+    if (dataMes?.ciudades?.length > 0)
+      return dataMes.ciudades.map(c=>c.city).sort();
+    // Fallback: lista de topCiudades para que aparezcan en el selector
+    return (dataMes?.totales?.topCiudades||[]).map(c=>c.city).sort();
+  }, [dataMes]);
 
   const cityData  = useMemo(()=>
     dataMes?.ciudades?.find(c=>c.city===ciudad)||null, [dataMes,ciudad]);
@@ -114,6 +120,17 @@ export default function AnalisisCiudad() {
           )}
         </div>
       </div>
+
+      {/* Aviso si el mes fue subido antes del fix */}
+      {!tieneCiudades && dataMes && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-amber-800 text-sm flex items-start gap-3">
+          <span className="text-xl">⚠️</span>
+          <div>
+            <b>Este mes fue procesado con una versión anterior.</b>
+            <p className="mt-1">Ve a <b>⚙️ Configuración</b>, elimina <b>{dataMes.label}</b> y vuelve a subir el archivo Excel para activar el análisis por ciudad completo.</p>
+          </div>
+        </div>
+      )}
 
       {!ciudad && (
         <div className="bg-purple-50 border border-purple-100 rounded-xl p-10 text-center text-purple-600">
