@@ -12,7 +12,6 @@ const TABS = [
   { id: "rent", label: "Rent B2B" },
   { id: "tat", label: "TAT (Rendimiento)" },
   { id: "cobertura", label: "Cobertura" },
-  { id: "politicas", label: "Políticas" },
   { id: "terceros", label: "Terceros" },
 ];
 
@@ -178,46 +177,127 @@ const coberturaRows = [
   ["Santa Marta", "Santa Marta", "Taganga, Bonda, Gaira", "—", "Zazue", "—"],
 ];
 
-// ── Políticas comerciales y operativas ──
-const politicasHeaders = ["Ítem", "Política / Observaciones"];
-const politicasRows = [
-  ["Negociación de Tarifas", "Todas las negociaciones parten de las tarifas base (15% utilidad). Es posible negociar utilidad adicional. Excepción: pagos en efectivo o recargas no permiten configurar utilidad corporativa."],
-  ["Política de Recaudo", "Las tarifas no incluyen recaudo. Toda negociación con recaudo debe quedar marcada en la web con costo de seguro asociado."],
-  ["Seguro y Valor Declarado", "VD máximo por servicio: $20.000.000. Cobertura aliado hasta $1.000.000.000. Todas las negociaciones deben tener % de seguro. El valor de seguros no entra a la bolsa de GMV."],
-  ["Política de Cancelación", "Cancelaciones con mínimo 3 horas hábiles de anticipación (Lun-Sáb, 6am-7pm). Menos de 4h genera parada en falso."],
-  ["Recargos Periferia", "Se aplican en doble vía (ida y vuelta al punto de origen/destino en dichas zonas)."],
-  ["Tiempo de Espera (Stand By)", "Se cobra cuando el vehículo permanezca sin carga, previamente planificado. Equivale al 50% de la tarifa."],
-  ["Cargue y Descargue", "No incluido en tarifas. Si se requiere, solicitar auxiliar de carga y asumir el costo."],
-  ["Inhouse", "Costo adicional: $2.800.000. Escalar a líderes con: horario, funciones, lugar, cantidad de horas/semana."],
-  ["Carga Pesada (Carry)", "Para 4+ unidades o peso ≥90kg, es obligatorio cobrar auxiliar de carga o que el cliente garantice personal."],
-  ["Capacidad Vehículo", "El solicitante debe verificar la capacidad cúbica del vehículo asegurando que la mercancía pueda transportarse adecuadamente."],
-  ["Manifiesto - Auxiliar", "Carry: $94.000 / Escolta Carry-NHR: $307.000"],
-  ["Distancia Premium", "Aplica para distancias hasta 10 Km, solo perímetro urbano/metropolitano. Enfocado a pilotos fidelizados y capacitados. Solo moto."],
-  ["Rent B2B", "Tarifas nacionales. Sujeto a T&C de Picap Rent. Aplican tarifas dinámicas. Modelo de autogestión. No requiere configuración de tarifas. Cliente genera códigos desde su dashboard."],
-  ["Storage - Refrigeración", "Recargo del 30% sobre tarifa de almacenamiento."],
-  ["Storage - Insumos", "Clientes deben proporcionar su insumo (cinta, papel, vinipel). Liquidación de alistamientos es por ciudad. Valores sin IVA."],
-  ["Terceros (Bulmatic)", "Tarifas pueden cambiar mensualmente. Solicitar cotización por correo al líder de operaciones con copia al líder comercial antes de comprometer tarifas."],
-  ["Facturación Recaudo", "Las facturas de recaudo llevan IVA."],
-];
+// ── Políticas por pestaña ──
+const POL = ["Ítem", "Política / Observaciones"];
 
 const TABLE_DATA = {
-  distancia: { headers: distanciaHeaders, rows: distanciaRows },
-  horas: { headers: horasHeaders, rows: horasRows },
-  paquetes: { headers: paquetesHeaders, rows: paquetesRows },
-  recargos: { headers: recargosHeaders, rows: recargosRows },
-  manifiesto: { headers: manifiestoHeaders, rows: manifiestoRows },
-  premium: { headers: premiumHeaders, rows: premiumRows },
-  storage: { headers: storageFullHeaders, rows: storageFullRows, extra: { headers: alistamientoHeaders, rows: alistamientoRows, title: "Alistamientos" } },
-  seguros: { headers: segurosHeaders, rows: segurosRows, extra: { headers: recaudoHeaders, rows: recaudoRows, title: "Base de Negociación Recaudo" } },
-  rent: { headers: rentHeaders, rows: rentRows },
-  tat: { headers: tatHeaders, rows: tatRows },
-  cobertura: { headers: coberturaHeaders, rows: coberturaRows },
-  politicas: { headers: politicasHeaders, rows: politicasRows },
-  terceros: { headers: ["Política"], rows: [
-    ["Estas tarifas pueden cambiar de un mes a otro. Se debe solicitar cotización antes de comprometer tarifas."],
-    ["La cotización se debe solicitar por correo al líder de operaciones, con copia al líder comercial."],
-    ["Proveedor principal: BULMATIC"],
-  ]},
+  distancia: {
+    headers: distanciaHeaders, rows: distanciaRows,
+    politicas: { headers: POL, rows: [
+      ["Negociación de Tarifas", "Todas las negociaciones parten de las tarifas base (15% utilidad). Es posible negociar utilidad adicional. Excepción: pagos en efectivo o recargas no permiten configurar utilidad corporativa."],
+      ["Tarifas calculadas", "Estas tarifas están calculadas con utilidad corporativa del 3%."],
+      ["Recargos Periferia", "Se aplican en doble vía (ida y vuelta al punto de origen/destino en dichas zonas)."],
+      ["Capacidad Vehículo", "El solicitante debe verificar la capacidad cúbica del vehículo asegurando que la mercancía pueda transportarse adecuadamente."],
+    ]},
+  },
+  horas: {
+    headers: horasHeaders, rows: horasRows,
+    politicas: { headers: POL, rows: [
+      ["Política de Cancelación", "Cancelaciones con mínimo 3 horas hábiles de anticipación (Lun-Sáb, 6am-7pm). Menos de 4h genera parada en falso."],
+      ["Tiempo de Espera (Stand By)", "Se cobra cuando el vehículo permanezca sin carga, previamente planificado. Equivale al 50% de la tarifa."],
+      ["Inhouse", "Costo adicional: $2.800.000. Escalar a líderes con: horario, funciones, lugar, cantidad de horas/semana."],
+      ["Mínimo de horas", "Bloques mínimos de 4 horas para Moto y Carry. NHR y NPR mínimo 8 horas."],
+    ]},
+  },
+  paquetes: {
+    headers: paquetesHeaders, rows: paquetesRows,
+    politicas: { headers: POL, rows: [
+      ["Entregas Optimizadas", "Mínimo >10 paquetes por ruta agrupados por sector geográfico."],
+      ["Recargos", "Recargo nocturno y dominical aplican según tabla. Verificar con líder operaciones."],
+      ["Devoluciones", "Toda devolución genera cobro por los kilómetros recorridos para retornar el paquete al origen."],
+    ]},
+  },
+  recargos: {
+    headers: recargosHeaders, rows: recargosRows,
+    politicas: { headers: POL, rows: [
+      ["Stand By", "2 horas de espera al cargue. Se cobra 100% de la tarifa cuando aplica. Fee adicional: 20%."],
+      ["Parada en Falso", "Después de 2 horas de espera y se cancela el servicio. Se cobra 60% de la tarifa. Aplica a jornadas de 8 horas."],
+      ["Recargos Periferia", "Se aplican en doble vía (ida y vuelta). Ver tabla de cobertura por ciudad."],
+      ["Carga Pesada (Carry)", "Para 4+ unidades o peso ≥90kg, es obligatorio cobrar auxiliar de carga o que el cliente garantice personal."],
+    ]},
+  },
+  manifiesto: {
+    headers: manifiestoHeaders, rows: manifiestoRows,
+    politicas: { headers: POL, rows: [
+      ["Auxiliar de Carga", "Carry: $94.000 por servicio."],
+      ["Escolta", "Carry / NHR: $307.000 por servicio."],
+      ["Cargue y Descargue", "No incluido en tarifas. Si se requiere, solicitar auxiliar y asumir el costo."],
+      ["Política de Recaudo", "Las tarifas no incluyen recaudo."],
+      ["Seguro y VD", "Carry y NHR: VD máximo por servicio $20.000.000. Cobertura aliado hasta $1.000.000.000."],
+      ["Cancelación", "Mínimo 3 horas hábiles de anticipación. Menos de 4h genera parada en falso."],
+      ["Cobros Adicionales", "Recargos periferia se aplican en doble vía."],
+      ["Stand By", "Se cobra cuando el vehículo permanezca sin carga (previamente acordado). Equivale al 50% de la tarifa."],
+      ["Cargue y Descargue", "Las tarifas no incluyen este servicio. Solicitar auxiliar si se requiere."],
+      ["Inhouse", "Costo adicional $2.800.000. Escalar a líderes con horario, funciones, lugar y horas/semana."],
+      ["Carga Pesada", "Para 4+ unidades o peso ≥90kg, obligatorio cobrar auxiliar o que el cliente garantice personal."],
+      ["Capacidad", "Verificar capacidad cúbica del vehículo para asegurar transporte adecuado de la mercancía."],
+    ]},
+  },
+  premium: {
+    headers: premiumHeaders, rows: premiumRows,
+    politicas: { headers: POL, rows: [
+      ["Alcance", "Aplica para distancias hasta 10 Km, solo perímetro urbano/metropolitano (Medellín incluye área metro)."],
+      ["Pilotos", "Enfocado a pilotos fidelizados y capacitados."],
+      ["Vehículo", "Únicamente para negociaciones en Moto."],
+    ]},
+  },
+  storage: {
+    headers: storageFullHeaders, rows: storageFullRows,
+    extra: { headers: alistamientoHeaders, rows: alistamientoRows, title: "Alistamientos" },
+    politicas: { headers: POL, rows: [
+      ["Refrigeración", "Recargo del 30% sobre la tarifa de almacenamiento."],
+      ["Insumos", "Clientes deben proporcionar su insumo (cinta, papel, vinipel)."],
+      ["Liquidación", "La liquidación de alistamientos es por ciudad."],
+      ["IVA", "Todos los valores de Storage son sin IVA. Se debe aclarar en la propuesta."],
+      ["Horarios", "Tener en cuenta los horarios de bodega."],
+      ["Info requerida", "Ficha técnica, referencias (cantidad) / stock, espacio actual y proyectado."],
+    ]},
+  },
+  seguros: {
+    headers: segurosHeaders, rows: segurosRows,
+    extra: { headers: recaudoHeaders, rows: recaudoRows, title: "Base de Negociación Recaudo" },
+    politicas: { headers: POL, rows: [
+      ["Seguro obligatorio", "Todas las negociaciones deben tener % de seguro."],
+      ["Recaudo + seguro", "Toda negociación con recaudo debe quedar marcada en la web con costo de seguro asociado."],
+      ["GMV", "El valor de seguros no entra a la bolsa de GMV."],
+      ["Facturación", "Las facturas de recaudo llevan IVA."],
+      ["Límite recaudo", "Ninguna negociación puede recaudar por encima del 270% de su facturación."],
+      ["Autorización", "El modelo de recaudo ida y vuelta requiere autorización de los líderes."],
+    ]},
+  },
+  rent: {
+    headers: rentHeaders, rows: rentRows,
+    politicas: { headers: POL, rows: [
+      ["Tarifas", "Tarifas nacionales. Sujeto a T&C de Picap Rent. Aplican tarifas dinámicas."],
+      ["Modelo", "Modelo de autogestión. En caso de incidencias será atendida por agentes de soporte."],
+      ["Configuración", "No requiere configuración de tarifas."],
+      ["Códigos", "El cliente debe generar desde su dashboard los códigos para los usuarios."],
+      ["Portal", "https://picap.rent/login"],
+    ]},
+  },
+  tat: {
+    headers: tatHeaders, rows: tatRows,
+    politicas: { headers: POL, rows: [
+      ["Utilidad", "Estas tarifas están calculadas con utilidad corporativa del 3%."],
+      ["Paradas", "Máximo 40 paradas efectivas por jornada de 8 horas."],
+      ["Parada Extra", "Tarifa por cada parada efectiva adicional al máximo pactado."],
+    ]},
+  },
+  cobertura: {
+    headers: coberturaHeaders, rows: coberturaRows,
+    politicas: { headers: POL, rows: [
+      ["Recargos zona", "Periferia, aledaños y lejanía generan recargo adicional según tabla de recargos."],
+      ["Zonas rojas", "Zonas de no acceso — no se presta servicio en estas zonas por seguridad."],
+      ["Doble vía", "Los recargos de zona se aplican en doble vía (ida y vuelta)."],
+    ]},
+  },
+  terceros: {
+    headers: ["Política"], rows: [
+      ["Estas tarifas pueden cambiar de un mes a otro. Se debe solicitar cotización antes de comprometer tarifas."],
+      ["La cotización se debe solicitar por correo al líder de operaciones, con copia al líder comercial."],
+      ["Proveedor principal: BULMATIC"],
+    ],
+  },
 };
 
 function DataTable({ headers, rows }) {
@@ -321,6 +401,35 @@ export default function TarifarioInterno() {
         <div className="mt-6">
           <h3 className="text-sm font-bold text-gray-700 mb-2">{current.extra.title}</h3>
           <DataTable headers={current.extra.headers} rows={current.extra.rows} />
+        </div>
+      )}
+
+      {/* Políticas específicas de esta pestaña */}
+      {current.politicas && (
+        <div className="mt-6">
+          <h3 className="text-sm font-bold text-purple-800 mb-2 flex items-center gap-2">
+            <span className="bg-purple-100 rounded-lg px-2 py-0.5">📋</span> Políticas Comerciales y Operativas
+          </h3>
+          <div className="overflow-x-auto rounded-lg border border-purple-200">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-purple-100">
+                  {current.politicas.headers.map((h, i) => (
+                    <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold text-purple-800 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {current.politicas.rows.map((row, ri) => (
+                  <tr key={ri} className={`border-t border-purple-100 ${ri % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50 transition-colors`}>
+                    {row.map((cell, ci) => (
+                      <td key={ci} className={`px-4 py-2 ${ci === 0 ? "font-semibold text-purple-700 whitespace-nowrap" : "text-gray-600"}`}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
