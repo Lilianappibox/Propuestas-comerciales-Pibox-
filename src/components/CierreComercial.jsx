@@ -22,19 +22,12 @@ const SK = "pibox_cierre_v2";
 const SK_SHARED = "pibox_cierre_shared";
 
 function leer(isAdmin) {
+  // KAM: siempre lee dataInicial (los datos publicados en el código)
+  if (!isAdmin) return JSON.parse(JSON.stringify(dataInicial));
+  // Admin: lee de localStorage si tiene datos guardados, sino dataInicial
   try {
-    // Admin lee sus propios datos editables
-    if (isAdmin) {
-      const s = localStorage.getItem(SK);
-      if (s) return JSON.parse(s);
-    } else {
-      // KAM lee los datos compartidos por el Admin, si existen
-      const shared = localStorage.getItem(SK_SHARED);
-      if (shared) return JSON.parse(shared);
-      // Fallback: datos locales o iniciales
-      const s = localStorage.getItem(SK);
-      if (s) return JSON.parse(s);
-    }
+    const s = localStorage.getItem(SK);
+    if (s) return JSON.parse(s);
   } catch {}
   return JSON.parse(JSON.stringify(dataInicial));
 }
