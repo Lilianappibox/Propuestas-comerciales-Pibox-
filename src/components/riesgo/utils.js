@@ -71,13 +71,20 @@ export function procesarDatos(rows) {
     const pkgs     = toNum(row["packages"]);
     const exec     = toStr(row["account_manager"] || "Sin asignar");
 
-    // semana del año
+    // Semana del mes (1–5): qué semana dentro del mes calendario
     let semana = 0;
+    let semanaLabel = "";
     try {
       const d = new Date(row["date"]);
-      if (!isNaN(d)) {
-        const jan1 = new Date(d.getFullYear(), 0, 1);
-        semana = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+      if (!isNaN(d.getTime())) {
+        const dia = d.getDate();                     // 1-31
+        semana = Math.ceil(dia / 7);                 // 1,2,3,4,5
+        const mesN = d.getMonth() + 1;
+        const anioN = d.getFullYear();
+        const diaFin = Math.min(dia - ((dia-1)%7) + 6,
+          new Date(anioN, mesN, 0).getDate());
+        const diaIni = dia - ((dia-1)%7) + 1;
+        semanaLabel = `${String(diaIni).padStart(2,"0")}/${String(mesN).padStart(2,"0")}–${String(diaFin).padStart(2,"0")}/${String(mesN).padStart(2,"0")}`;
       }
     } catch {}
 
@@ -112,7 +119,7 @@ export function procesarDatos(rows) {
 
     // weekly por empresa
     if (semana > 0) {
-      if (!e.weekly[semana]) e.weekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0,paquetes:0 };
+      if (!e.weekly[semana]) e.weekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0,paquetes:0,label:semanaLabel };
       e.weekly[semana].gmv        += gmv;
       e.weekly[semana].servicios++;
       e.weekly[semana].paquetes   += pkgs;
@@ -122,7 +129,7 @@ export function procesarDatos(rows) {
 
     // weekly global
     if (semana > 0) {
-      if (!globalWeekly[semana]) globalWeekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0 };
+      if (!globalWeekly[semana]) globalWeekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0,label:semanaLabel };
       globalWeekly[semana].gmv += gmv;
       globalWeekly[semana].servicios++;
       if (esCompletado) globalWeekly[semana].completados++;
@@ -149,7 +156,8 @@ export function procesarDatos(rows) {
 
     const weekly = Object.entries(e.weekly)
       .map(([s,v])=>({
-        semana:Number(s),
+        semana: Number(s),
+        label: v.label || `S${s}`,
         gmv:v.gmv, servicios:v.servicios, paquetes:v.paquetes,
         completados:v.completados, cancelados:v.cancelados,
         tasa_completado: v.servicios>0 ? v.completados/v.servicios : 0,
@@ -182,7 +190,9 @@ export function procesarDatos(rows) {
 
   const weeklyGlobal = Object.entries(globalWeekly)
     .map(([s,v])=>({
-      semana:Number(s), gmv:v.gmv, servicios:v.servicios,
+      semana: Number(s),
+      label: v.label || `S${s}`,
+      gmv:v.gmv, servicios:v.servicios,
       tasa_completado: v.servicios>0?v.completados/v.servicios:0,
       tasa_cancelacion: v.servicios>0?v.cancelados/v.servicios:0,
     }))

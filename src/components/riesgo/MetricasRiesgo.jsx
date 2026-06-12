@@ -190,7 +190,7 @@ export default function MetricasRiesgo() {
               <p className="text-xs text-gray-500 mb-2 font-semibold">GMV por semana</p>
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={tot.weekly}>
-                  <XAxis dataKey="semana" tick={{fontSize:10}} tickFormatter={v=>`S${v}`}/>
+                  <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
                   <YAxis tick={{fontSize:10}} tickFormatter={v=>fmtM(v)}/>
                   <Tooltip content={<TT fmt={fmtFull}/>}/>
                   <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
@@ -201,7 +201,7 @@ export default function MetricasRiesgo() {
               <p className="text-xs text-gray-500 mb-2 font-semibold">Servicios por semana</p>
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={tot.weekly}>
-                  <XAxis dataKey="semana" tick={{fontSize:10}} tickFormatter={v=>`S${v}`}/>
+                  <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
                   <YAxis tick={{fontSize:10}}/>
                   <Tooltip content={<TT/>}/>
                   <Bar dataKey="servicios" name="Servicios" fill={PIBOX_PINK} radius={[3,3,0,0]}/>
@@ -213,7 +213,7 @@ export default function MetricasRiesgo() {
               <ResponsiveContainer width="100%" height={160}>
                 <LineChart data={tot.weekly}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
-                  <XAxis dataKey="semana" tick={{fontSize:10}} tickFormatter={v=>`S${v}`}/>
+                  <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
                   <YAxis tick={{fontSize:10}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                   <Tooltip formatter={v=>fmtPct(v)}/>
                   <Legend iconSize={8} wrapperStyle={{fontSize:10}}/>
@@ -341,7 +341,7 @@ function DrillDown({ empresa, mesLabel }) {
             <p className="text-xs text-gray-500 font-semibold mb-2">GMV semanal</p>
             <ResponsiveContainer width="100%" height={140}>
               <BarChart data={empresa.weekly}>
-                <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
+                <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
                 <YAxis tick={{fontSize:9}} tickFormatter={fmtM}/>
                 <Tooltip content={<TT fmt={fmtFull}/>}/>
                 <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
@@ -352,7 +352,7 @@ function DrillDown({ empresa, mesLabel }) {
             <p className="text-xs text-gray-500 font-semibold mb-2">Servicios semanales</p>
             <ResponsiveContainer width="100%" height={140}>
               <BarChart data={empresa.weekly}>
-                <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
+                <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
                 <YAxis tick={{fontSize:9}}/>
                 <Tooltip content={<TT/>}/>
                 <Bar dataKey="servicios" name="Servicios" fill={PIBOX_PINK} radius={[3,3,0,0]}/>
@@ -364,7 +364,7 @@ function DrillDown({ empresa, mesLabel }) {
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={empresa.weekly}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
-                <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
+                <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
                 <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                 <Tooltip formatter={v=>fmtPct(v)}/>
                 <Legend iconSize={7} wrapperStyle={{fontSize:9}}/>

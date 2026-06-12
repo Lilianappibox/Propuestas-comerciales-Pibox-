@@ -247,7 +247,7 @@ export default function InformeEmpresa() {
                     <p className="text-xs text-gray-500 font-semibold mb-2">GMV semanal</p>
                     <ResponsiveContainer width="100%" height={130}>
                       <BarChart data={empData.weekly}>
-                        <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
+                        <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={40}/>
                         <YAxis tick={{fontSize:9}} tickFormatter={fmtM}/>
 
                         <Tooltip formatter={v=>fmtCOP(v)}/>
@@ -259,7 +259,7 @@ export default function InformeEmpresa() {
                     <p className="text-xs text-gray-500 font-semibold mb-2">Servicios semanales</p>
                     <ResponsiveContainer width="100%" height={130}>
                       <BarChart data={empData.weekly}>
-                        <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
+                        <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={40}/>
                         <YAxis tick={{fontSize:9}}/>
                         <Tooltip/>
                         <Bar dataKey="servicios" name="Servicios" fill={PIBOX_PINK} radius={[3,3,0,0]}/>
@@ -271,7 +271,7 @@ export default function InformeEmpresa() {
                     <ResponsiveContainer width="100%" height={130}>
                       <LineChart data={empData.weekly}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
-                        <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
+                        <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={40}/>
                         <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                         <Tooltip formatter={v=>fmtPct(v)}/>
                         <Legend iconSize={7} wrapperStyle={{fontSize:9}}/>
