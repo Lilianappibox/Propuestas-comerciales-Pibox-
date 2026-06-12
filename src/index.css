@@ -45,7 +45,7 @@ body {
   }
 
   #propuesta-preview {
-    padding: 10mm 16mm 10mm 16mm !important;
+    padding: 20mm 16mm 16mm 16mm !important;
     max-width: none !important;
     width: 100% !important;
     background: #ffffff !important;
@@ -72,7 +72,7 @@ body {
   /* ── Default: A4 portrait (propuestas comerciales) ── */
   @page {
     size: A4 portrait;
-    margin: 20mm 0 10mm 0;
+    margin: 0;
   }
 
   /* ── Cierre Comercial print ── */
