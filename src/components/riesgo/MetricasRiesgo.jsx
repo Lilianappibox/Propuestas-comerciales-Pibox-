@@ -66,6 +66,7 @@ export default function MetricasRiesgo() {
 
   const [mesKey, setMesKey]           = useState(meses[meses.length-1]?.key || "");
   const [filtroSem, setFiltroSem]     = useState("Todos");
+  const [filtroKam, setFiltroKam]     = useState("Todos");
   const [busca, setBusca]             = useState("");
   const [empresaSel, setEmpresaSel]   = useState(null);
 
@@ -84,12 +85,19 @@ export default function MetricasRiesgo() {
     }).sort((a,b)=>a.score-b.score);
   }, [dataMes, dataPrev, umb]);
 
+  // Lista dinámica de KAMs del mes seleccionado
+  const kamsDisponibles = useMemo(()=>{
+    const set = new Set(empresasConScore.map(e=>e.ejecutivo).filter(Boolean));
+    return ["Todos", ...Array.from(set).sort()];
+  }, [empresasConScore]);
+
   const empresasFiltradas = useMemo(()=>{
     let r = empresasConScore;
     if (filtroSem !== "Todos") r = r.filter(e=>e.semaforo.includes(filtroSem.replace(/🔴|🟡|🟢/,"").trim()));
+    if (filtroKam !== "Todos") r = r.filter(e=>e.ejecutivo === filtroKam);
     if (busca) r = r.filter(e=>e.empresa.toLowerCase().includes(busca.toLowerCase()));
     return r;
-  }, [empresasConScore, filtroSem, busca]);
+  }, [empresasConScore, filtroSem, filtroKam, busca]);
 
   if (!meses.length) return (
     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-800 text-sm">
@@ -285,6 +293,7 @@ export default function MetricasRiesgo() {
         <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
           <h3 className="font-bold text-gray-700 text-sm">🗂️ Ranking de riesgo</h3>
           <div className="flex flex-wrap gap-2 items-center">
+            {/* Semáforo */}
             {["Todos","🔴 Rojo","🟡 Amarillo","🟢 Verde"].map(s=>(
               <button key={s} onClick={()=>setFiltroSem(s)}
                 className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
@@ -293,6 +302,14 @@ export default function MetricasRiesgo() {
                 {s}
               </button>
             ))}
+            {/* KAM */}
+            <select value={filtroKam} onChange={e=>{setFiltroKam(e.target.value);setEmpresaSel(null);}}
+              className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
+              {kamsDisponibles.map(k=>(
+                <option key={k} value={k}>{k==="Todos" ? "👤 Todos los KAMs" : `👤 ${k}`}</option>
+              ))}
+            </select>
+            {/* Buscar */}
             <input value={busca} onChange={e=>setBusca(e.target.value)}
               placeholder="🔍 Buscar empresa..."
               className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300"/>
