@@ -45,32 +45,62 @@ export default function CumplimientoKAM({ data }) {
       </div>
 
       {/* Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
-        {kamsFiltrados.map((k) => (
-          <div
-            key={k.nombre}
-            className="rounded-xl border border-purple-100 p-3 text-center cursor-pointer hover:shadow-md transition"
-            onClick={() => setSelectedKAM(k.nombre === selectedKAM ? null : k.nombre)}
-          >
-            <p className="text-xs font-semibold text-purple-700 mb-1 truncate">{k.nombre.split(" ")[0]}</p>
-            <svg width={64} height={64} viewBox="0 0 64 64" className="mx-auto">
-              <circle cx={32} cy={32} r={26} fill="none" stroke="#e9d5ff" strokeWidth={7} />
-              <circle
-                cx={32} cy={32} r={26} fill="none"
-                stroke={colorCumplimiento(k.cumplimiento)}
-                strokeWidth={7}
-                strokeDasharray={`${(k.cumplimiento / 100) * 163.4} 163.4`}
-                strokeLinecap="round"
-                transform="rotate(-90 32 32)"
-              />
-              <text x={32} y={36} textAnchor="middle" fontSize={13} fontWeight="bold" fill={colorCumplimiento(k.cumplimiento)}>
-                {k.cumplimiento.toFixed(0)}%
-              </text>
-            </svg>
-            <p className="text-[10px] text-gray-500 mt-1 leading-tight">Meta:<br /><span className="font-semibold text-purple-700">{M(k.meta)}</span></p>
-            <p className="text-[10px] font-semibold text-pink-600 mt-1">GMV:<br />{M(k.gmv)}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-5">
+        {kamsFiltrados.map((k) => {
+          const nuevos = (data.clientesNuevos || []).filter((c) => c.kam === k.nombre);
+          const perdidos = (data.clientesPerdidos || []).filter((c) => c.kam === k.nombre);
+          // Clientes activos: aparecen en top10 con ese KAM
+          const activos = (data.top10Clientes || []).filter((c) => c.kam === k.nombre);
+          const crecPct = k.crecimientoVsMesPct || 0;
+          const crecVal = k.crecimientoVsMes || 0;
+          return (
+            <div
+              key={k.nombre}
+              className="rounded-xl border border-purple-100 p-3 text-center cursor-pointer hover:shadow-md transition"
+              onClick={() => setSelectedKAM(k.nombre === selectedKAM ? null : k.nombre)}
+            >
+              <p className="text-xs font-semibold text-purple-700 mb-1 truncate">{k.nombre.split(" ")[0]}</p>
+              <svg width={56} height={56} viewBox="0 0 64 64" className="mx-auto">
+                <circle cx={32} cy={32} r={26} fill="none" stroke="#e9d5ff" strokeWidth={7} />
+                <circle
+                  cx={32} cy={32} r={26} fill="none"
+                  stroke={colorCumplimiento(k.cumplimiento)}
+                  strokeWidth={7}
+                  strokeDasharray={`${(k.cumplimiento / 100) * 163.4} 163.4`}
+                  strokeLinecap="round"
+                  transform="rotate(-90 32 32)"
+                />
+                <text x={32} y={36} textAnchor="middle" fontSize={13} fontWeight="bold" fill={colorCumplimiento(k.cumplimiento)}>
+                  {k.cumplimiento.toFixed(0)}%
+                </text>
+              </svg>
+              <p className="text-[10px] text-gray-500 mt-1">Meta: <span className="font-semibold text-purple-700">{M(k.meta)}</span></p>
+              <p className="text-[10px] font-semibold text-pink-600">GMV: {M(k.gmv)}</p>
+
+              {/* Métricas adicionales */}
+              <div className="mt-2 pt-2 border-t border-purple-100 grid grid-cols-2 gap-1 text-[10px]">
+                <div className={`rounded-md px-1 py-0.5 ${crecPct >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+                  <p className="text-gray-400">vs mes ant.</p>
+                  <p className={`font-bold ${crecPct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                    {crecPct >= 0 ? "▲" : "▼"} {crecPct !== 0 ? `${Math.abs(crecPct).toFixed(1)}%` : M(Math.abs(crecVal))}
+                  </p>
+                </div>
+                <div className="bg-blue-50 rounded-md px-1 py-0.5">
+                  <p className="text-gray-400">Activos</p>
+                  <p className="font-bold text-blue-700">{activos.length}</p>
+                </div>
+                <div className="bg-emerald-50 rounded-md px-1 py-0.5">
+                  <p className="text-gray-400">Nuevos</p>
+                  <p className="font-bold text-emerald-600">{nuevos.length}</p>
+                </div>
+                <div className="bg-red-50 rounded-md px-1 py-0.5">
+                  <p className="text-gray-400">Perdidos</p>
+                  <p className="font-bold text-red-500">{perdidos.length}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <ResponsiveContainer width="100%" height={200}>
