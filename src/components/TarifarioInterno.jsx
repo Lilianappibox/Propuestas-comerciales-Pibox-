@@ -620,7 +620,7 @@ export default function TarifarioInterno({ currentUser }) {
       {tab === "calculadora" ? (
         <Calculadora />
       ) : tab === "incremento" ? (
-        <IncrementoTarifas />
+        <IncrementoTarifas isAdmin={isAdmin} />
       ) : (
         <>
           {editing && isAdmin ? (

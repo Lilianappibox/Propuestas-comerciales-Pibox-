@@ -1,7 +1,9 @@
-import { useState, useMemo, useCallback } from "react";
-import clientesDB from "../data/tarifasCliente.json";
+import { useState, useMemo, useCallback, useRef } from "react";
+import clientesDefault from "../data/tarifasCliente.json";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
+const SK_BD = "pibox_tarifas_clientes_bd";
+const SK_HIST = "pibox_tarifas_clientes_hist";
 
 const RATE_FIELDS = [
   { key: "baseFare",     label: "Tarifa Base" },
@@ -20,17 +22,100 @@ const fmt = (v) => {
   return `$${Number(v).toLocaleString("es-CO")}`;
 };
 
-// Unique sorted values for dropdown filters
-const uniqueValues = (key) => {
-  const set = new Set(clientesDB.map((c) => c[key]).filter(Boolean));
+function loadBD() {
+  try {
+    const s = localStorage.getItem(SK_BD);
+    if (s) return JSON.parse(s);
+  } catch {}
+  return clientesDefault;
+}
+
+function saveBD(data) {
+  try { localStorage.setItem(SK_BD, JSON.stringify(data)); } catch {}
+}
+
+function loadHistorial() {
+  try {
+    const s = localStorage.getItem(SK_HIST);
+    if (s) return JSON.parse(s);
+  } catch {}
+  return [{ fecha: "2026-01-01", registros: clientesDefault.length, origen: "Base inicial (código)" }];
+}
+
+function saveHistorial(h) {
+  try { localStorage.setItem(SK_HIST, JSON.stringify(h.slice(-20))); } catch {}
+}
+
+const uniqueFrom = (data, key) => {
+  const set = new Set(data.map((c) => c[key]).filter(Boolean));
   return [...set].sort();
 };
 
-const tiposServicio = uniqueValues("tipoServicio");
-const ciudades      = uniqueValues("ciudad");
-const kams          = uniqueValues("kam");
+function parseExcelClientes(file) {
+  return new Promise((resolve, reject) => {
+    import("xlsx").then((XLSX) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          // Auto-detect header row
+          const headerRow = raw.find((r) => {
+            const vals = Object.values(r).map((v) => String(v).toLowerCase());
+            return vals.some((v) => v.includes("name_company") || v.includes("nombre") || v.includes("company"));
+          });
+          if (!headerRow) {
+            // Try using row 1 as headers (like the original file)
+            const rows = raw.slice(1).filter((r) => {
+              const first = Object.values(r)[0];
+              return first && String(first).trim() && String(first) !== "name_company";
+            });
+            const keys = Object.keys(raw[0] || {});
+            const clients = rows.map((r) => ({
+              nombre: String(r[keys[0]] || "").trim(),
+              moneda: String(r[keys[1]] || "").trim(),
+              tipoServicio: String(r[keys[2]] || "").trim(),
+              ciudad: String(r[keys[3]] || "").trim(),
+              baseFare: Number(r[keys[4]]) || 0,
+              minimumFare: Number(r[keys[5]]) || 0,
+              distanceFare: Number(r[keys[6]]) || 0,
+              extraStopFare: Number(r[keys[7]]) || 0,
+              hourFare: Number(r[keys[8]]) || 0,
+              hourBaseFare: Number(r[keys[9]]) || 0,
+              packageFare: Number(r[keys[10]]) || 0,
+              comission: Number(r[keys[11]]) || 0,
+              utilidadCorp: Number(r[keys[12]]) || 0,
+              credit: Number(r[keys[13]]) || 0,
+              tieneCredito: String(r[keys[14]] || "").trim(),
+              mercadoFlex: String(r[keys[15]] || "").trim(),
+              kam: String(r[keys[16]] || "").trim(),
+            })).filter((c) => c.nombre);
+            resolve(clients);
+            return;
+          }
+          resolve([]);
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  });
+}
 
-export default function IncrementoTarifas() {
+export default function IncrementoTarifas({ isAdmin }) {
+  // BD dinámica
+  const [clientesDB, setClientesDB] = useState(loadBD);
+  const [historial, setHistorial] = useState(loadHistorial);
+  const [showHist, setShowHist] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef();
+
+  // Filtros derivados de la BD actual
+  const tiposServicio = useMemo(() => uniqueFrom(clientesDB, "tipoServicio"), [clientesDB]);
+  const ciudades = useMemo(() => uniqueFrom(clientesDB, "ciudad"), [clientesDB]);
+  const kams = useMemo(() => uniqueFrom(clientesDB, "kam"), [clientesDB]);
+
   // Step 1 — filters & selection
   const [searchText, setSearchText]       = useState("");
   const [filterTipo, setFilterTipo]       = useState("");
@@ -47,6 +132,46 @@ export default function IncrementoTarifas() {
   // Step 3/4
   const [step, setStep] = useState(1); // 1 = select, 2 = config, 3 = preview
   const [toast, setToast] = useState("");
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 4000); };
+
+  // Upload Excel
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      const clientes = await parseExcelClientes(file);
+      if (!clientes.length) { showToast("⚠️ No se encontraron datos en el archivo"); setUploading(false); return; }
+      // Save new BD
+      setClientesDB(clientes);
+      saveBD(clientes);
+      // Save history
+      const entry = { fecha: new Date().toISOString().slice(0, 19).replace("T", " "), registros: clientes.length, origen: file.name };
+      const newHist = [...historial, entry];
+      setHistorial(newHist);
+      saveHistorial(newHist);
+      setSelectedIds(new Set());
+      showToast(`✅ Base de datos actualizada: ${clientes.length.toLocaleString()} clientes desde "${file.name}"`);
+    } catch (err) {
+      showToast(`❌ Error al leer el archivo: ${err.message}`);
+    }
+    setUploading(false);
+  };
+
+  // Restore version from history (reload from default)
+  const handleRestoreDefault = () => {
+    if (!confirm("¿Restaurar la base de datos original? Se perderán los cambios cargados.")) return;
+    localStorage.removeItem(SK_BD);
+    setClientesDB(clientesDefault);
+    const entry = { fecha: new Date().toISOString().slice(0, 19).replace("T", " "), registros: clientesDefault.length, origen: "Restauración a base original" };
+    const newHist = [...historial, entry];
+    setHistorial(newHist);
+    saveHistorial(newHist);
+    setSelectedIds(new Set());
+    showToast("🔄 Base de datos restaurada a la versión original");
+  };
 
   // ---------- filtered clients ----------
   const filtered = useMemo(() => {
@@ -167,25 +292,67 @@ export default function IncrementoTarifas() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast */}
+      {toast && <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium">{toast}</div>}
+
       {/* Header */}
       <div className="border-b border-purple-100 bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-3 mb-3">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
-              style={{ background: BRAND_GRADIENT }}
-            >
-              %
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold" style={{ background: BRAND_GRADIENT }}>%</div>
+              <div>
+                <p className="font-bold text-gray-800 text-sm leading-tight">Incremento de Tarifas</p>
+                <p className="text-xs text-gray-500">{clientesDB.length.toLocaleString()} clientes en la base de datos</p>
+              </div>
             </div>
-            <div>
-              <p className="font-bold text-gray-800 text-sm leading-tight">
-                Incremento de Tarifas
-              </p>
-              <p className="text-xs text-gray-500">
-                Ajuste masivo de tarifas para clientes corporativos
-              </p>
-            </div>
+
+            {isAdmin && (
+              <div className="flex gap-2 items-center flex-wrap">
+                <label className={`px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition cursor-pointer ${uploading ? "opacity-50" : ""}`}>
+                  {uploading ? "Cargando..." : "📥 Subir Base de Datos (.xlsx)"}
+                  <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleUpload} disabled={uploading} />
+                </label>
+                <button onClick={() => setShowHist(!showHist)}
+                  className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-200 transition">
+                  📋 Historial ({historial.length})
+                </button>
+                <button onClick={handleRestoreDefault}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200 transition">
+                  🔄 Restaurar original
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Historial de versiones */}
+          {showHist && (
+            <div className="mb-3 bg-purple-50 border border-purple-200 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-purple-800 mb-2">📋 Historial de versiones de la BD</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-purple-100 text-purple-800">
+                      <th className="text-left p-2">#</th>
+                      <th className="text-left p-2">Fecha</th>
+                      <th className="text-right p-2">Registros</th>
+                      <th className="text-left p-2">Origen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...historial].reverse().map((h, i) => (
+                      <tr key={i} className={`border-t border-purple-100 ${i === 0 ? "bg-green-50 font-semibold" : ""}`}>
+                        <td className="p-2 text-purple-500">{i === 0 ? "Actual" : historial.length - i}</td>
+                        <td className="p-2">{h.fecha}</td>
+                        <td className="p-2 text-right">{h.registros.toLocaleString()}</td>
+                        <td className="p-2 text-gray-600">{h.origen}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Step tabs */}
           <div className="flex gap-1 overflow-x-auto">
