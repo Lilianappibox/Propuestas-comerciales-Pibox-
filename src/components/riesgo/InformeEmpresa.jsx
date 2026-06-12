@@ -12,6 +12,116 @@ import {
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const COLORS = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7","#6366F1","#EC4899","#8B5CF6"];
 
+// ── Tabla siempre visible ────────────────────────────────────────────────────
+function TablaUsuariosSedes({ empData, mesLabel }) {
+  const usuarios = empData?.topUsuarios || [];
+  const sedes    = empData?.topSedes    || [];
+  const sinDatos = !usuarios.length && !sedes.length;
+
+  const thStyle = { background: PIBOX_PURPLE };
+  const rowEven = "bg-white";
+  const rowOdd  = "bg-purple-50/40";
+  const tfootRow= "bg-purple-100 font-bold border-t-2 border-purple-200";
+
+  function Tabla({ titulo, icono, filas, keyField, borderColor }) {
+    return (
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2"
+             style={{ borderLeft: `4px solid ${borderColor}` }}>
+          <span className="text-base">{icono}</span>
+          <h4 className="font-bold text-gray-700 text-sm">{titulo}</h4>
+        </div>
+
+        {filas.length === 0 ? (
+          <div className="px-5 py-8 text-center text-gray-400 text-sm">
+            <p className="text-2xl mb-2">📭</p>
+            <p className="font-medium text-gray-500 mb-1">Sin datos disponibles</p>
+            <p className="text-xs">Ve a <b>⚙️ Configuración</b>, elimina <b>{mesLabel}</b><br/>
+            y vuelve a subir el archivo Excel para activar esta tabla.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={thStyle} className="text-white">
+                  <th className="px-3 py-2.5 text-left font-semibold">{keyField}</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Completados</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Total servicios</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">% Completado</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">Costo (service_cost)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((f, i) => (
+                  <tr key={i} className={i % 2 === 0 ? rowEven : rowOdd}>
+                    <td className="px-3 py-2 font-medium text-gray-700 max-w-[180px] truncate">
+                      {f.usuario ?? f.sede}
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold" style={{ color: SEM_VERDE }}>
+                      {f.completados.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-500">{f.total.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-semibold" style={{ color: SEM_VERDE }}>
+                      {f.total > 0 ? fmtPct(f.completados / f.total) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold" style={{ color: PIBOX_PURPLE }}>
+                      {fmtFull(f.service_cost)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className={tfootRow + " text-xs"}>
+                  <td className="px-3 py-2 text-purple-800">Total</td>
+                  <td className="px-3 py-2 text-right" style={{ color: SEM_VERDE }}>
+                    {filas.reduce((s, f) => s + f.completados, 0).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-600">
+                    {filas.reduce((s, f) => s + f.total, 0).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2 text-right" style={{ color: SEM_VERDE }}>
+                    {fmtPct(
+                      filas.reduce((s, f) => s + f.completados, 0) /
+                      Math.max(filas.reduce((s, f) => s + f.total, 0), 1)
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right" style={{ color: PIBOX_PURPLE }}>
+                    {fmtFull(filas.reduce((s, f) => s + f.service_cost, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {sinDatos && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-4 text-sm text-amber-800 flex items-start gap-3">
+          <span className="text-2xl">⚠️</span>
+          <div>
+            <b>Para ver estas tablas debes re-subir el archivo.</b><br/>
+            <span className="text-amber-700">
+              Ve a <b>⚙️ Configuración</b> → 🗑️ elimina <b>{mesLabel}</b> → súbelo de nuevo.
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <Tabla titulo="Servicios completados y costo por usuario"
+               icono="👤" filas={usuarios} keyField="Usuario"
+               borderColor={PIBOX_PURPLE}/>
+        <Tabla titulo="Servicios completados y costo por sede"
+               icono="🏢" filas={sedes} keyField="Sede"
+               borderColor={PIBOX_PINK}/>
+      </div>
+    </div>
+  );
+}
+
 function getUmbrales() {
   try { return {...UMBRALES_DEFAULT,...JSON.parse(localStorage.getItem("pibox_riesgo_umbrales")||"{}")}; }
   catch { return UMBRALES_DEFAULT; }
@@ -105,128 +215,8 @@ export default function InformeEmpresa() {
 
       {empData && score && (
         <>
-          {/* Aviso re-subida si faltan datos de usuario/sede */}
-          {(!empData.topUsuarios?.length && !empData.topSedes?.length) && (
-            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-6">
-              <div className="flex items-start gap-4">
-                <span className="text-3xl">⚠️</span>
-                <div className="flex-1">
-                  <p className="font-bold text-amber-800 text-base mb-1">
-                    Debes re-subir el archivo para ver las tablas por usuario y sede
-                  </p>
-                  <p className="text-amber-700 text-sm mb-4">
-                    El archivo de <b>{dataMes?.label}</b> fue procesado con una versión anterior
-                    que no guardaba los campos <code className="bg-amber-100 px-1 rounded">passenger_name</code> y <code className="bg-amber-100 px-1 rounded">service_cost</code>.
-                  </p>
-                  <div className="bg-white border border-amber-200 rounded-xl p-4 text-sm text-amber-800 space-y-1">
-                    <p className="font-semibold mb-2">📋 Pasos para activarlo:</p>
-                    <p>1. Ve a la pestaña <b>⚙️ Configuración</b></p>
-                    <p>2. Haz clic en 🗑️ junto a <b>{dataMes?.label}</b></p>
-                    <p>3. Vuelve a subir el mismo archivo Excel</p>
-                    <p>4. Regresa a <b>📄 Informe por Empresa</b> y selecciona la empresa</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Tablas Usuario / Sede — visibles en pantalla (fuera del PDF) ── */}
-          {(empData.topUsuarios?.length > 0 || empData.topSedes?.length > 0) && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-
-              {/* Por usuario */}
-              {empData.topUsuarios?.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2"
-                       style={{borderLeft:`4px solid ${PIBOX_PURPLE}`}}>
-                    <span className="text-base">👤</span>
-                    <h4 className="font-bold text-gray-700 text-sm">Servicios completados y costo por usuario</h4>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                          <th className="px-3 py-2.5 text-left font-semibold">Usuario</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Completados</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Total</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">%</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Costo (service_cost)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {empData.topUsuarios.map((u,i)=>(
-                          <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/40"}>
-                            <td className="px-3 py-2 font-medium text-gray-700 max-w-[160px] truncate">{u.usuario}</td>
-                            <td className="px-3 py-2 text-right font-bold" style={{color:SEM_VERDE}}>{u.completados.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right text-gray-500">{u.total.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right font-semibold" style={{color:SEM_VERDE}}>
-                              {u.total>0?fmtPct(u.completados/u.total):"—"}
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(u.service_cost)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-purple-100 font-bold text-xs border-t-2 border-purple-200">
-                          <td className="px-3 py-2 text-purple-800">Total</td>
-                          <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>{empData.topUsuarios.reduce((s,u)=>s+u.completados,0).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{empData.topUsuarios.reduce((s,u)=>s+u.total,0).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>{fmtPct(empData.completados/Math.max(empData.total,1))}</td>
-                          <td className="px-3 py-2 text-right" style={{color:PIBOX_PURPLE}}>{fmtFull(empData.topUsuarios.reduce((s,u)=>s+u.service_cost,0))}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Por sede */}
-              {empData.topSedes?.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2"
-                       style={{borderLeft:`4px solid ${PIBOX_PINK}`}}>
-                    <span className="text-base">🏢</span>
-                    <h4 className="font-bold text-gray-700 text-sm">Servicios completados y costo por sede</h4>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                          <th className="px-3 py-2.5 text-left font-semibold">Sede</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Completados</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Total</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">%</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Costo (service_cost)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {empData.topSedes.map((s,i)=>(
-                          <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/40"}>
-                            <td className="px-3 py-2 font-medium text-gray-700 max-w-[180px] truncate">{s.sede}</td>
-                            <td className="px-3 py-2 text-right font-bold" style={{color:SEM_VERDE}}>{s.completados.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right text-gray-500">{s.total.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right font-semibold" style={{color:SEM_VERDE}}>
-                              {s.total>0?fmtPct(s.completados/s.total):"—"}
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(s.service_cost)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-purple-100 font-bold text-xs border-t-2 border-purple-200">
-                          <td className="px-3 py-2 text-purple-800">Total</td>
-                          <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>{empData.topSedes.reduce((s,r)=>s+r.completados,0).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{empData.topSedes.reduce((s,r)=>s+r.total,0).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>{fmtPct(empData.completados/Math.max(empData.total,1))}</td>
-                          <td className="px-3 py-2 text-right" style={{color:PIBOX_PURPLE}}>{fmtFull(empData.topSedes.reduce((s,r)=>s+r.service_cost,0))}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {/* ── Tablas Usuario / Sede ── siempre visibles ─────────────────── */}
+          <TablaUsuariosSedes empData={empData} mesLabel={dataMes?.label}/>
 
           {/* Botón de descarga */}
           <div className="flex gap-3">
