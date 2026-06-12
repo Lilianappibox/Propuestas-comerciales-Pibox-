@@ -497,7 +497,7 @@ export default function App() {
             {/* ── SINCRONIZACIÓN ── */}
             {/* ── TARIFARIO INTERNO ── */}
             {subTab === SUB_TARIF_INT && (
-              <TarifarioInterno />
+              <TarifarioInterno currentUser={currentUser} />
             )}
 
             {subTab === SUB_SYNC && permisos.gestionarUsuarios && (

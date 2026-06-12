@@ -475,35 +475,130 @@ function Calculadora() {
   );
 }
 
-export default function TarifarioInterno() {
+const SK_TARIFARIO = "pibox_tarifario_interno";
+
+function loadData() {
+  try {
+    const s = localStorage.getItem(SK_TARIFARIO);
+    if (s) return { ...JSON.parse(JSON.stringify(TABLE_DATA)), ...JSON.parse(s) };
+  } catch {}
+  return JSON.parse(JSON.stringify(TABLE_DATA));
+}
+
+function EditableTable({ headers, rows, onChange }) {
+  const updateCell = (ri, ci, val) => {
+    const next = rows.map((r, i) => i === ri ? r.map((c, j) => j === ci ? val : c) : r);
+    onChange(next);
+  };
+  const addRow = () => onChange([...rows, headers.map(() => "")]);
+  const delRow = (ri) => onChange(rows.filter((_, i) => i !== ri));
+
+  return (
+    <div>
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-purple-600 text-white">
+              {headers.map((h, i) => (
+                <th key={i} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}
+              <th className="px-2 py-2 w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} className={`border-t border-gray-100 ${ri % 2 === 0 ? "bg-white" : "bg-purple-50/40"}`}>
+                {row.map((cell, ci) => (
+                  <td key={ci} className="px-1 py-1">
+                    <input value={cell} onChange={(e) => updateCell(ri, ci, e.target.value)}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400 min-w-[80px]" />
+                  </td>
+                ))}
+                <td className="px-1 py-1">
+                  <button onClick={() => delRow(ri)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button onClick={addRow} className="mt-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-200">+ Agregar fila</button>
+    </div>
+  );
+}
+
+export default function TarifarioInterno({ currentUser }) {
+  const isAdmin = currentUser?.rol === "Administrativo";
   const [tab, setTab] = useState("distancia");
-  const current = TABLE_DATA[tab];
+  const [data, setData] = useState(loadData);
+  const [editing, setEditing] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const current = data[tab];
+
+  const updateRows = (key, rows) => {
+    setData((prev) => ({ ...prev, [key]: { ...prev[key], rows } }));
+  };
+  const updateExtraRows = (key, rows) => {
+    setData((prev) => ({ ...prev, [key]: { ...prev[key], extra: { ...prev[key].extra, rows } } }));
+  };
+  const updatePoliticaRows = (key, rows) => {
+    setData((prev) => ({ ...prev, [key]: { ...prev[key], politicas: { ...prev[key].politicas, rows } } }));
+  };
+
+  const handleSave = () => {
+    localStorage.setItem(SK_TARIFARIO, JSON.stringify(data));
+    setEditing(false);
+    setToast("✅ Tarifario guardado");
+    setTimeout(() => setToast(""), 3000);
+  };
+
+  const handleReset = () => {
+    if (!confirm("¿Restaurar tarifario por defecto? Se perderán los cambios.")) return;
+    localStorage.removeItem(SK_TARIFARIO);
+    setData(JSON.parse(JSON.stringify(TABLE_DATA)));
+    setEditing(false);
+    setToast("🔄 Tarifario restaurado");
+    setTimeout(() => setToast(""), 3000);
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium">{toast}</div>
+      )}
+
       {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold text-gray-800">Tarifario Interno</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Tarifario interno de negociaci&oacute;n &mdash; Solo consulta. Utilidad corporativa base: 3%
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Tarifario Interno</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Tarifario interno de negociaci&oacute;n. Utilidad corporativa base: 3%
+          </p>
+        </div>
+        {isAdmin && (
+          <div className="flex gap-2">
+            {editing ? (
+              <>
+                <button onClick={handleSave} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">💾 Guardar</button>
+                <button onClick={() => { setData(loadData()); setEditing(false); }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300">Cancelar</button>
+                <button onClick={handleReset} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg text-sm font-semibold hover:bg-red-200">🔄 Restaurar</button>
+              </>
+            ) : (
+              <button onClick={() => setEditing(true)} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700">✏️ Editar tarifario</button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Info box */}
-      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-start gap-2">
-        <svg
-          className="w-4 h-4 text-purple-500 mt-0.5 shrink-0"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-            clipRule="evenodd"
-          />
-        </svg>
-        <p className="text-xs text-purple-700">
-          Estas tarifas son la base de negociaci&oacute;n. Para tarifas especiales consultar con el l&iacute;der comercial.
+      <div className={`rounded-lg p-3 flex items-start gap-2 ${editing ? "bg-amber-50 border border-amber-200" : "bg-purple-50 border border-purple-200"}`}>
+        <span className="text-sm mt-0.5">{editing ? "✏️" : "ℹ️"}</span>
+        <p className={`text-xs ${editing ? "text-amber-700" : "text-purple-700"}`}>
+          {editing
+            ? "Modo edición activo — modifica las celdas directamente. Haz clic en Guardar cuando termines."
+            : "Estas tarifas son la base de negociación. Para tarifas especiales consultar con el líder comercial."}
         </p>
       </div>
 
@@ -511,64 +606,68 @@ export default function TarifarioInterno() {
       <div className="border-b border-gray-200 overflow-x-auto">
         <nav className="flex gap-1 -mb-px min-w-max">
           {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors rounded-t-lg ${
-                tab === t.id
-                  ? "border-b-2 border-purple-600 text-purple-600 bg-purple-50"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              {t.label}
-            </button>
+                tab === t.id ? "border-b-2 border-purple-600 text-purple-600 bg-purple-50" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}>{t.label}</button>
           ))}
         </nav>
       </div>
 
-      {/* Calculadora o tabla según pestaña */}
+      {/* Contenido */}
       {tab === "calculadora" ? (
         <Calculadora />
       ) : (
         <>
-          <DataTable headers={current.headers} rows={current.rows} />
+          {editing && isAdmin ? (
+            <EditableTable headers={current.headers} rows={current.rows} onChange={(rows) => updateRows(tab, rows)} />
+          ) : (
+            <DataTable headers={current.headers} rows={current.rows} />
+          )}
 
-          {/* Extra table */}
           {current.extra && (
             <div className="mt-6">
               <h3 className="text-sm font-bold text-gray-700 mb-2">{current.extra.title}</h3>
-              <DataTable headers={current.extra.headers} rows={current.extra.rows} />
+              {editing && isAdmin ? (
+                <EditableTable headers={current.extra.headers} rows={current.extra.rows} onChange={(rows) => updateExtraRows(tab, rows)} />
+              ) : (
+                <DataTable headers={current.extra.headers} rows={current.extra.rows} />
+              )}
             </div>
           )}
         </>
       )}
 
-      {/* Políticas específicas de esta pestaña */}
+      {/* Políticas */}
       {current && current.politicas && (
         <div className="mt-6">
           <h3 className="text-sm font-bold text-purple-800 mb-2 flex items-center gap-2">
             <span className="bg-purple-100 rounded-lg px-2 py-0.5">📋</span> Políticas Comerciales y Operativas
           </h3>
-          <div className="overflow-x-auto rounded-lg border border-purple-200">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="bg-purple-100">
-                  {current.politicas.headers.map((h, i) => (
-                    <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold text-purple-800 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {current.politicas.rows.map((row, ri) => (
-                  <tr key={ri} className={`border-t border-purple-100 ${ri % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50 transition-colors`}>
-                    {row.map((cell, ci) => (
-                      <td key={ci} className={`px-4 py-2 ${ci === 0 ? "font-semibold text-purple-700 whitespace-nowrap" : "text-gray-600"}`}>{cell}</td>
+          {editing && isAdmin ? (
+            <EditableTable headers={current.politicas.headers} rows={current.politicas.rows} onChange={(rows) => updatePoliticaRows(tab, rows)} />
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-purple-200">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-purple-100">
+                    {current.politicas.headers.map((h, i) => (
+                      <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold text-purple-800 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {current.politicas.rows.map((row, ri) => (
+                    <tr key={ri} className={`border-t border-purple-100 ${ri % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50 transition-colors`}>
+                      {row.map((cell, ci) => (
+                        <td key={ci} className={`px-4 py-2 ${ci === 0 ? "font-semibold text-purple-700 whitespace-nowrap" : "text-gray-600"}`}>{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
