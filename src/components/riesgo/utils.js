@@ -57,9 +57,10 @@ export function procesarDatos(rows) {
   const toNum = (v) => { const n = Number(String(v ?? "").replace(/[^0-9.-]/g,"")); return isNaN(n)?0:n; };
   const toStr = (v) => String(v ?? "").trim();
 
-  // Mapear por empresa
+  // Mapear por empresa y por ciudad
   const empMap = {};
   const globalWeekly = {};
+  const cityMap = {};
 
   for (const row of rows) {
     const empresa  = toStr(row["company"] || row["Company"] || "Sin empresa");
@@ -135,6 +136,40 @@ export function procesarDatos(rows) {
       if (esCompletado) globalWeekly[semana].completados++;
       if (esCancelado)  globalWeekly[semana].cancelados++;
     }
+
+    // ── Agregación por ciudad ─────────────────────────────────────────────
+    const locality = toStr(row["locality"] || row["sede"] || row["Locality"] || "Sin localidad");
+    const statusLabel = status || "Sin estado";
+
+    if (!cityMap[city]) cityMap[city] = {
+      city, total:0, gmv:0, paquetes:0, completados:0, cancelados:0, expirados:0,
+      localidades:{}, ops:{}, estados:{}, weekly:{},
+    };
+    const cv = cityMap[city];
+    cv.total++;  cv.gmv += gmv;  cv.paquetes += pkgs;
+    if (esCompletado) cv.completados++;
+    if (esCancelado)  cv.cancelados++;
+    if (esExpirado)   cv.expirados++;
+
+    if (!cv.localidades[locality]) cv.localidades[locality] = {total:0,paquetes:0,gmv:0,completados:0,cancelados:0};
+    const lv = cv.localidades[locality];
+    lv.total++; lv.paquetes += pkgs; lv.gmv += gmv;
+    if (esCompletado) lv.completados++;
+    if (esCancelado)  lv.cancelados++;
+
+    if (!cv.ops[op]) cv.ops[op] = {total:0,paquetes:0,gmv:0};
+    cv.ops[op].total++; cv.ops[op].paquetes += pkgs; cv.ops[op].gmv += gmv;
+
+    if (!cv.estados[statusLabel]) cv.estados[statusLabel] = {total:0,paquetes:0};
+    cv.estados[statusLabel].total++; cv.estados[statusLabel].paquetes += pkgs;
+
+    if (semana > 0) {
+      if (!cv.weekly[semana]) cv.weekly[semana] = {gmv:0,servicios:0,paquetes:0,completados:0,cancelados:0,label:semanaLabel};
+      cv.weekly[semana].gmv += gmv; cv.weekly[semana].servicios++;
+      cv.weekly[semana].paquetes += pkgs;
+      if (esCompletado) cv.weekly[semana].completados++;
+      if (esCancelado)  cv.weekly[semana].cancelados++;
+    }
   }
 
   // Convertir a arrays serializables
@@ -198,8 +233,45 @@ export function procesarDatos(rows) {
     }))
     .sort((a,b)=>a.semana-b.semana);
 
+  // Serializar ciudades
+  const ciudades = Object.values(cityMap).map(cv => {
+    const localidades = Object.entries(cv.localidades)
+      .map(([loc,v])=>({loc, ...v,
+        tasa_completado: v.total>0?v.completados/v.total:0,
+        tasa_cancelacion: v.total>0?v.cancelados/v.total:0,
+      }))
+      .sort((a,b)=>b.paquetes-a.paquetes).slice(0,20);
+
+    const ops = Object.entries(cv.ops)
+      .map(([op,v])=>({op, ...v}))
+      .sort((a,b)=>b.total-a.total);
+
+    const estados = Object.entries(cv.estados)
+      .map(([estado,v])=>({estado, ...v}))
+      .sort((a,b)=>b.total-a.total);
+
+    const weekly = Object.entries(cv.weekly)
+      .map(([s,v])=>({
+        semana:Number(s), label:v.label||`S${s}`,
+        gmv:v.gmv, servicios:v.servicios, paquetes:v.paquetes,
+        completados:v.completados, cancelados:v.cancelados,
+        tasa_completado: v.servicios>0?v.completados/v.servicios:0,
+        tasa_cancelacion: v.servicios>0?v.cancelados/v.servicios:0,
+      }))
+      .sort((a,b)=>a.semana-b.semana);
+
+    return {
+      city: cv.city, total: cv.total, gmv: cv.gmv, paquetes: cv.paquetes,
+      completados: cv.completados, cancelados: cv.cancelados, expirados: cv.expirados,
+      tasa_completado: cv.total>0?cv.completados/cv.total:0,
+      tasa_cancelacion: cv.total>0?cv.cancelados/cv.total:0,
+      localidades, ops, estados, weekly,
+    };
+  }).sort((a,b)=>b.paquetes-a.paquetes);
+
   return {
     empresas,
+    ciudades,
     totales: {
       servicios: rows.length,
       gmv: totalGmv,

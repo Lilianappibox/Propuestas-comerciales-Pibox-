@@ -2,12 +2,14 @@ import { useState } from "react";
 import ConfiguracionRiesgo from "./riesgo/ConfiguracionRiesgo";
 import MetricasRiesgo      from "./riesgo/MetricasRiesgo";
 import InformeEmpresa      from "./riesgo/InformeEmpresa";
+import AnalisisCiudad      from "./riesgo/AnalisisCiudad";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 
 const TABS = [
   { id:"config",   icon:"⚙️",  label:"Configuración"      },
   { id:"metricas", icon:"📊",  label:"Métricas"           },
+  { id:"ciudad",   icon:"🏙️",  label:"Análisis por Ciudad" },
   { id:"informe",  icon:"📄",  label:"Informe por Empresa" },
 ];
 
@@ -51,6 +53,7 @@ export default function RiesgoComercial({ currentUser }) {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
         {tab === "metricas" && <MetricasRiesgo />}
+        {tab === "ciudad"   && <AnalisisCiudad />}
         {tab === "informe"  && <InformeEmpresa />}
       </div>
     </div>
