@@ -382,28 +382,32 @@ function Calculadora() {
   const utilCorpHVal = totalHoras * (utilCorpH / 100);
   const cobroClienteH = totalHoras + utilCorpHVal;
 
-  const Field = ({ label, value, onChange, prefix = "", suffix = "" }) => (
-    <div>
-      <label className="block text-xs text-gray-500 mb-1">{label}</label>
-      <div className="flex items-center gap-1">
-        {prefix && <span className="text-xs text-gray-400">{prefix}</span>}
-        <input
-          type="text"
-          inputMode="decimal"
-          value={value}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => {
-            const raw = e.target.value.replace(/[^0-9.,\-]/g, "").replace(",", ".");
-            if (raw === "" || raw === "-") { onChange(0); return; }
-            const n = Number(raw);
-            if (!isNaN(n)) onChange(n);
-          }}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400"
-        />
-        {suffix && <span className="text-xs text-gray-400">{suffix}</span>}
+  const Field = ({ label, value, onChange, prefix = "", suffix = "" }) => {
+    const [raw, setRaw] = useState(null);
+    return (
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}</label>
+        <div className="flex items-center gap-1">
+          {prefix && <span className="text-xs text-gray-400">{prefix}</span>}
+          <input
+            type="text"
+            inputMode="decimal"
+            value={raw !== null ? raw : value}
+            onFocus={(e) => { setRaw(String(value)); e.target.select(); }}
+            onChange={(e) => setRaw(e.target.value)}
+            onBlur={() => {
+              const clean = (raw || "").replace(/[^0-9.,\-]/g, "").replace(",", ".");
+              const n = Number(clean);
+              onChange(isNaN(n) || clean === "" ? 0 : n);
+              setRaw(null);
+            }}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400"
+          />
+          {suffix && <span className="text-xs text-gray-400">{suffix}</span>}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const Result = ({ label, value, color = "text-gray-800" }) => (
     <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
