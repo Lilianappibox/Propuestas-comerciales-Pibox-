@@ -67,6 +67,7 @@ export default function MetricasRiesgo() {
   const [mesKey, setMesKey]           = useState(meses[meses.length-1]?.key || "");
   const [filtroSem, setFiltroSem]     = useState("Todos");
   const [filtroKam, setFiltroKam]     = useState("Todos");
+  const [filtroFactor, setFiltroFactor] = useState("Todos");
   const [busca, setBusca]             = useState("");
   const [empresaSel, setEmpresaSel]   = useState(null);
 
@@ -92,19 +93,41 @@ export default function MetricasRiesgo() {
     });
   }, [dataMes, dataPrev, umb]);
 
-  // Lista dinámica de KAMs del mes seleccionado
+  // Lista dinámica de ejecutivos
   const kamsDisponibles = useMemo(()=>{
     const set = new Set(empresasConScore.map(e=>e.ejecutivo).filter(Boolean));
     return ["Todos", ...Array.from(set).sort()];
   }, [empresasConScore]);
 
+  // Catálogo fijo de factores de riesgo posibles
+  const FACTORES_CATALOGO = [
+    { key:"Todos",                label:"⚠️ Todos los factores" },
+    { key:"Completado bajo",      label:"📉 Completado bajo"       },
+    { key:"Completado moderado",  label:"📊 Completado moderado"   },
+    { key:"Cancelaciones altas",  label:"❌ Cancelaciones altas"   },
+    { key:"Cancelaciones moderadas", label:"⚠️ Cancelaciones moderadas" },
+    { key:"Expirados altos",      label:"⏱️ Expirados altos"       },
+    { key:"Expirados moderados",  label:"⏱️ Expirados moderados"   },
+    { key:"GMV cayó",             label:"💸 GMV cayó"              },
+    { key:"GMV bajó",             label:"📉 GMV bajó"              },
+    { key:"GMV = $0",             label:"🚫 GMV = $0"              },
+    { key:"Sin alertas",          label:"✅ Sin alertas"           },
+  ];
+
   const empresasFiltradas = useMemo(()=>{
     let r = empresasConScore;
     if (filtroSem !== "Todos") r = r.filter(e=>e.semaforo.includes(filtroSem.replace(/🔴|🟡|🟢/,"").trim()));
     if (filtroKam !== "Todos") r = r.filter(e=>e.ejecutivo === filtroKam);
+    if (filtroFactor !== "Todos") {
+      if (filtroFactor === "Sin alertas") {
+        r = r.filter(e => e.factores.length === 0);
+      } else {
+        r = r.filter(e => e.factores.some(f => f.startsWith(filtroFactor)));
+      }
+    }
     if (busca) r = r.filter(e=>e.empresa.toLowerCase().includes(busca.toLowerCase()));
     return r;
-  }, [empresasConScore, filtroSem, filtroKam, busca]);
+  }, [empresasConScore, filtroSem, filtroKam, filtroFactor, busca]);
 
   if (!meses.length) return (
     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-800 text-sm">
@@ -314,6 +337,13 @@ export default function MetricasRiesgo() {
               className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
               {kamsDisponibles.map(k=>(
                 <option key={k} value={k}>{k==="Todos" ? "👤 Todos los ejecutivos" : `👤 ${k}`}</option>
+              ))}
+            </select>
+            {/* Factor de riesgo */}
+            <select value={filtroFactor} onChange={e=>{setFiltroFactor(e.target.value);setEmpresaSel(null);}}
+              className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
+              {FACTORES_CATALOGO.map(f=>(
+                <option key={f.key} value={f.key}>{f.label}</option>
               ))}
             </select>
             {/* Buscar */}
