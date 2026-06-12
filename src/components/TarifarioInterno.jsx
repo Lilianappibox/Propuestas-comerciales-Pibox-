@@ -6,13 +6,11 @@ const TABS = [
   { id: "paquetes", label: "Paquetes" },
   { id: "recargos", label: "Recargos y Adicionales" },
   { id: "manifiesto", label: "Manifiesto" },
-  { id: "premium", label: "Distancia Premium" },
   { id: "storage", label: "Storage" },
   { id: "seguros", label: "Seguros y Recaudo" },
   { id: "rent", label: "Rent B2B" },
-  { id: "tat", label: "TAT (Rendimiento)" },
   { id: "cobertura", label: "Cobertura" },
-  { id: "terceros", label: "Terceros" },
+  { id: "calculadora", label: "🧮 Calculadora" },
 ];
 
 const fmt = (v) => {
@@ -233,14 +231,6 @@ const TABLE_DATA = {
       ["Capacidad", "Verificar capacidad cúbica del vehículo para asegurar transporte adecuado de la mercancía."],
     ]},
   },
-  premium: {
-    headers: premiumHeaders, rows: premiumRows,
-    politicas: { headers: POL, rows: [
-      ["Alcance", "Aplica para distancias hasta 10 Km, solo perímetro urbano/metropolitano (Medellín incluye área metro)."],
-      ["Pilotos", "Enfocado a pilotos fidelizados y capacitados."],
-      ["Vehículo", "Únicamente para negociaciones en Moto."],
-    ]},
-  },
   storage: {
     headers: storageFullHeaders, rows: storageFullRows,
     extra: { headers: alistamientoHeaders, rows: alistamientoRows, title: "Alistamientos" },
@@ -275,14 +265,6 @@ const TABLE_DATA = {
       ["Portal", "https://picap.rent/login"],
     ]},
   },
-  tat: {
-    headers: tatHeaders, rows: tatRows,
-    politicas: { headers: POL, rows: [
-      ["Utilidad", "Estas tarifas están calculadas con utilidad corporativa del 3%."],
-      ["Paradas", "Máximo 40 paradas efectivas por jornada de 8 horas."],
-      ["Parada Extra", "Tarifa por cada parada efectiva adicional al máximo pactado."],
-    ]},
-  },
   cobertura: {
     headers: coberturaHeaders, rows: coberturaRows,
     politicas: { headers: POL, rows: [
@@ -290,13 +272,6 @@ const TABLE_DATA = {
       ["Zonas rojas", "Zonas de no acceso — no se presta servicio en estas zonas por seguridad."],
       ["Doble vía", "Los recargos de zona se aplican en doble vía (ida y vuelta)."],
     ]},
-  },
-  terceros: {
-    headers: ["Política"], rows: [
-      ["Estas tarifas pueden cambiar de un mes a otro. Se debe solicitar cotización antes de comprometer tarifas."],
-      ["La cotización se debe solicitar por correo al líder de operaciones, con copia al líder comercial."],
-      ["Proveedor principal: BULMATIC"],
-    ],
   },
 };
 
@@ -338,6 +313,164 @@ function DataTable({ headers, rows }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+const f = (n) => `$${Math.round(n).toLocaleString("es-CO")}`;
+
+function Calculadora() {
+  const [mode, setMode] = useState("tarifa"); // tarifa | ruta | horas
+  // Calculadora de tarifa
+  const [tarifaCliente, setTarifaCliente] = useState(128000);
+  const [utilCorp, setUtilCorp] = useState(15);
+  const [utilPlat, setUtilPlat] = useState(15);
+  // Calculadora de ruta (distancia)
+  const [kmBase, setKmBase] = useState(3);
+  const [tarifaBase, setTarifaBase] = useState(6650);
+  const [kmRecorridos, setKmRecorridos] = useState(10);
+  const [tarifaKmExtra, setTarifaKmExtra] = useState(1250);
+  const [paradasExtra, setParadasExtra] = useState(2);
+  const [tarifaParada, setTarifaParada] = useState(4500);
+  const [paquetes, setPaquetes] = useState(3);
+  // Calculadora horas
+  const [tarifaHora, setTarifaHora] = useState(16400);
+  const [horas, setHoras] = useState(4);
+  const [horasExtra, setHorasExtra] = useState(0);
+  const [tarifaHoraExtra, setTarifaHoraExtra] = useState(8200);
+  const [utilCorpH, setUtilCorpH] = useState(3);
+
+  // Cálculos tarifa
+  const utilCorpVal = tarifaCliente * (utilCorp / 100);
+  const pagoSinPlat = tarifaCliente - utilCorpVal;
+  const utilPlatVal = pagoSinPlat * (utilPlat / 100);
+  const pagoPiloto = pagoSinPlat - utilPlatVal;
+  const utilTotal = utilCorpVal + utilPlatVal;
+
+  // Cálculos ruta
+  const kmExtraCount = Math.max(0, kmRecorridos - kmBase);
+  const costoBase = tarifaBase;
+  const costoKmExtra = kmExtraCount * tarifaKmExtra;
+  const costoParadas = paradasExtra * tarifaParada;
+  const totalServicio = costoBase + costoKmExtra + costoParadas;
+  const costoPorPaquete = paquetes > 0 ? totalServicio / paquetes : 0;
+
+  // Cálculos horas
+  const costoBaseH = tarifaHora * horas;
+  const costoExtraH = horasExtra * tarifaHoraExtra;
+  const totalHoras = costoBaseH + costoExtraH;
+  const utilCorpHVal = totalHoras * (utilCorpH / 100);
+  const cobroClienteH = totalHoras + utilCorpHVal;
+
+  const Field = ({ label, value, onChange, prefix = "", suffix = "" }) => (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <div className="flex items-center gap-1">
+        {prefix && <span className="text-xs text-gray-400">{prefix}</span>}
+        <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400" />
+        {suffix && <span className="text-xs text-gray-400">{suffix}</span>}
+      </div>
+    </div>
+  );
+
+  const Result = ({ label, value, color = "text-gray-800" }) => (
+    <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+      <span className="text-sm text-gray-600">{label}</span>
+      <span className={`text-sm font-bold ${color}`}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Mode selector */}
+      <div className="flex gap-2">
+        {[
+          { id: "tarifa", label: "💰 Utilidades por Tarifa" },
+          { id: "ruta", label: "🛣️ Costeo de Ruta (Km)" },
+          { id: "horas", label: "⏱️ Costeo por Horas" },
+        ].map((m) => (
+          <button key={m.id} onClick={() => setMode(m.id)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+              mode === m.id ? "bg-purple-600 text-white shadow" : "bg-gray-100 text-gray-600 hover:bg-purple-50"
+            }`}>{m.label}</button>
+        ))}
+      </div>
+
+      {mode === "tarifa" && (
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <h3 className="font-bold text-purple-800 text-sm">Datos de entrada</h3>
+            <Field label="Tarifa al Cliente" value={tarifaCliente} onChange={setTarifaCliente} prefix="$" />
+            <Field label="Utilidad Corporativa" value={utilCorp} onChange={setUtilCorp} suffix="%" />
+            <Field label="Utilidad Plataforma Pibox" value={utilPlat} onChange={setUtilPlat} suffix="%" />
+          </div>
+          <div className="bg-purple-50 rounded-xl p-5 border border-purple-200">
+            <h3 className="font-bold text-purple-800 text-sm mb-3">Resultados</h3>
+            <Result label="Tarifa al Cliente" value={f(tarifaCliente)} color="text-purple-700" />
+            <Result label={`Utilidad Corporativa (${utilCorp}%)`} value={f(utilCorpVal)} color="text-green-600" />
+            <Result label="Pago piloto antes de plataforma" value={f(pagoSinPlat)} />
+            <Result label={`Utilidad Plataforma (${utilPlat}%)`} value={f(utilPlatVal)} color="text-blue-600" />
+            <Result label="Pago al Piloto final" value={f(pagoPiloto)} color="text-orange-600" />
+            <div className="mt-3 pt-3 border-t-2 border-purple-300">
+              <Result label="Utilidad Total (Corp + Plat)" value={f(utilTotal)} color="text-green-700" />
+              <Result label="% Utilidad sobre tarifa" value={`${((utilTotal / tarifaCliente) * 100).toFixed(1)}%`} color="text-green-700" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === "ruta" && (
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <h3 className="font-bold text-purple-800 text-sm">Datos de la ruta</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Km Base" value={kmBase} onChange={setKmBase} />
+              <Field label="Tarifa Base" value={tarifaBase} onChange={setTarifaBase} prefix="$" />
+              <Field label="Km Recorridos" value={kmRecorridos} onChange={setKmRecorridos} />
+              <Field label="Tarifa Km Extra" value={tarifaKmExtra} onChange={setTarifaKmExtra} prefix="$" />
+              <Field label="Paradas Extra" value={paradasExtra} onChange={setParadasExtra} />
+              <Field label="Tarifa Parada" value={tarifaParada} onChange={setTarifaParada} prefix="$" />
+              <Field label="Paquetes en ruta" value={paquetes} onChange={setPaquetes} />
+            </div>
+          </div>
+          <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
+            <h3 className="font-bold text-blue-800 text-sm mb-3">Desglose del Servicio</h3>
+            <Result label="Costo Base" value={f(costoBase)} />
+            <Result label={`Km Extra (${kmExtraCount} km × ${f(tarifaKmExtra)})`} value={f(costoKmExtra)} />
+            <Result label={`Paradas Extra (${paradasExtra} × ${f(tarifaParada)})`} value={f(costoParadas)} />
+            <div className="mt-3 pt-3 border-t-2 border-blue-300">
+              <Result label="Total Servicio" value={f(totalServicio)} color="text-blue-700" />
+              <Result label={`Costo por Paquete (${paquetes} paq)`} value={f(costoPorPaquete)} color="text-purple-700" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === "horas" && (
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <h3 className="font-bold text-purple-800 text-sm">Datos del bloque</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Tarifa / Hora" value={tarifaHora} onChange={setTarifaHora} prefix="$" />
+              <Field label="Horas contratadas" value={horas} onChange={setHoras} />
+              <Field label="Horas extra" value={horasExtra} onChange={setHorasExtra} />
+              <Field label="Tarifa hora extra" value={tarifaHoraExtra} onChange={setTarifaHoraExtra} prefix="$" />
+              <Field label="Utilidad Corporativa" value={utilCorpH} onChange={setUtilCorpH} suffix="%" />
+            </div>
+          </div>
+          <div className="bg-green-50 rounded-xl p-5 border border-green-200">
+            <h3 className="font-bold text-green-800 text-sm mb-3">Desglose</h3>
+            <Result label={`Base (${horas}h × ${f(tarifaHora)})`} value={f(costoBaseH)} />
+            {horasExtra > 0 && <Result label={`Horas extra (${horasExtra}h × ${f(tarifaHoraExtra)})`} value={f(costoExtraH)} />}
+            <Result label="Subtotal" value={f(totalHoras)} />
+            <Result label={`Utilidad Corp. (${utilCorpH}%)`} value={f(utilCorpHVal)} color="text-green-600" />
+            <div className="mt-3 pt-3 border-t-2 border-green-300">
+              <Result label="Cobro al Cliente" value={f(cobroClienteH)} color="text-green-700" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -393,19 +526,25 @@ export default function TarifarioInterno() {
         </nav>
       </div>
 
-      {/* Table */}
-      <DataTable headers={current.headers} rows={current.rows} />
+      {/* Calculadora o tabla según pestaña */}
+      {tab === "calculadora" ? (
+        <Calculadora />
+      ) : (
+        <>
+          <DataTable headers={current.headers} rows={current.rows} />
 
-      {/* Extra table (ej: alistamientos dentro de storage, recaudo dentro de seguros) */}
-      {current.extra && (
-        <div className="mt-6">
-          <h3 className="text-sm font-bold text-gray-700 mb-2">{current.extra.title}</h3>
-          <DataTable headers={current.extra.headers} rows={current.extra.rows} />
-        </div>
+          {/* Extra table */}
+          {current.extra && (
+            <div className="mt-6">
+              <h3 className="text-sm font-bold text-gray-700 mb-2">{current.extra.title}</h3>
+              <DataTable headers={current.extra.headers} rows={current.extra.rows} />
+            </div>
+          )}
+        </>
       )}
 
       {/* Políticas específicas de esta pestaña */}
-      {current.politicas && (
+      {current && current.politicas && (
         <div className="mt-6">
           <h3 className="text-sm font-bold text-purple-800 mb-2 flex items-center gap-2">
             <span className="bg-purple-100 rounded-lg px-2 py-0.5">📋</span> Políticas Comerciales y Operativas
