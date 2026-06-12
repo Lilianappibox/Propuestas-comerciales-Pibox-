@@ -11,6 +11,7 @@ const TABS = [
   { id: "seguros", label: "Seguros y Recaudo" },
   { id: "rent", label: "Rent B2B" },
   { id: "cobertura", label: "Cobertura" },
+  { id: "onboarding", label: "🚀 Onboarding 2.0" },
   { id: "calculadora", label: "🧮 Calculadora" },
   { id: "incremento", label: "📈 Incremento Tarifas" },
 ];
@@ -273,6 +274,23 @@ const TABLE_DATA = {
       ["Recargos zona", "Periferia, aledaños y lejanía generan recargo adicional según tabla de recargos."],
       ["Zonas rojas", "Zonas de no acceso — no se presta servicio en estas zonas por seguridad."],
       ["Doble vía", "Los recargos de zona se aplican en doble vía (ida y vuelta)."],
+    ]},
+  },
+  onboarding: {
+    headers: ["Tipo de Solicitud", "Solicitud Mínima Operaciones", "Tiempo Compromiso — Moto", "Tiempo Compromiso — Carro", "Tiempo Compromiso — Carry", "Cumplimiento (Ciudad Fácil)", "Cumplimiento (Ciudad Complicada)"],
+    rows: [
+      ["Planeada", "7 días calendario antes", "Cobertura en fecha solicitada", "Cobertura en fecha solicitada +1 día", "Cobertura en fecha solicitada +2 días", "95%", "85%"],
+      ["Prioritaria", "72 horas antes", "Cobertura en máx. 72 horas", "Cobertura en máx. 96 horas", "Cobertura en máx. 120 horas", "90%", "75%"],
+      ["Urgente", "24 horas antes", "Gestión inmediata según disponibilidad (objetivo 48h)", "Gestión inmediata según disponibilidad (objetivo 72h)", "Gestión inmediata según disponibilidad (objetivo 5 días)", "60%", "40%"],
+      ["Emergencia crítica", "Menos de 24 horas", "Sin garantía total (mejor esfuerzo)", "Sin garantía total (mejor esfuerzo, prioridad baja)", "Sin garantía (lista de espera)", "30%", "15%"],
+    ],
+    politicas: { headers: POL, rows: [
+      ["Planeada", "Es el tipo ideal de solicitud. Se recomienda planificar con 7 días de anticipación para garantizar cobertura total en la fecha solicitada."],
+      ["Prioritaria", "Solicitar con mínimo 72 horas de anticipación. El tiempo de compromiso varía según tipo de vehículo y complejidad de la ciudad."],
+      ["Urgente", "Se gestiona de forma inmediata según disponibilidad operativa. No se garantiza cobertura total. El objetivo de cumplimiento varía entre 40-60%."],
+      ["Emergencia crítica", "Solicitudes con menos de 24 horas. Se atiende con mejor esfuerzo, sin garantía. Prioridad baja para vehículos de carga."],
+      ["Ciudad fácil", "Bogotá, Medellín, Cali, Barranquilla — ciudades con mayor flota disponible y cobertura operativa."],
+      ["Ciudad complicada", "Ciudades secundarias o con menor cobertura operativa. El cumplimiento esperado es menor."],
     ]},
   },
 };
