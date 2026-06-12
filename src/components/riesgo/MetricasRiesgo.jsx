@@ -309,11 +309,11 @@ export default function MetricasRiesgo() {
                 {s}
               </button>
             ))}
-            {/* KAM */}
+            {/* Ejecutivo */}
             <select value={filtroKam} onChange={e=>{setFiltroKam(e.target.value);setEmpresaSel(null);}}
               className="border border-gray-200 rounded-lg px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
               {kamsDisponibles.map(k=>(
-                <option key={k} value={k}>{k==="Todos" ? "👤 Todos los KAMs" : `👤 ${k}`}</option>
+                <option key={k} value={k}>{k==="Todos" ? "👤 Todos los ejecutivos" : `👤 ${k}`}</option>
               ))}
             </select>
             {/* Buscar */}
