@@ -113,6 +113,16 @@ export default function Configuracion({ data, onSave }) {
       <div className="flex flex-wrap gap-3 items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-purple-800">⚙️ Módulo de Configuración</h2>
         <div className="flex gap-2 flex-wrap">
+          <button onClick={() => {
+            // Publicar: guarda en la clave compartida para que KAMs vean los datos
+            onSave(form);
+            try { localStorage.setItem("pibox_cierre_shared", JSON.stringify(form)); } catch {}
+            setMsg("✅ Datos publicados para todo el equipo");
+            setTimeout(() => setMsg(""), 4000);
+          }}
+            className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition">
+            📢 Publicar para el equipo
+          </button>
           <button onClick={handleExportJSON}
             className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
             💾 Exportar JSON
