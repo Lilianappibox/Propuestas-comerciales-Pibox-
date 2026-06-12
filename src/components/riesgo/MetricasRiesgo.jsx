@@ -30,14 +30,23 @@ const TT = ({active,payload,label,fmt}) => {
   );
 };
 
-// ── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({icon,label,value,sub,borderColor}) {
+// ── KPI Card con delta ────────────────────────────────────────────────────────
+function KpiCard({icon,label,value,borderColor,delta,deltaLabel,invertDelta}) {
+  // delta: número decimal (ej 0.078 = +7.8%) o null
+  const showDelta = delta !== null && delta !== undefined;
+  const isPositive = invertDelta ? delta < 0 : delta > 0;
+  const deltaColor = showDelta ? (isPositive ? SEM_VERDE : SEM_ROJO) : "#9CA3AF";
+  const deltaArrow = showDelta ? (delta > 0 ? "▲" : "▼") : "";
+  const deltaText  = showDelta
+    ? `${deltaArrow} ${Math.abs(delta*100).toFixed(1)}% vs mes ant.`
+    : deltaLabel || "Sin mes anterior";
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4"
          style={{borderLeft:`4px solid ${borderColor||PIBOX_PURPLE}`}}>
       <p className="text-xs text-gray-500 uppercase tracking-wide">{icon} {label}</p>
       <p className="text-2xl font-extrabold mt-1" style={{color:borderColor||PIBOX_PURPLE}}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      <p className="text-xs font-semibold mt-1" style={{color:deltaColor}}>{deltaText}</p>
     </div>
   );
 }
@@ -97,9 +106,19 @@ export default function MetricasRiesgo() {
   const tcGlobal  = empresasFiltradas.reduce((s,e)=>s+e.completados,0) /
                     Math.max(empresasFiltradas.reduce((s,e)=>s+e.total,0),1);
 
-  // Variación GMV global
-  const gmvPrevTotal = dataPrev?.empresas?.reduce((s,e)=>s+e.gmv,0) || 0;
-  const varGmv = gmvPrevTotal > 0 ? (gmvTotal - gmvPrevTotal)/gmvPrevTotal : null;
+  // ── Totales mes anterior ─────────────────────────────────────────────────
+  const empPrevAll    = dataPrev?.empresas || [];
+  const gmvPrevTotal  = empPrevAll.reduce((s,e)=>s+e.gmv,0);
+  const totPrevSvc    = empPrevAll.reduce((s,e)=>s+e.total,0);
+  const compPrevSvc   = empPrevAll.reduce((s,e)=>s+e.completados,0);
+  const tcPrev        = totPrevSvc > 0 ? compPrevSvc/totPrevSvc : null;
+  const nEmpPrev      = empPrevAll.length;
+  const nRojoPrev     = empPrevAll.filter(e=>calcularScore(e,null,umb).color==="rojo").length;
+
+  const varGmv     = gmvPrevTotal  > 0 ? (gmvTotal - gmvPrevTotal)/gmvPrevTotal  : null;
+  const varEmp     = nEmpPrev      > 0 ? (empresasFiltradas.length - nEmpPrev)/nEmpPrev : null;
+  const varRojo    = nRojoPrev     > 0 ? (nRojo - nRojoPrev)/nRojoPrev            : null;
+  const varTc      = tcPrev !== null   ? tcGlobal - tcPrev                         : null;
 
   const empSel = empresaSel ? empresasConScore.find(e=>e.empresa===empresaSel) : null;
 
@@ -133,12 +152,13 @@ export default function MetricasRiesgo() {
 
       {/* KPIs globales */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KpiCard icon="🏢" label="Empresas"       value={empresasFiltradas.length.toLocaleString()} borderColor={PIBOX_PURPLE}/>
-        <KpiCard icon="🔴" label="Riesgo crítico" value={nRojo}     borderColor={SEM_ROJO}/>
-        <KpiCard icon="🟡" label="Riesgo medio"   value={nAmarillo} borderColor={SEM_AMARILLO}/>
-        <KpiCard icon="🟢" label="Saludables"     value={nVerde}    borderColor={SEM_VERDE}/>
-        <KpiCard icon="💰" label="GMV Total"       value={fmtFull(gmvTotal)} borderColor={PIBOX_PURPLE}/>
-        <KpiCard icon="✅" label="% Completado"    value={fmtPct(tcGlobal)} borderColor={SEM_VERDE}/>
+        <KpiCard icon="🏢" label="Empresas"       value={empresasFiltradas.length.toLocaleString()} borderColor={PIBOX_PURPLE} delta={varEmp}/>
+        <KpiCard icon="🔴" label="Riesgo crítico" value={nRojo}     borderColor={SEM_ROJO}     delta={varRojo}  invertDelta/>
+        <KpiCard icon="🟡" label="Riesgo medio"   value={nAmarillo} borderColor={SEM_AMARILLO} delta={null} deltaLabel={mesPrevMeta ? `Prev: ${empPrevAll.filter(e=>calcularScore(e,null,umb).color==="amarillo").length}` : "Sin mes anterior"}/>
+        <KpiCard icon="🟢" label="Saludables"     value={nVerde}    borderColor={SEM_VERDE}    delta={null} deltaLabel={mesPrevMeta ? `Prev: ${empPrevAll.filter(e=>calcularScore(e,null,umb).color==="verde").length}` : "Sin mes anterior"}/>
+        <KpiCard icon="💰" label="GMV Total"       value={fmtFull(gmvTotal)} borderColor={PIBOX_PURPLE} delta={varGmv}
+          deltaLabel={mesPrevMeta ? `Prev: ${fmtFull(gmvPrevTotal)}` : "Sin mes anterior"}/>
+        <KpiCard icon="✅" label="% Completado"    value={fmtPct(tcGlobal)} borderColor={SEM_VERDE} delta={varTc}/>
       </div>
 
       {/* Gráficas resumen */}
@@ -164,18 +184,26 @@ export default function MetricasRiesgo() {
 
         {/* GMV por ciudad */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 lg:col-span-2">
-          <h3 className="font-bold text-gray-700 text-sm mb-3">GMV por ciudad (top 10)</h3>
+          <h3 className="font-bold text-gray-700 text-sm mb-1">GMV por ciudad (top 10)</h3>
+          {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={tot?.topCiudades?.slice(0,10)||[]} margin={{top:0,right:0,left:0,bottom:30}}>
+            <BarChart
+              data={(() => {
+                const top = tot?.topCiudades?.slice(0,10) || [];
+                const prevCiudades = dataPrev?.totales?.topCiudades || [];
+                return top.map(c => ({
+                  ...c,
+                  gmvPrev: prevCiudades.find(p=>p.city===c.city)?.gmv || 0,
+                }));
+              })()}
+              margin={{top:0,right:0,left:0,bottom:30}}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
               <XAxis dataKey="city" tick={{fontSize:10}} angle={-35} textAnchor="end" interval={0}/>
               <YAxis tick={{fontSize:10}} tickFormatter={v=>fmtM(v)}/>
-              <Tooltip content={<TT fmt={fmtFull}/>}/>
-              <Bar dataKey="gmv" name="GMV" radius={[4,4,0,0]}>
-                {(tot?.topCiudades||[]).slice(0,10).map((_,i)=>(
-                  <Cell key={i} fill={i===0?PIBOX_PURPLE:i===1?PIBOX_PINK:"#A855F7"}/>
-                ))}
-              </Bar>
+              <Tooltip formatter={v=>fmtFull(v)}/>
+              <Legend iconSize={8} wrapperStyle={{fontSize:10,paddingTop:8}}/>
+              <Bar dataKey="gmv"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[4,4,0,0]}/>
+              {mesPrevMeta && <Bar dataKey="gmvPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[4,4,0,0]} fillOpacity={0.6}/>}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -184,41 +212,67 @@ export default function MetricasRiesgo() {
       {/* Evolución semanal */}
       {tot?.weekly?.length > 0 && (
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <h3 className="font-bold text-gray-700 text-sm mb-4">📈 Evolución semanal</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-700 text-sm">📈 Evolución semanal</h3>
+            {mesPrevMeta && (
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PURPLE}}></span>{dataMes?.label}</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PINK,opacity:0.6}}></span>{mesPrevMeta.label}</span>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-gray-500 mb-2 font-semibold">GMV por semana</p>
               <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={tot.weekly}>
+                <BarChart data={tot.weekly.map((w,i)=>({
+                    ...w,
+                    gmvPrev: dataPrev?.totales?.weekly?.[i]?.gmv ?? null,
+                  }))} margin={{right:4}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
                   <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
-                  <YAxis tick={{fontSize:10}} tickFormatter={v=>fmtM(v)}/>
-                  <Tooltip content={<TT fmt={fmtFull}/>}/>
-                  <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
+                  <YAxis tick={{fontSize:9}} tickFormatter={fmtM}/>
+                  <Tooltip formatter={v=>fmtFull(v)}/>
+                  <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                  <Bar dataKey="gmv"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
+                  {mesPrevMeta && <Bar dataKey="gmvPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[3,3,0,0]} fillOpacity={0.55}/>}
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-2 font-semibold">Servicios por semana</p>
               <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={tot.weekly}>
+                <BarChart data={tot.weekly.map((w,i)=>({
+                    ...w,
+                    serviciosPrev: dataPrev?.totales?.weekly?.[i]?.servicios ?? null,
+                  }))} margin={{right:4}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
                   <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
-                  <YAxis tick={{fontSize:10}}/>
-                  <Tooltip content={<TT/>}/>
-                  <Bar dataKey="servicios" name="Servicios" fill={PIBOX_PINK} radius={[3,3,0,0]}/>
+                  <YAxis tick={{fontSize:9}}/>
+                  <Tooltip/>
+                  <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                  <Bar dataKey="servicios"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
+                  {mesPrevMeta && <Bar dataKey="serviciosPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[3,3,0,0]} fillOpacity={0.55}/>}
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-2 font-semibold">% Completado / Cancelación</p>
               <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={tot.weekly}>
+                <LineChart data={tot.weekly.map((w,i)=>({
+                    ...w,
+                    tc_prev:   dataPrev?.totales?.weekly?.[i]?.tasa_completado  ?? null,
+                    canc_prev: dataPrev?.totales?.weekly?.[i]?.tasa_cancelacion ?? null,
+                  }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
                   <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
-                  <YAxis tick={{fontSize:10}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
+                  <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                   <Tooltip formatter={v=>fmtPct(v)}/>
-                  <Legend iconSize={8} wrapperStyle={{fontSize:10}}/>
-                  <Line dataKey="tasa_completado"  name="Completado"  stroke={SEM_VERDE}  strokeWidth={2} dot={{r:3}}/>
-                  <Line dataKey="tasa_cancelacion" name="Cancelación" stroke={SEM_ROJO}   strokeWidth={2} dot={{r:3}} strokeDasharray="5 3"/>
+                  <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                  <Line dataKey="tasa_completado"  name="Completado"           stroke={SEM_VERDE} strokeWidth={2} dot={{r:3}}/>
+                  <Line dataKey="tasa_cancelacion" name="Cancelación"          stroke={SEM_ROJO}  strokeWidth={2} dot={{r:3}} strokeDasharray="5 3"/>
+                  {mesPrevMeta && <Line dataKey="tc_prev"   name="Completado (prev)"   stroke={SEM_VERDE} strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
+                  {mesPrevMeta && <Line dataKey="canc_prev" name="Cancelación (prev)"  stroke={SEM_ROJO}  strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
                 </LineChart>
               </ResponsiveContainer>
             </div>
