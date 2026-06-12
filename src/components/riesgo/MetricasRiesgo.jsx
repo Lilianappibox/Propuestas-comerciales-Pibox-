@@ -79,10 +79,17 @@ export default function MetricasRiesgo() {
 
   const empresasConScore = useMemo(()=>{
     if (!dataMes) return [];
+    const ORDER = { rojo: 0, amarillo: 1, verde: 2 };
     return dataMes.empresas.map(e => {
       const prev = dataPrev?.empresas?.find(p=>p.empresa===e.empresa);
       return { ...e, ...calcularScore(e, prev||null, umb) };
-    }).sort((a,b)=>a.score-b.score);
+    }).sort((a,b) => {
+      // 1º prioridad: nivel de riesgo (rojo → amarillo → verde)
+      const riskDiff = ORDER[a.color] - ORDER[b.color];
+      if (riskDiff !== 0) return riskDiff;
+      // 2º prioridad: GMV más alto primero dentro del mismo nivel
+      return b.gmv - a.gmv;
+    });
   }, [dataMes, dataPrev, umb]);
 
   // Lista dinámica de KAMs del mes seleccionado
