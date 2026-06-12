@@ -12,6 +12,7 @@ import PiboxLogo from "./components/PiboxLogo";
 import SyncData from "./components/SyncData";
 import CierreComercial  from "./components/CierreComercial";
 import RiesgoComercial  from "./components/RiesgoComercial";
+import TarifarioInterno from "./components/TarifarioInterno";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -26,6 +27,7 @@ const SUB_SAVED     = "saved";
 const SUB_TARIFARIO = "tarifario";
 const SUB_PLANTILLA = "plantilla";
 const SUB_SYNC      = "sync";
+const SUB_TARIF_INT = "tarifario-interno";
 
 // Vistas principales
 const VIEW_PROPUESTAS = "propuestas";
@@ -212,6 +214,7 @@ export default function App() {
     { id: SUB_SAVED,     label: "📁 Mis Propuestas", icon: "📁" },
     { id: SUB_TARIFARIO, label: "💰 Tarifario",      icon: "💰", visible: permisos.verTarifario },
     { id: SUB_PLANTILLA, label: "📝 Plantilla",      icon: "📝", visible: permisos.editarPlantilla },
+    { id: SUB_TARIF_INT, label: "📊 Tarifario Interno", icon: "📊" },
     { id: SUB_SYNC,      label: "🔄 Sincronización", icon: "🔄", visible: permisos.gestionarUsuarios },
   ].filter((t) => t.visible !== false);
 
@@ -492,6 +495,11 @@ export default function App() {
             )}
 
             {/* ── SINCRONIZACIÓN ── */}
+            {/* ── TARIFARIO INTERNO ── */}
+            {subTab === SUB_TARIF_INT && (
+              <TarifarioInterno />
+            )}
+
             {subTab === SUB_SYNC && permisos.gestionarUsuarios && (
               <SyncData />
             )}
