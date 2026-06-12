@@ -50,8 +50,8 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
       idx[key] = entry;
       saveIndex(idx);
 
-      // Guardar data procesada
-      saveMesData(key, { ...entry, empresas: processed.empresas });
+      // Guardar data procesada (empresas + ciudades)
+      saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades });
 
       const fresh = mesesDisponibles();
       setMeses(fresh);

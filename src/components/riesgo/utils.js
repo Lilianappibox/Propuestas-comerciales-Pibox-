@@ -138,8 +138,8 @@ export function procesarDatos(rows) {
     }
 
     // ── Agregación por ciudad ─────────────────────────────────────────────
-    const locality = toStr(row["locality"] || row["sede"] || row["Locality"] || "Sin localidad");
-    const statusLabel = status || "Sin estado";
+    const locality    = toStr(row["locality"]      || row["Locality"] || "Sin localidad");
+    const estadoBk    = toStr(row["estado_booking"] || row["estado_Booking"] || status || "Sin estado");
 
     if (!cityMap[city]) cityMap[city] = {
       city, total:0, gmv:0, paquetes:0, completados:0, cancelados:0, expirados:0,
@@ -160,8 +160,8 @@ export function procesarDatos(rows) {
     if (!cv.ops[op]) cv.ops[op] = {total:0,paquetes:0,gmv:0};
     cv.ops[op].total++; cv.ops[op].paquetes += pkgs; cv.ops[op].gmv += gmv;
 
-    if (!cv.estados[statusLabel]) cv.estados[statusLabel] = {total:0,paquetes:0};
-    cv.estados[statusLabel].total++; cv.estados[statusLabel].paquetes += pkgs;
+    if (!cv.estados[estadoBk]) cv.estados[estadoBk] = {total:0,paquetes:0};
+    cv.estados[estadoBk].total++; cv.estados[estadoBk].paquetes += pkgs;
 
     if (semana > 0) {
       if (!cv.weekly[semana]) cv.weekly[semana] = {gmv:0,servicios:0,paquetes:0,completados:0,cancelados:0,label:semanaLabel};
