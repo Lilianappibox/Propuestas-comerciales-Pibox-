@@ -10,7 +10,8 @@ import Login from "./components/Login";
 import PropuestasSaved, { loadSaved, storeSaved } from "./components/PropuestasSaved";
 import PiboxLogo from "./components/PiboxLogo";
 import SyncData from "./components/SyncData";
-import CierreComercial from "./components/CierreComercial";
+import CierreComercial  from "./components/CierreComercial";
+import RiesgoComercial  from "./components/RiesgoComercial";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -30,6 +31,7 @@ const SUB_SYNC      = "sync";
 const VIEW_PROPUESTAS = "propuestas";
 const VIEW_USUARIOS   = "usuarios";
 const VIEW_CIERRE     = "cierre";
+const VIEW_RIESGO     = "riesgo";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700",
@@ -200,6 +202,7 @@ export default function App() {
     { id: VIEW_PROPUESTAS, label: "📋 Propuestas Comerciales", visible: true },
     { id: VIEW_USUARIOS,   label: "👥 Usuarios",               visible: permisos.gestionarUsuarios },
     { id: VIEW_CIERRE,     label: "📊 Cierre Comercial",       visible: !!permisos.verCierreComercial },
+    { id: VIEW_RIESGO,     label: "🚨 Riesgo Comercial",       visible: !!permisos.verRiesgoComercial },
   ].filter((v) => v.visible);
 
   // ── Sub-tabs de Propuestas Comerciales ──
@@ -510,6 +513,13 @@ export default function App() {
          ══════════════════════════════════════════════════════════════════════ */}
       {view === VIEW_CIERRE && (
         <CierreComercial currentUser={currentUser} />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: RIESGO COMERCIAL 360°
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_RIESGO && permisos.verRiesgoComercial && (
+        <RiesgoComercial currentUser={currentUser} />
       )}
     </div>
   );

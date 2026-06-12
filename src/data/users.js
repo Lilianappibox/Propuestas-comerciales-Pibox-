@@ -6,22 +6,24 @@ export const ROLES = {
 // Permisos base por rol — el Admin nunca cambia
 export const PERMISOS_BASE = {
   [ROLES.KAM]: {
-    verPropuesta:       true,
-    verTarifario:       false,
-    editarTarifas:      false,
-    editarPlantilla:    false,
-    verUsuarios:        false,
-    gestionarUsuarios:  false,
-    verCierreComercial: false,  // el Admin lo activa por KAM
+    verPropuesta:        true,
+    verTarifario:        false,
+    editarTarifas:       false,
+    editarPlantilla:     false,
+    verUsuarios:         false,
+    gestionarUsuarios:   false,
+    verCierreComercial:  false,
+    verRiesgoComercial:  false,  // el Admin lo activa por KAM
   },
   [ROLES.ADMIN]: {
-    verPropuesta:       true,
-    verTarifario:       true,
-    editarTarifas:      true,
-    editarPlantilla:    true,
-    verUsuarios:        true,
-    gestionarUsuarios:  true,
-    verCierreComercial: true,   // Admin siempre puede verlo
+    verPropuesta:        true,
+    verTarifario:        true,
+    editarTarifas:       true,
+    editarPlantilla:     true,
+    verUsuarios:         true,
+    gestionarUsuarios:   true,
+    verCierreComercial:  true,
+    verRiesgoComercial:  true,   // Admin siempre puede verlo
   },
 };
 
@@ -30,7 +32,8 @@ export const PERMISOS_CONFIGURABLES_KAM = [
   { id: "verTarifario",       label: "Ver tarifario",              desc: "Puede ver las tablas de tarifas" },
   { id: "editarTarifas",      label: "Editar tarifas",             desc: "Puede modificar precios y ciudades" },
   { id: "editarPlantilla",    label: "Editar plantilla",           desc: "Puede editar los textos estándar y ver historial" },
-  { id: "verCierreComercial", label: "Ver Cierre Comercial",       desc: "Puede acceder al tablero de cierre mensual" },
+  { id: "verCierreComercial",  label: "Ver Cierre Comercial",         desc: "Puede acceder al tablero de cierre mensual" },
+  { id: "verRiesgoComercial",  label: "Ver Riesgo Comercial 360°",   desc: "Puede acceder al tablero de riesgo de clientes" },
 ];
 
 /**
