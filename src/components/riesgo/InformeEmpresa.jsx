@@ -4,7 +4,7 @@ import {
   LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell,
 } from "recharts";
 import {
-  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtCOP,
+  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtCOP, fmtFull,
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT, labelMes,
 } from "./utils";
@@ -249,6 +249,7 @@ export default function InformeEmpresa() {
                       <BarChart data={empData.weekly}>
                         <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
                         <YAxis tick={{fontSize:9}} tickFormatter={fmtM}/>
+
                         <Tooltip formatter={v=>fmtCOP(v)}/>
                         <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
                       </BarChart>
@@ -304,7 +305,7 @@ export default function InformeEmpresa() {
                             return (
                               <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
                                 <td className="px-3 py-1.5">{c.city}</td>
-                                <td className="px-3 py-1.5 text-right font-semibold">{fmtM(c.gmv)}</td>
+                                <td className="px-3 py-1.5 text-right font-semibold">{fmtFull(c.gmv)}</td>
                                 <td className="px-3 py-1.5 text-right">{((c.gmv/tot)*100).toFixed(1)}%</td>
                               </tr>
                             );

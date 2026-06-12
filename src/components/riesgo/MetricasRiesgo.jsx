@@ -170,7 +170,7 @@ export default function MetricasRiesgo() {
               <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
               <XAxis dataKey="city" tick={{fontSize:10}} angle={-35} textAnchor="end" interval={0}/>
               <YAxis tick={{fontSize:10}} tickFormatter={v=>fmtM(v)}/>
-              <Tooltip content={<TT fmt={fmtM}/>}/>
+              <Tooltip content={<TT fmt={fmtFull}/>}/>
               <Bar dataKey="gmv" name="GMV" radius={[4,4,0,0]}>
                 {(tot?.topCiudades||[]).slice(0,10).map((_,i)=>(
                   <Cell key={i} fill={i===0?PIBOX_PURPLE:i===1?PIBOX_PINK:"#A855F7"}/>
@@ -192,7 +192,7 @@ export default function MetricasRiesgo() {
                 <BarChart data={tot.weekly}>
                   <XAxis dataKey="semana" tick={{fontSize:10}} tickFormatter={v=>`S${v}`}/>
                   <YAxis tick={{fontSize:10}} tickFormatter={v=>fmtM(v)}/>
-                  <Tooltip content={<TT fmt={fmtM}/>}/>
+                  <Tooltip content={<TT fmt={fmtFull}/>}/>
                   <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
                 </BarChart>
               </ResponsiveContainer>
@@ -270,7 +270,7 @@ export default function MetricasRiesgo() {
                   <td className="px-3 py-2 font-semibold" style={{color:SEM_VERDE}}>{fmtPct(e.tasa_completado)}</td>
                   <td className="px-3 py-2 font-semibold" style={{color:SEM_ROJO}}>{fmtPct(e.tasa_cancelacion)}</td>
                   <td className="px-3 py-2">{fmtPct(e.tasa_expirado)}</td>
-                  <td className="px-3 py-2 font-semibold text-gray-700">{fmtM(e.gmv)}</td>
+                  <td className="px-3 py-2 font-semibold text-gray-700">{fmtFull(e.gmv)}</td>
                   <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate">{e.ejecutivo}</td>
                   <td className="px-3 py-2 text-gray-500 max-w-[200px]">
                     {e.factores.length > 0
@@ -324,7 +324,7 @@ function DrillDown({ empresa, mesLabel }) {
           {icon:"✅",label:"Completado", val:fmtPct(empresa.tasa_completado),  col:SEM_VERDE},
           {icon:"❌",label:"Cancelación",val:fmtPct(empresa.tasa_cancelacion), col:SEM_ROJO},
           {icon:"⏱️",label:"Expirados",  val:fmtPct(empresa.tasa_expirado),    col:SEM_AMARILLO},
-          {icon:"💰",label:"GMV",         val:fmtM(empresa.gmv),               col:PIBOX_PURPLE},
+          {icon:"💰",label:"GMV",         val:fmtFull(empresa.gmv),            col:PIBOX_PURPLE},
         ].map(k=>(
           <div key={k.label} className="bg-gray-50 rounded-xl p-3 border border-gray-100"
                style={{borderLeft:`3px solid ${k.col}`}}>
@@ -343,7 +343,7 @@ function DrillDown({ empresa, mesLabel }) {
               <BarChart data={empresa.weekly}>
                 <XAxis dataKey="semana" tick={{fontSize:9}} tickFormatter={v=>`S${v}`}/>
                 <YAxis tick={{fontSize:9}} tickFormatter={fmtM}/>
-                <Tooltip content={<TT fmt={fmtM}/>}/>
+                <Tooltip content={<TT fmt={fmtFull}/>}/>
                 <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
               </BarChart>
             </ResponsiveContainer>
@@ -385,7 +385,7 @@ function DrillDown({ empresa, mesLabel }) {
               <BarChart data={empresa.topCiudades.slice(0,6)} layout="vertical" margin={{left:60,right:0,top:0,bottom:0}}>
                 <XAxis type="number" tick={{fontSize:9}} tickFormatter={fmtM}/>
                 <YAxis type="category" dataKey="city" tick={{fontSize:9}} width={56}/>
-                <Tooltip content={<TT fmt={fmtM}/>}/>
+                <Tooltip content={<TT fmt={fmtFull}/>}/>
                 <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[0,3,3,0]}/>
               </BarChart>
             </ResponsiveContainer>
