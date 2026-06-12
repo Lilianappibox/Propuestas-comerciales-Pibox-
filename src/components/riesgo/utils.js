@@ -113,14 +113,14 @@ export function procesarDatos(rows) {
     if (exec && exec !== "Sin asignar") e.ejecutivo = exec;
 
     // por usuario (passenger_name)
-    if (!e.usuarios[usuario]) e.usuarios[usuario] = {total:0,completados:0,service_cost:0};
+    if (!e.usuarios[usuario]) e.usuarios[usuario] = {total:0,completados:0,gmv:0};
     e.usuarios[usuario].total++;
-    if (esCompletado) { e.usuarios[usuario].completados++; e.usuarios[usuario].service_cost += cost; }
+    if (esCompletado) { e.usuarios[usuario].completados++; e.usuarios[usuario].gmv += gmv; }
 
     // por sede
-    if (!e.sedes[sede]) e.sedes[sede] = {total:0,completados:0,service_cost:0};
+    if (!e.sedes[sede]) e.sedes[sede] = {total:0,completados:0,gmv:0};
     e.sedes[sede].total++;
-    if (esCompletado) { e.sedes[sede].completados++; e.sedes[sede].service_cost += cost; }
+    if (esCompletado) { e.sedes[sede].completados++; e.sedes[sede].gmv += gmv; }
 
     // ciudades
     if (!e.ciudades[city]) e.ciudades[city] = { gmv:0, count:0 };
@@ -215,12 +215,12 @@ export function procesarDatos(rows) {
 
     const topUsuarios = Object.entries(e.usuarios)
       .map(([u,v])=>({usuario:u, ...v}))
-      .sort((a,b)=>b.completados-a.completados)
+      .sort((a,b)=>b.gmv-a.gmv)
       .slice(0,30);
 
     const topSedes = Object.entries(e.sedes)
       .map(([s,v])=>({sede:s, ...v}))
-      .sort((a,b)=>b.service_cost-a.service_cost);
+      .sort((a,b)=>b.gmv-a.gmv);
 
     return {
       empresa: e.empresa, total: e.total,

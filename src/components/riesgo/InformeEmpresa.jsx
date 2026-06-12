@@ -26,10 +26,10 @@ function TablaUsuariosSedes({ empData, prevData, mesLabel, prevLabel }) {
   const tfootRow = "bg-purple-100 font-bold border-t-2 border-purple-200";
 
   // Celda de variación de costo vs mes anterior
-  function DeltaCosto({ curr, prevList, matchKey }) {
+  function DeltaGMV({ curr, prevList, matchKey }) {
     const prevItem = prevList.find(p => (p.usuario ?? p.sede) === matchKey);
     if (!prevItem || !prevLabel) return <td className="px-3 py-2 text-right text-gray-300">—</td>;
-    const prevCost = prevItem.service_cost || 0;
+    const prevCost = prevItem.gmv || 0;
     if (prevCost === 0) return <td className="px-3 py-2 text-right text-gray-400 text-xs">Sin prev.</td>;
     const delta = (curr - prevCost) / prevCost;
     const isUp  = delta >= 0;
@@ -42,8 +42,8 @@ function TablaUsuariosSedes({ empData, prevData, mesLabel, prevLabel }) {
   }
 
   function Tabla({ titulo, icono, filas, prevFilas, keyField, borderColor }) {
-    const totalCostAct  = filas.reduce((s, f) => s + f.service_cost, 0);
-    const totalCostPrev = prevFilas.reduce((s, f) => s + f.service_cost, 0);
+    const totalCostAct  = filas.reduce((s, f) => s + f.gmv, 0);
+    const totalCostPrev = prevFilas.reduce((s, f) => s + f.gmv, 0);
     const totalDelta    = prevLabel && totalCostPrev > 0
       ? (totalCostAct - totalCostPrev) / totalCostPrev : null;
 
@@ -76,7 +76,7 @@ function TablaUsuariosSedes({ empData, prevData, mesLabel, prevLabel }) {
                   <th className="px-3 py-2.5 text-right font-semibold">Completados</th>
                   <th className="px-3 py-2.5 text-right font-semibold">Total</th>
                   <th className="px-3 py-2.5 text-right font-semibold">%</th>
-                  <th className="px-3 py-2.5 text-right font-semibold">Costo</th>
+                  <th className="px-3 py-2.5 text-right font-semibold">GMV</th>
                   <th className="px-3 py-2.5 text-right font-semibold">▲▼ vs mes ant.</th>
                 </tr>
               </thead>
@@ -94,9 +94,9 @@ function TablaUsuariosSedes({ empData, prevData, mesLabel, prevLabel }) {
                         {f.total > 0 ? fmtPct(f.completados / f.total) : "—"}
                       </td>
                       <td className="px-3 py-2 text-right font-bold" style={{ color: PIBOX_PURPLE }}>
-                        {fmtFull(f.service_cost)}
+                        {fmtFull(f.gmv)}
                       </td>
-                      <DeltaCosto curr={f.service_cost} prevList={prevFilas} matchKey={nombre}/>
+                      <DeltaGMV curr={f.gmv} prevList={prevFilas} matchKey={nombre}/>
                     </tr>
                   );
                 })}
@@ -504,7 +504,7 @@ export default function InformeEmpresa() {
                         <th className="px-3 py-2.5 text-right">Completados</th>
                         <th className="px-3 py-2.5 text-right">Total servicios</th>
                         <th className="px-3 py-2.5 text-right">% Completado</th>
-                        <th className="px-3 py-2.5 text-right">Costo (service_cost)</th>
+                        <th className="px-3 py-2.5 text-right">GMV</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -516,7 +516,7 @@ export default function InformeEmpresa() {
                           <td className="px-3 py-2 text-right font-semibold" style={{color:SEM_VERDE}}>
                             {u.total>0 ? fmtPct(u.completados/u.total) : "—"}
                           </td>
-                          <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(u.service_cost)}</td>
+                          <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(u.gmv)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -533,7 +533,7 @@ export default function InformeEmpresa() {
                           {fmtPct(empData.completados / Math.max(empData.total,1))}
                         </td>
                         <td className="px-3 py-2 text-right" style={{color:PIBOX_PURPLE}}>
-                          {fmtFull(empData.topUsuarios.reduce((s,u)=>s+u.service_cost,0))}
+                          {fmtFull(empData.topUsuarios.reduce((s,u)=>s+u.gmv,0))}
                         </td>
                       </tr>
                     </tfoot>
@@ -554,7 +554,7 @@ export default function InformeEmpresa() {
                         <th className="px-3 py-2.5 text-right">Completados</th>
                         <th className="px-3 py-2.5 text-right">Total servicios</th>
                         <th className="px-3 py-2.5 text-right">% Completado</th>
-                        <th className="px-3 py-2.5 text-right">Costo (service_cost)</th>
+                        <th className="px-3 py-2.5 text-right">GMV</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -566,7 +566,7 @@ export default function InformeEmpresa() {
                           <td className="px-3 py-2 text-right font-semibold" style={{color:SEM_VERDE}}>
                             {s.total>0 ? fmtPct(s.completados/s.total) : "—"}
                           </td>
-                          <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(s.service_cost)}</td>
+                          <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(s.gmv)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -583,7 +583,7 @@ export default function InformeEmpresa() {
                           {fmtPct(empData.completados / Math.max(empData.total,1))}
                         </td>
                         <td className="px-3 py-2 text-right" style={{color:PIBOX_PURPLE}}>
-                          {fmtFull(empData.topSedes.reduce((s,r)=>s+r.service_cost,0))}
+                          {fmtFull(empData.topSedes.reduce((s,r)=>s+r.gmv,0))}
                         </td>
                       </tr>
                     </tfoot>
