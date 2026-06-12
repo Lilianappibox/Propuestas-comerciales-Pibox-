@@ -253,4 +253,10 @@ export const fmtM = (n) => {
   if (n >= 1e3) return `$${(n/1e3).toFixed(0)}k`;
   return `$${n.toFixed(0)}`;
 };
+
+// Cifra completa con separadores de miles
+export const fmtFull = (n) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency", currency: "COP", maximumFractionDigits: 0,
+  }).format(n);
 export const fmtPct = (n) => `${(n*100).toFixed(1)}%`;

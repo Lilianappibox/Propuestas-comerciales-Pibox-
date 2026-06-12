@@ -4,7 +4,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, CartesianGrid, Legend,
 } from "recharts";
 import {
-  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct,
+  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtFull,
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT,
 } from "./utils";
@@ -137,7 +137,7 @@ export default function MetricasRiesgo() {
         <KpiCard icon="🔴" label="Riesgo crítico" value={nRojo}     borderColor={SEM_ROJO}/>
         <KpiCard icon="🟡" label="Riesgo medio"   value={nAmarillo} borderColor={SEM_AMARILLO}/>
         <KpiCard icon="🟢" label="Saludables"     value={nVerde}    borderColor={SEM_VERDE}/>
-        <KpiCard icon="💰" label="GMV Total"       value={fmtM(gmvTotal)} borderColor={PIBOX_PURPLE}/>
+        <KpiCard icon="💰" label="GMV Total"       value={fmtFull(gmvTotal)} borderColor={PIBOX_PURPLE}/>
         <KpiCard icon="✅" label="% Completado"    value={fmtPct(tcGlobal)} borderColor={SEM_VERDE}/>
       </div>
 
