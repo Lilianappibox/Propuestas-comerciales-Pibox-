@@ -42,11 +42,11 @@ function KpiCard({icon,label,value,borderColor,delta,deltaLabel,invertDelta}) {
     : deltaLabel || "Sin mes anterior";
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4"
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 min-w-0"
          style={{borderLeft:`4px solid ${borderColor||PIBOX_PURPLE}`}}>
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{icon} {label}</p>
-      <p className="text-2xl font-extrabold mt-1" style={{color:borderColor||PIBOX_PURPLE}}>{value}</p>
-      <p className="text-xs font-semibold mt-1" style={{color:deltaColor}}>{deltaText}</p>
+      <p className="text-xs text-gray-500 uppercase tracking-wide whitespace-nowrap">{icon} {label}</p>
+      <p className="text-xl font-extrabold mt-1 truncate" style={{color:borderColor||PIBOX_PURPLE}} title={value}>{value}</p>
+      <p className="text-xs font-semibold mt-1 whitespace-nowrap" style={{color:deltaColor}}>{deltaText}</p>
     </div>
   );
 }
@@ -189,7 +189,7 @@ export default function MetricasRiesgo() {
       </div>
 
       {/* KPIs globales */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         <KpiCard icon="🏢" label="Empresas"       value={empresasFiltradas.length.toLocaleString()} borderColor={PIBOX_PURPLE} delta={varEmp}/>
         <KpiCard icon="🔴" label="Riesgo crítico" value={nRojo}     borderColor={SEM_ROJO}     delta={varRojo}  invertDelta/>
         <KpiCard icon="🟡" label="Riesgo medio"   value={nAmarillo} borderColor={SEM_AMARILLO} delta={null} deltaLabel={mesPrevMeta ? `Prev: ${empPrevAll.filter(e=>calcularScore(e,null,umb).color==="amarillo").length}` : "Sin mes anterior"}/>
