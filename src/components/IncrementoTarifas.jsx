@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from "react";
+import XLSX from "../utils/xlsxHelper";
 import clientesDefault from "../data/tarifasCliente.json";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
@@ -53,7 +54,6 @@ const uniqueFrom = (data, key) => {
 
 function parseExcelClientes(file) {
   return new Promise((resolve, reject) => {
-    import("xlsx").then((XLSX) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
@@ -99,7 +99,6 @@ function parseExcelClientes(file) {
       };
       reader.onerror = reject;
       reader.readAsArrayBuffer(file);
-    });
   });
 }
 
