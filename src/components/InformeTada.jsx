@@ -182,10 +182,13 @@ function colocColor(pctVal) {
 /*  MAIN COMPONENT                                                          */
 /* ══════════════════════════════════════════════════════════════════════════ */
 
-// ── Facturación storage ────────────────────────────────────────────────────
-const SK_FACT = "pibox_tada_facturacion";
-function loadFact() { try { return JSON.parse(localStorage.getItem(SK_FACT)); } catch { return null; } }
-function saveFact(d) { try { localStorage.setItem(SK_FACT, JSON.stringify(d)); } catch {} }
+// ── Facturación storage (por mes) ──────────────────────────────────────────
+const SK_FACT_IDX = "pibox_tada_fact_index";
+const SK_FACT_MES = (k) => `pibox_tada_fact_${k}`;
+function loadFactIndex() { try { return JSON.parse(localStorage.getItem(SK_FACT_IDX) || "{}"); } catch { return {}; } }
+function saveFactIndex(idx) { localStorage.setItem(SK_FACT_IDX, JSON.stringify(idx)); }
+function loadFactMes(key) { try { return JSON.parse(localStorage.getItem(SK_FACT_MES(key)) || "null"); } catch { return null; } }
+function saveFactMes(key, d) { localStorage.setItem(SK_FACT_MES(key), JSON.stringify(d)); }
 
 function processFactExcel(wb) {
   const ws = wb.Sheets["Informe Servicios"] || wb.Sheets[wb.SheetNames[1]] || wb.Sheets[wb.SheetNames[0]];
@@ -194,44 +197,29 @@ function processFactExcel(wb) {
   if (!rows.length) throw new Error("La hoja está vacía");
 
   let totalGmv = 0, totalPaq = 0, totalServ = rows.length;
-  const ciudadMap = {}, puntoMap = {}, mesMap = {};
+  const ciudadMap = {}, puntoMap = {};
+  let mesDetectado = "Sin mes";
 
   for (const r of rows) {
     const gmv = Number(String(r[" MONTO FINAL TRUMP "] || r["MONTO FINAL TRUMP"] || 0).replace(/[^0-9.-]/g, "")) || 0;
     const paq = Number(r["PAQUETES"] || 0) || 0;
     const ciudad = String(r["CIUDAD"] || "Sin ciudad").trim();
     const punto = String(r["PUNTO"] || "Sin punto").trim();
-    // Intentar extraer mes del nombre de archivo o de la fecha
-    let mes = "Sin mes";
     const fecha = r["FECHA"];
-    if (fecha) {
-      const d = new Date((Number(fecha) - 25569) * 86400000); // Excel serial date
+    if (fecha && mesDetectado === "Sin mes") {
+      const d = new Date((Number(fecha) - 25569) * 86400000);
       if (!isNaN(d.getTime())) {
         const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-        mes = meses[d.getMonth()] + " " + d.getFullYear();
+        mesDetectado = meses[d.getMonth()] + " " + d.getFullYear();
       }
     }
-
-    totalGmv += gmv;
-    totalPaq += paq;
-
+    totalGmv += gmv; totalPaq += paq;
     if (!ciudadMap[ciudad]) ciudadMap[ciudad] = { gmv: 0, paquetes: 0, servicios: 0 };
-    ciudadMap[ciudad].gmv += gmv;
-    ciudadMap[ciudad].paquetes += paq;
-    ciudadMap[ciudad].servicios++;
-
+    ciudadMap[ciudad].gmv += gmv; ciudadMap[ciudad].paquetes += paq; ciudadMap[ciudad].servicios++;
     if (!puntoMap[punto]) puntoMap[punto] = { gmv: 0, paquetes: 0, servicios: 0, ciudad };
-    puntoMap[punto].gmv += gmv;
-    puntoMap[punto].paquetes += paq;
-    puntoMap[punto].servicios++;
-
-    if (!mesMap[mes]) mesMap[mes] = { gmv: 0, paquetes: 0, servicios: 0 };
-    mesMap[mes].gmv += gmv;
-    mesMap[mes].paquetes += paq;
-    mesMap[mes].servicios++;
+    puntoMap[punto].gmv += gmv; puntoMap[punto].paquetes += paq; puntoMap[punto].servicios++;
   }
-
-  return { totalGmv, totalPaq, totalServ, ciudadMap, puntoMap, mesMap };
+  return { totalGmv, totalPaq, totalServ, ciudadMap, puntoMap, mes: mesDetectado };
 }
 
 export default function InformeTada({ isAdmin }) {
@@ -242,8 +230,10 @@ export default function InformeTada({ isAdmin }) {
   const [fileName, setFileName]   = useState(stored?.fileName || null);
   const [uploadDate, setUploadDate] = useState(stored?.uploadDate || null);
 
-  // Facturación
-  const [factData, setFactData]   = useState(loadFact);
+  // Facturación por mes
+  const [factIndex, setFactIndex] = useState(loadFactIndex);
+  const factMeses = Object.keys(factIndex).sort().reverse();
+  const [factMesSel, setFactMesSel] = useState(factMeses[0] || "");
   const [factLoading, setFactLoading] = useState(false);
   const [factError, setFactError] = useState(null);
 
@@ -363,47 +353,15 @@ export default function InformeTada({ isAdmin }) {
       const buf = await file.arrayBuffer();
       const wb  = XLSX.read(buf, { type: "array" });
       const processed = processFactExcel(wb);
-      // Merge con datos anteriores (acumular meses)
-      const prev = factData?.data || { totalGmv: 0, totalPaq: 0, totalServ: 0, ciudadMap: {}, puntoMap: {}, mesMap: {} };
-      // Merge mesMap (acumular meses diferentes)
-      const mergedMes = { ...prev.mesMap };
-      Object.entries(processed.mesMap).forEach(([m, v]) => {
-        if (!mergedMes[m]) mergedMes[m] = { gmv: 0, paquetes: 0, servicios: 0 };
-        mergedMes[m].gmv += v.gmv;
-        mergedMes[m].paquetes += v.paquetes;
-        mergedMes[m].servicios += v.servicios;
-      });
-      // Merge ciudadMap
-      const mergedCiudad = { ...prev.ciudadMap };
-      Object.entries(processed.ciudadMap).forEach(([c, v]) => {
-        if (!mergedCiudad[c]) mergedCiudad[c] = { gmv: 0, paquetes: 0, servicios: 0 };
-        mergedCiudad[c].gmv += v.gmv;
-        mergedCiudad[c].paquetes += v.paquetes;
-        mergedCiudad[c].servicios += v.servicios;
-      });
-      // Merge puntoMap
-      const mergedPunto = { ...prev.puntoMap };
-      Object.entries(processed.puntoMap).forEach(([p, v]) => {
-        if (!mergedPunto[p]) mergedPunto[p] = { gmv: 0, paquetes: 0, servicios: 0, ciudad: v.ciudad };
-        mergedPunto[p].gmv += v.gmv;
-        mergedPunto[p].paquetes += v.paquetes;
-        mergedPunto[p].servicios += v.servicios;
-      });
-      const payload = {
-        data: {
-          totalGmv: Object.values(mergedMes).reduce((s, v) => s + v.gmv, 0),
-          totalPaq: Object.values(mergedMes).reduce((s, v) => s + v.paquetes, 0),
-          totalServ: Object.values(mergedMes).reduce((s, v) => s + v.servicios, 0),
-          ciudadMap: mergedCiudad,
-          puntoMap: mergedPunto,
-          mesMap: mergedMes,
-        },
-        lastFile: file.name,
-        lastUpload: new Date().toISOString(),
-        mesesCargados: Object.keys(mergedMes),
-      };
-      saveFact(payload);
-      setFactData(payload);
+      const key = processed.mes;
+      // Guardar mes individual
+      saveFactMes(key, { ...processed, archivo: file.name, fecha: new Date().toISOString() });
+      // Actualizar índice
+      const idx = loadFactIndex();
+      idx[key] = { archivo: file.name, fecha: new Date().toISOString(), gmv: processed.totalGmv, paquetes: processed.totalPaq, servicios: processed.totalServ };
+      saveFactIndex(idx);
+      setFactIndex(idx);
+      setFactMesSel(key);
     } catch (err) {
       setFactError(err.message);
     } finally {
@@ -412,11 +370,27 @@ export default function InformeTada({ isAdmin }) {
     }
   };
 
-  const handleFactReset = () => {
-    if (!confirm("¿Limpiar todos los datos de facturación? Deberás subir los archivos de nuevo.")) return;
-    localStorage.removeItem(SK_FACT);
-    setFactData(null);
+  const handleFactDeleteMes = (key) => {
+    if (!confirm(`¿Eliminar ${key}?`)) return;
+    localStorage.removeItem(SK_FACT_MES(key));
+    const idx = loadFactIndex();
+    delete idx[key];
+    saveFactIndex(idx);
+    setFactIndex(idx);
+    const remaining = Object.keys(idx).sort().reverse();
+    setFactMesSel(remaining[0] || "");
   };
+
+  // Datos del mes seleccionado y anterior
+  const factActual = useMemo(() => factMesSel ? loadFactMes(factMesSel) : null, [factMesSel, factIndex]);
+  const factMesPrevKey = useMemo(() => {
+    const sorted = Object.keys(factIndex).sort();
+    const idx = sorted.indexOf(factMesSel);
+    return idx > 0 ? sorted[idx - 1] : null;
+  }, [factMesSel, factIndex]);
+  const factPrev = useMemo(() => factMesPrevKey ? loadFactMes(factMesPrevKey) : null, [factMesPrevKey, factIndex]);
+
+  const varFact = (actual, prev) => prev > 0 ? ((actual - prev) / prev) : null;
 
   /* ── render ───────────────────────────────────────────────────────────── */
 
@@ -466,55 +440,119 @@ export default function InformeTada({ isAdmin }) {
       {/* ── TAB: FACTURACIÓN ─────────────────────────────────────────── */}
       {tab === "facturacion" && (
         <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-          {/* Upload */}
-          {isAdmin && (
-            <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5">
-              <div className="flex flex-wrap items-center gap-4">
-                <label className="cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold shadow hover:shadow-lg transition" style={{ background: BRAND_GRADIENT }}>
-                  {factLoading ? "Procesando..." : "📥 Subir Facturación TaDa (.xlsx)"}
-                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFactUpload} disabled={factLoading} />
-                </label>
-                {factData && (
-                  <>
-                    <span className="text-xs text-gray-500">
-                      Último: <b>{factData.lastFile}</b> · {factData.mesesCargados?.length || 0} mes(es) · {new Date(factData.lastUpload).toLocaleDateString("es-CO")}
-                    </span>
-                    <button onClick={handleFactReset} className="text-xs text-red-500 hover:underline">Limpiar datos</button>
-                  </>
-                )}
-              </div>
-              {factError && <p className="mt-2 text-sm text-red-600">❌ {factError}</p>}
-              <p className="mt-2 text-xs text-gray-400">Sube un archivo por mes. Los datos se acumulan automáticamente para análisis histórico.</p>
+          {/* Upload + Selector de mes */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <div className="flex flex-wrap gap-4 items-end">
+              {isAdmin && (
+                <div>
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold shadow hover:shadow-lg transition" style={{ background: BRAND_GRADIENT }}>
+                    {factLoading ? "Procesando..." : "📥 Subir Facturación (.xlsx)"}
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFactUpload} disabled={factLoading} />
+                  </label>
+                </div>
+              )}
+              {factMeses.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
+                  <select value={factMesSel} onChange={e => setFactMesSel(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    {factMeses.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              )}
+              {factMesPrevKey && (
+                <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>
+                  📊 Comparando vs <b className="ml-1">{factMesPrevKey}</b>
+                  {factActual && factPrev && (() => {
+                    const v = varFact(factActual.totalGmv, factPrev.totalGmv);
+                    return v !== null ? (
+                      <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">
+                        {v >= 0 ? "▲" : "▼"} GMV {Math.abs(v * 100).toFixed(1)}%
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+              {isAdmin && factMesSel && (
+                <button onClick={() => handleFactDeleteMes(factMesSel)} className="text-xs text-red-500 hover:underline">🗑️ Eliminar mes</button>
+              )}
             </div>
-          )}
+            {factError && <p className="mt-2 text-sm text-red-600">❌ {factError}</p>}
+            {isAdmin && <p className="mt-2 text-xs text-gray-400">Sube un archivo por mes. Cada mes se guarda por separado para comparativas.</p>}
+          </div>
 
-          {factData?.data ? (() => {
-            const fd = factData.data;
-            const mesData = Object.entries(fd.mesMap).map(([mes, v]) => ({ mes, ...v })).sort((a, b) => a.mes.localeCompare(b.mes));
+          {factActual ? (() => {
+            const fd = factActual;
             const ciudadData = Object.entries(fd.ciudadMap).map(([name, v]) => ({ name, ...v })).filter(c => c.name && c.name !== "0" && c.name !== "Sin ciudad").sort((a, b) => b.gmv - a.gmv);
             const puntoData = Object.entries(fd.puntoMap).map(([name, v]) => ({ name, ...v })).filter(p => p.name && p.name !== "0" && p.name !== "Sin punto").sort((a, b) => b.gmv - a.gmv);
+            const prevCiudad = factPrev ? Object.entries(factPrev.ciudadMap).map(([name, v]) => ({ name, ...v })) : [];
+
+            const VarBadge = ({ actual, prev }) => {
+              const v = varFact(actual, prev);
+              if (v === null) return null;
+              return <span className={`text-xs font-bold ${v >= 0 ? "text-green-600" : "text-red-500"}`}>{v >= 0 ? "▲" : "▼"} {Math.abs(v * 100).toFixed(1)}%</span>;
+            };
 
             return (
               <>
-                {/* KPIs */}
+                {/* KPIs con comparativa */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { icon: "💰", label: "GMV Total", value: fmtMoney(fd.totalGmv), color: PIBOX_PURPLE },
-                    { icon: "📦", label: "Paquetes", value: fd.totalPaq.toLocaleString(), color: "#6366F1" },
-                    { icon: "📋", label: "Servicios", value: fd.totalServ.toLocaleString(), color: PIBOX_PINK },
-                    { icon: "📅", label: "Meses Cargados", value: mesData.length, color: SEM_VERDE },
+                    { icon: "💰", label: "GMV", value: fmtMoney(fd.totalGmv), prev: factPrev?.totalGmv, color: PIBOX_PURPLE },
+                    { icon: "📦", label: "Paquetes", value: fd.totalPaq.toLocaleString(), prev: factPrev?.totalPaq, color: "#6366F1" },
+                    { icon: "📋", label: "Servicios", value: fd.totalServ.toLocaleString(), prev: factPrev?.totalServ, color: PIBOX_PINK },
+                    { icon: "📅", label: "Mes", value: factMesSel, prev: null, color: SEM_VERDE },
                   ].map(k => (
                     <div key={k.label} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" style={{ borderLeft: `4px solid ${k.color}` }}>
                       <p className="text-xs text-gray-500 uppercase">{k.icon} {k.label}</p>
                       <p className="text-xl font-extrabold mt-1" style={{ color: k.color }}>{k.value}</p>
+                      {k.prev != null && <VarBadge actual={typeof k.value === "string" ? (k.label === "GMV" ? fd.totalGmv : k.label === "Paquetes" ? fd.totalPaq : fd.totalServ) : k.value} prev={k.prev} />}
                     </div>
                   ))}
                 </div>
 
-                {/* GMV por Mes */}
-                {chartCard("📅 GMV por Mes", (
+                {/* GMV por Ciudad con comparativa */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {chartCard(`🏙️ GMV por Ciudad — ${factMesSel}`, (
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={ciudadData.slice(0, 10).map(c => ({
+                        ...c, gmvPrev: prevCiudad.find(p => p.name === c.name)?.gmv || 0,
+                      }))} layout="vertical" margin={{ left: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                        <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 9 }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={80} />
+                        <Tooltip formatter={v => fmtMoney(v)} />
+                        <Legend iconSize={8} wrapperStyle={{ fontSize: 9 }} />
+                        <Bar dataKey="gmv" name={factMesSel} fill={PIBOX_PURPLE} radius={[0, 4, 4, 0]} />
+                        {factPrev && <Bar dataKey="gmvPrev" name={factMesPrevKey} fill={PIBOX_PINK} radius={[0, 4, 4, 0]} fillOpacity={0.5} />}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ))}
+
+                  {chartCard(`📦 Paquetes por Ciudad — ${factMesSel}`, (
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={ciudadData.slice(0, 10).map(c => ({
+                        ...c, paqPrev: prevCiudad.find(p => p.name === c.name)?.paquetes || 0,
+                      }))} layout="vertical" margin={{ left: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                        <XAxis type="number" tick={{ fontSize: 9 }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={80} />
+                        <Tooltip formatter={v => v.toLocaleString()} />
+                        <Legend iconSize={8} wrapperStyle={{ fontSize: 9 }} />
+                        <Bar dataKey="paquetes" name={factMesSel} fill="#6366F1" radius={[0, 4, 4, 0]} />
+                        {factPrev && <Bar dataKey="paqPrev" name={factMesPrevKey} fill={PIBOX_PINK} radius={[0, 4, 4, 0]} fillOpacity={0.5} />}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ))}
+                </div>
+
+                {/* Evolución histórica (todos los meses) */}
+                {factMeses.length > 1 && chartCard("📈 Evolución GMV mensual", (
                   <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={mesData}>
+                    <BarChart data={[...factMeses].reverse().map(m => {
+                      const d = loadFactMes(m);
+                      return { mes: m, gmv: d?.totalGmv || 0, paquetes: d?.totalPaq || 0 };
+                    })}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
                       <XAxis dataKey="mes" tick={{ fontSize: 9 }} angle={-25} textAnchor="end" height={50} />
                       <YAxis tickFormatter={fmtM} tick={{ fontSize: 9 }} />
@@ -525,71 +563,34 @@ export default function InformeTada({ isAdmin }) {
                   </ResponsiveContainer>
                 ))}
 
-                {/* Por ciudad y paquetes por mes */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {chartCard("🏙️ GMV por Ciudad", (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={ciudadData.slice(0, 10)} layout="vertical" margin={{ left: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                        <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 9 }} />
-                        <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={80} />
-                        <Tooltip formatter={v => fmtMoney(v)} />
-                        <Bar dataKey="gmv" name="GMV" fill={PIBOX_PURPLE} radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ))}
-
-                  {chartCard("📦 Paquetes por Mes", (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={mesData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                        <XAxis dataKey="mes" tick={{ fontSize: 9 }} angle={-25} textAnchor="end" height={50} />
-                        <YAxis tick={{ fontSize: 9 }} />
-                        <Tooltip formatter={v => v.toLocaleString()} />
-                        <Legend />
-                        <Bar dataKey="paquetes" name="Paquetes" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ))}
-                </div>
-
-                {/* Paquetes por ciudad */}
-                {chartCard("📦 Paquetes por Ciudad", (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={ciudadData.slice(0, 10)} layout="vertical" margin={{ left: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                      <XAxis type="number" tick={{ fontSize: 9 }} />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={80} />
-                      <Tooltip formatter={v => v.toLocaleString()} />
-                      <Bar dataKey="paquetes" name="Paquetes" fill="#6366F1" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ))}
-
                 {/* Top Puntos */}
                 <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                  <h3 className="text-sm font-bold text-gray-700 mb-3">🏪 Top Puntos por GMV</h3>
+                  <h3 className="text-sm font-bold text-gray-700 mb-3">🏪 Top Puntos por GMV — {factMesSel}</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr style={{ background: PIBOX_PURPLE }} className="text-white">
-                          {["#", "Punto", "Ciudad", "GMV", "Paquetes", "Servicios", "GMV/Paquete"].map(h => (
+                          {["#", "Punto", "Ciudad", "GMV", "vs Ant.", "Paquetes", "Servicios", "GMV/Paq"].map(h => (
                             <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {puntoData.slice(0, 25).map((p, i) => (
-                          <tr key={p.name} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
-                            <td className="px-3 py-2 text-purple-400 font-bold">{i + 1}</td>
-                            <td className="px-3 py-2 font-semibold text-gray-800 max-w-[200px] truncate">{p.name}</td>
-                            <td className="px-3 py-2 text-gray-500">{p.ciudad}</td>
-                            <td className="px-3 py-2 font-bold text-purple-700">{fmtMoney(p.gmv)}</td>
-                            <td className="px-3 py-2">{p.paquetes.toLocaleString()}</td>
-                            <td className="px-3 py-2">{p.servicios.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-gray-500">{p.paquetes > 0 ? fmtMoney(p.gmv / p.paquetes) : "—"}</td>
-                          </tr>
-                        ))}
+                        {puntoData.slice(0, 25).map((p, i) => {
+                          const prevP = factPrev ? Object.entries(factPrev.puntoMap).find(([n]) => n === p.name)?.[1] : null;
+                          return (
+                            <tr key={p.name} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
+                              <td className="px-3 py-2 text-purple-400 font-bold">{i + 1}</td>
+                              <td className="px-3 py-2 font-semibold text-gray-800 max-w-[200px] truncate">{p.name}</td>
+                              <td className="px-3 py-2 text-gray-500">{p.ciudad}</td>
+                              <td className="px-3 py-2 font-bold text-purple-700">{fmtMoney(p.gmv)}</td>
+                              <td className="px-3 py-2">{prevP ? <VarBadge actual={p.gmv} prev={prevP.gmv} /> : "—"}</td>
+                              <td className="px-3 py-2">{p.paquetes.toLocaleString()}</td>
+                              <td className="px-3 py-2">{p.servicios.toLocaleString()}</td>
+                              <td className="px-3 py-2 text-gray-500">{p.paquetes > 0 ? fmtMoney(p.gmv / p.paquetes) : "—"}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -600,7 +601,7 @@ export default function InformeTada({ isAdmin }) {
             <div className="bg-purple-50 border border-purple-100 rounded-xl p-8 text-center text-purple-700">
               <p className="text-2xl mb-2">💰</p>
               <p className="text-sm font-medium">Sube el archivo de facturación TaDa para ver el análisis.</p>
-              <p className="text-xs text-purple-400 mt-1">Los datos se acumulan mes a mes automáticamente.</p>
+              <p className="text-xs text-purple-400 mt-1">Sube un archivo por mes. Cada mes se guarda por separado.</p>
             </div>
           )}
         </div>
