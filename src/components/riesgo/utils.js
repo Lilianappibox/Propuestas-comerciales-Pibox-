@@ -258,11 +258,13 @@ export function procesarDatos(rows) {
     const cm = {};
     for (const row of rows) {
       const c = toStr(row["city"] || "Sin ciudad");
-      if (!cm[c]) cm[c] = 0;
-      cm[c] += toNum(row["gmv"]);
+      if (!cm[c]) cm[c] = { gmv: 0, servicios: 0, paquetes: 0 };
+      cm[c].gmv += toNum(row["gmv"]);
+      cm[c].servicios++;
+      cm[c].paquetes += toNum(row["packages"]);
     }
-    return Object.entries(cm).map(([city,gmv])=>({city,gmv}))
-      .sort((a,b)=>b.gmv-a.gmv).slice(0,12);
+    return Object.entries(cm).map(([city, v]) => ({ city, gmv: v.gmv, servicios: v.servicios, paquetes: v.paquetes }))
+      .sort((a, b) => b.gmv - a.gmv).slice(0, 12);
   })();
 
   const weeklyGlobal = Object.entries(globalWeekly)

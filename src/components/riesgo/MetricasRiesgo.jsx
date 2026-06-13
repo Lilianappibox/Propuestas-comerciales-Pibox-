@@ -222,7 +222,7 @@ export default function MetricasRiesgo() {
 
         {/* GMV por ciudad */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 lg:col-span-2">
-          <h3 className="font-bold text-gray-700 text-sm mb-1">GMV por ciudad (top 10)</h3>
+          <h3 className="font-bold text-gray-700 text-sm mb-1">💰 GMV por ciudad (top 10)</h3>
           {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
           <ResponsiveContainer width="100%" height={200}>
             <BarChart
@@ -242,6 +242,61 @@ export default function MetricasRiesgo() {
               <Legend iconSize={8} wrapperStyle={{fontSize:10,paddingTop:8}}/>
               <Bar dataKey="gmv"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[4,4,0,0]}/>
               {mesPrevMeta && <Bar dataKey="gmvPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[4,4,0,0]} fillOpacity={0.6}/>}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Servicios y Paquetes por ciudad (top 10) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Servicios por ciudad */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="font-bold text-gray-700 text-sm mb-1">📦 Servicios por ciudad (top 10)</h3>
+          {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart
+              data={(() => {
+                const top = [...(tot?.topCiudades || [])].sort((a,b) => b.servicios - a.servicios).slice(0,10);
+                const prevCiudades = dataPrev?.totales?.topCiudades || [];
+                return top.map(c => ({
+                  ...c,
+                  serviciosPrev: prevCiudades.find(p=>p.city===c.city)?.servicios || 0,
+                }));
+              })()}
+              margin={{top:0,right:0,left:0,bottom:30}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+              <XAxis dataKey="city" tick={{fontSize:9}} angle={-35} textAnchor="end" interval={0}/>
+              <YAxis tick={{fontSize:9}}/>
+              <Tooltip formatter={v=>[v.toLocaleString()]}/>
+              <Legend iconSize={8} wrapperStyle={{fontSize:9,paddingTop:8}}/>
+              <Bar dataKey="servicios" name={dataMes?.label||"Actual"} fill={PIBOX_PURPLE} radius={[4,4,0,0]}/>
+              {mesPrevMeta && <Bar dataKey="serviciosPrev" name={mesPrevMeta.label} fill={PIBOX_PINK} radius={[4,4,0,0]} fillOpacity={0.6}/>}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Paquetes por ciudad */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="font-bold text-gray-700 text-sm mb-1">📮 Paquetes por ciudad (top 10)</h3>
+          {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart
+              data={(() => {
+                const top = [...(tot?.topCiudades || [])].sort((a,b) => b.paquetes - a.paquetes).slice(0,10);
+                const prevCiudades = dataPrev?.totales?.topCiudades || [];
+                return top.map(c => ({
+                  ...c,
+                  paquetesPrev: prevCiudades.find(p=>p.city===c.city)?.paquetes || 0,
+                }));
+              })()}
+              margin={{top:0,right:0,left:0,bottom:30}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+              <XAxis dataKey="city" tick={{fontSize:9}} angle={-35} textAnchor="end" interval={0}/>
+              <YAxis tick={{fontSize:9}}/>
+              <Tooltip formatter={v=>[v.toLocaleString()]}/>
+              <Legend iconSize={8} wrapperStyle={{fontSize:9,paddingTop:8}}/>
+              <Bar dataKey="paquetes" name={dataMes?.label||"Actual"} fill="#6366F1" radius={[4,4,0,0]}/>
+              {mesPrevMeta && <Bar dataKey="paquetesPrev" name={mesPrevMeta.label} fill={PIBOX_PINK} radius={[4,4,0,0]} fillOpacity={0.6}/>}
             </BarChart>
           </ResponsiveContainer>
         </div>
