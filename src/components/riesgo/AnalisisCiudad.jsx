@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell, CartesianGrid, LineChart, Line, Legend,
 } from "recharts";
 import {
-  loadMesData, reprocesarSiNecesario, mesesDisponibles, fmtM, fmtFull, fmtPct,
+  loadMesData, mesesDisponibles, fmtM, fmtFull, fmtPct,
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
 } from "./utils";
 
@@ -61,8 +61,8 @@ export default function AnalisisCiudad() {
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
 
-  const dataMes  = useMemo(()=> mesKey ? (reprocesarSiNecesario(mesKey) || loadMesData(mesKey)) : null, [mesKey]);
-  const dataPrev = useMemo(()=> mesPrevMeta ? (reprocesarSiNecesario(mesPrevMeta.key) || loadMesData(mesPrevMeta.key)) : null, [mesPrevMeta]);
+  const dataMes  = useMemo(()=> mesKey ? loadMesData(mesKey) : null, [mesKey]);
+  const dataPrev = useMemo(()=> mesPrevMeta ? loadMesData(mesPrevMeta.key) : null, [mesPrevMeta]);
 
   // Si ciudades no existe aún (datos viejos), derivar lista de topCiudades
   const tieneCiudades = !!(dataMes?.ciudades?.length > 0);

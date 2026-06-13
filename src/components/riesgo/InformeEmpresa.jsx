@@ -4,7 +4,7 @@ import {
   LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell,
 } from "recharts";
 import {
-  loadMesData, reprocesarSiNecesario, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtCOP, fmtFull,
+  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtCOP, fmtFull,
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT, labelMes,
 } from "./utils";
@@ -175,8 +175,8 @@ export default function InformeEmpresa() {
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
 
-  const dataMes  = useMemo(()=>mesKey?(reprocesarSiNecesario(mesKey)||loadMesData(mesKey)):null, [mesKey]);
-  const dataPrev = useMemo(()=>mesPrevMeta?(reprocesarSiNecesario(mesPrevMeta.key)||loadMesData(mesPrevMeta.key)):null, [mesPrevMeta]);
+  const dataMes  = useMemo(()=>mesKey?loadMesData(mesKey):null, [mesKey]);
+  const dataPrev = useMemo(()=>mesPrevMeta?loadMesData(mesPrevMeta.key):null, [mesPrevMeta]);
 
   const empresas = useMemo(()=>dataMes?.empresas?.map(e=>e.empresa).sort()||[], [dataMes]);
 

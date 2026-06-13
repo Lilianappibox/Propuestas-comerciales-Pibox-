@@ -443,17 +443,3 @@ export const fmtFull = (n) =>
     style: "currency", currency: "COP", maximumFractionDigits: 0,
   }).format(n);
 export const fmtPct = (n) => `${(n*100).toFixed(1)}%`;
-
-// Reprocesa datos de un mes si tiene filas crudas y le faltan campos nuevos (drivers)
-// IMPORTANTE: debe estar después de procesarDatos para evitar referencia circular
-export function reprocesarSiNecesario(key) {
-  try {
-    const data = JSON.parse(localStorage.getItem(SK_MES(key)) || "null");
-    if (!data?._rawRows || !data.empresas?.length) return null;
-    if (data.totales?.driversPorTipoOp) return data;
-    const processed = procesarDatos(data._rawRows);
-    const refreshed = { ...data, empresas: processed.empresas, ciudades: processed.ciudades, totales: processed.totales };
-    localStorage.setItem(SK_MES(key), JSON.stringify(refreshed));
-    return refreshed;
-  } catch { return null; }
-}
