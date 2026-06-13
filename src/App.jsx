@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { TARIFAS_DEFAULT, MODULOS_CONFIG } from "./data/tarifas";
-import { loadUsers, saveUsers, getPermisos, ROLES } from "./data/users";
+import { loadUsers, saveUsers, getPermisos, ROLES, fetchCloudUsers, saveCloudUsers } from "./data/users";
 import { loadTemplate, saveTemplate, loadHistory, saveHistory, addHistoryEntry } from "./data/templateTexts";
 import PropuestaPreview from "./components/PropuestaPreview";
 import TarifasEditor from "./components/TarifasEditor";
@@ -100,6 +100,21 @@ export default function App() {
 
   const permisos = currentUser ? getPermisos(currentUser) : {};
 
+  // Sincronizar usuarios desde la nube al iniciar
+  useEffect(() => {
+    fetchCloudUsers().then(cloud => {
+      if (cloud && cloud.length > 0) {
+        setUsers(cloud);
+        saveUsers(cloud);
+        // Refrescar sesión del usuario actual con permisos actualizados
+        if (currentUser) {
+          const updated = cloud.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
+          if (updated && updated.activo) setCurrentUser(updated);
+        }
+      }
+    });
+  }, []);
+
   useEffect(() => { localStorage.setItem(SK_PROPUESTA, JSON.stringify(propuesta)); }, [propuesta]);
   useEffect(() => { localStorage.setItem(SK_TARIFAS, JSON.stringify(tarifas)); }, [tarifas]);
   useEffect(() => { localStorage.setItem(SK_MODULOS, JSON.stringify(modulos)); }, [modulos]);
@@ -125,12 +140,13 @@ export default function App() {
 
   const handleSaveUsers = (updated) => {
     setUsers(updated); saveUsers(updated);
+    saveCloudUsers(updated); // Sincronizar con la nube
     if (currentUser) {
       const r = updated.find((u) => u.id === currentUser.id);
       if (r && r.activo) { setCurrentUser(r); localStorage.setItem(SK_SESSION, JSON.stringify(r)); }
       else handleLogout();
     }
-    toast("✓ Usuarios guardados");
+    toast("✓ Usuarios guardados y sincronizados");
   };
 
   const handleSaveTemplate = (newTexts, camposDirty, oldTexts) => {

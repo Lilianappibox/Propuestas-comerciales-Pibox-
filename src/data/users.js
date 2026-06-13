@@ -71,6 +71,27 @@ export function getPermisos(user) {
 }
 
 export const USERS_STORAGE_KEY = "pibox_users";
+const CLOUD_URL = "https://jsonblob.com/api/jsonBlob/019ebfc6-f373-7a91-8f2e-2dcf3825a429";
+
+// ── Sincronización con la nube ────────────────────────────────────────────
+export async function fetchCloudUsers() {
+  try {
+    const res = await fetch(CLOUD_URL);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.users || []).map(u => ({ cargo: "", celular: "", telefono: "", permisosCustom: {}, ...u }));
+  } catch { return null; }
+}
+
+export async function saveCloudUsers(users) {
+  try {
+    await fetch(CLOUD_URL, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ users }),
+    });
+  } catch { /* silencioso */ }
+}
 
 export const DEFAULT_USERS = [
   {
