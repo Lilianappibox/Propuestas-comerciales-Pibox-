@@ -175,7 +175,7 @@ export default function InformeEmpresa() {
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
 
-  const dataMes  = useMemo(()=>mesKey?loadMesData(mesKey):null, [mesKey]);
+  const dataMes  = useMemo(()=>mesKey?loadMesData(mesKey):null,       [mesKey]);
   const dataPrev = useMemo(()=>mesPrevMeta?loadMesData(mesPrevMeta.key):null, [mesPrevMeta]);
 
   const empresas = useMemo(()=>dataMes?.empresas?.map(e=>e.empresa).sort()||[], [dataMes]);

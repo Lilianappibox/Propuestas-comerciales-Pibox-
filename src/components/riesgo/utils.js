@@ -34,18 +34,8 @@ export function saveIndex(idx) {
   localStorage.setItem(SK_INDEX, JSON.stringify(idx));
 }
 export function loadMesData(key) {
-  try {
-    const raw = localStorage.getItem(SK_MES(key));
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    // Sanity check: si los datos están corruptos, limpiar y devolver null
-    if (data && typeof data !== "object") return null;
-    return data;
-  } catch {
-    // Datos corruptos — limpiar
-    try { localStorage.removeItem(SK_MES(key)); } catch {}
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(SK_MES(key)) || "null"); }
+  catch { return null; }
 }
 export function saveMesData(key, data) {
   localStorage.setItem(SK_MES(key), JSON.stringify(data));
