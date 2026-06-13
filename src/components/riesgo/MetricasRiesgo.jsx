@@ -4,7 +4,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, CartesianGrid, Legend,
 } from "recharts";
 import {
-  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtFull,
+  loadMesData, reprocesarSiNecesario, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtFull,
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT,
 } from "./utils";
@@ -75,8 +75,8 @@ export default function MetricasRiesgo() {
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
 
-  const dataMes  = useMemo(()=> mesKey ? loadMesData(mesKey)   : null, [mesKey]);
-  const dataPrev = useMemo(()=> mesPrevMeta ? loadMesData(mesPrevMeta.key) : null, [mesPrevMeta]);
+  const dataMes  = useMemo(()=> mesKey ? (reprocesarSiNecesario(mesKey) || loadMesData(mesKey)) : null, [mesKey]);
+  const dataPrev = useMemo(()=> mesPrevMeta ? (reprocesarSiNecesario(mesPrevMeta.key) || loadMesData(mesPrevMeta.key)) : null, [mesPrevMeta]);
 
   const empresasConScore = useMemo(()=>{
     if (!dataMes) return [];
