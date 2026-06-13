@@ -13,20 +13,13 @@ const SEM_ROJO     = "#DC2626";
 const SEM_AMARILLO = "#D97706";
 const PIE_COLORS   = [SEM_VERDE, SEM_ROJO];
 const BAR_COLORS   = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7", "#6366F1", "#EC4899", "#8B5CF6", "#F59E0B", "#10B981"];
-const STORAGE_KEY  = "pibox_tada_data";
-
-/* ── helpers ─────────────────────────────────────────────────────────────── */
-
-function loadStored() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-function saveStored(data) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* noop */ }
-}
+/* ── Tráfico storage (por mes) ──────────────────────────────────────────── */
+const SK_TRAF_IDX = "pibox_tada_traf_index";
+const SK_TRAF_MES = (k) => `pibox_tada_traf_${k}`;
+function loadTrafIndex() { try { return JSON.parse(localStorage.getItem(SK_TRAF_IDX) || "{}"); } catch { return {}; } }
+function saveTrafIndex(idx) { localStorage.setItem(SK_TRAF_IDX, JSON.stringify(idx)); }
+function loadTrafMes(key) { try { return JSON.parse(localStorage.getItem(SK_TRAF_MES(key)) || "null"); } catch { return null; } }
+function saveTrafMes(key, d) { localStorage.setItem(SK_TRAF_MES(key), JSON.stringify(d)); }
 
 function pct(n, d) { return d ? ((n / d) * 100).toFixed(1) : "0.0"; }
 
@@ -224,14 +217,18 @@ function processFactExcel(wb) {
 
 export default function InformeTada({ isAdmin }) {
   const [tab, setTab] = useState("trafico");
-  const [stored, setStored]       = useState(loadStored);
+  const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  // Tráfico por mes
+  const [trafIndex, setTrafIndex] = useState(loadTrafIndex);
+  const trafMeses = Object.keys(trafIndex).sort().reverse();
+  const [trafMesSel, setTrafMesSel] = useState(trafMeses[0] || "");
+  const [trafAnio, setTrafAnio] = useState(2026);
+  const [trafMesNum, setTrafMesNum] = useState(new Date().getMonth() + 1);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
-  const [fileName, setFileName]   = useState(stored?.fileName || null);
-  const [uploadDate, setUploadDate] = useState(stored?.uploadDate || null);
 
   // Facturación por mes
-  const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   const [factIndex, setFactIndex] = useState(loadFactIndex);
   const factMeses = Object.keys(factIndex).sort().reverse();
   const [factMesSel, setFactMesSel] = useState(factMeses[0] || "");
@@ -240,9 +237,16 @@ export default function InformeTada({ isAdmin }) {
   const [factLoading, setFactLoading] = useState(false);
   const [factError, setFactError] = useState(null);
 
-  /* ── derived data ─────────────────────────────────────────────────────── */
+  /* ── derived data (tráfico) ────────────────────────────────────────────── */
+  const trafActual = useMemo(() => trafMesSel ? loadTrafMes(trafMesSel) : null, [trafMesSel, trafIndex]);
+  const trafPrevKey = useMemo(() => {
+    const sorted = Object.keys(trafIndex).sort();
+    const idx = sorted.indexOf(trafMesSel);
+    return idx > 0 ? sorted[idx - 1] : null;
+  }, [trafMesSel, trafIndex]);
+  const trafPrev = useMemo(() => trafPrevKey ? loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
 
-  const data = stored?.data || null;
+  const data = trafActual?.data || null;
 
   const estadoData = useMemo(() => {
     if (!data) return [];
@@ -317,33 +321,41 @@ export default function InformeTada({ isAdmin }) {
       .slice(0, 20);
   }, [data]);
 
-  /* ── upload handler ───────────────────────────────────────────────────── */
+  /* ── upload handler tráfico ────────────────────────────────────────────── */
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true);
     setError(null);
-
     try {
       const buf = await file.arrayBuffer();
       const wb  = XLSX.read(buf, { type: "array" });
       const processed = processExcel(wb);
-      const payload = {
-        data: processed,
-        fileName: file.name,
-        uploadDate: new Date().toISOString(),
-      };
-      saveStored(payload);
-      setStored(payload);
-      setFileName(file.name);
-      setUploadDate(payload.uploadDate);
+      const key = `${MESES_LABEL[trafMesNum]} ${trafAnio}`;
+      saveTrafMes(key, { data: processed, archivo: file.name, fecha: new Date().toISOString() });
+      const idx = loadTrafIndex();
+      idx[key] = { archivo: file.name, fecha: new Date().toISOString() };
+      saveTrafIndex(idx);
+      setTrafIndex(idx);
+      setTrafMesSel(key);
     } catch (err) {
       setError(err.message || "Error al procesar el archivo.");
     } finally {
       setLoading(false);
       e.target.value = "";
     }
+  };
+
+  const handleTrafDeleteMes = (key) => {
+    if (!confirm(`¿Eliminar ${key}?`)) return;
+    localStorage.removeItem(SK_TRAF_MES(key));
+    const idx = loadTrafIndex();
+    delete idx[key];
+    saveTrafIndex(idx);
+    setTrafIndex(idx);
+    const remaining = Object.keys(idx).sort().reverse();
+    setTrafMesSel(remaining[0] || "");
   };
 
   /* ── Facturación upload ────────────────────────────────────────────── */
@@ -646,52 +658,44 @@ export default function InformeTada({ isAdmin }) {
       {/* ── TAB: TRÁFICO ─────────────────────────────────────────────── */}
       {tab === "trafico" && (
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* ── Admin Upload ────────────────────────────────────────────── */}
-        {isAdmin && (
-          <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5">
-            <div className="flex flex-wrap items-center gap-4">
-              <label
-                className="cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold shadow hover:shadow-lg transition"
-                style={{ background: BRAND_GRADIENT }}
-              >
-                📥 Subir Reporte TaDa (.xlsx)
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={handleUpload}
-                  disabled={loading}
-                />
-              </label>
-
-              {loading && (
-                <span className="text-sm text-purple-600 font-semibold animate-pulse">
-                  Procesando archivo...
-                </span>
-              )}
-
-              {fileName && !loading && (
-                <span className="text-xs text-gray-500">
-                  Archivo: <strong>{fileName}</strong>
-                  {uploadDate && (
-                    <> &middot; {new Date(uploadDate).toLocaleDateString("es-CO", {
-                      day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-                    })}</>
-                  )}
-                </span>
-              )}
-            </div>
-
-            {error && (
-              <p className="mt-3 text-sm text-red-600 font-semibold">
-                Error: {error}
-              </p>
+        {/* Selector de mes para análisis */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
+          <div className="flex flex-wrap gap-4 items-end">
+            {trafMeses.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
+                <select value={trafMesSel} onChange={e => setTrafMesSel(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  {trafMeses.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            )}
+            {trafPrevKey && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>
+                📊 Comparando vs <b className="ml-1">{trafPrevKey}</b>
+                {data && trafPrev?.data && (() => {
+                  const v = trafPrev.data.total > 0 ? ((data.total - trafPrev.data.total) / trafPrev.data.total) : null;
+                  return v !== null ? (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">
+                      {v >= 0 ? "▲" : "▼"} Turnos {Math.abs(v * 100).toFixed(1)}%
+                    </span>
+                  ) : null;
+                })()}
+              </div>
+            )}
+            {trafMeses.length === 0 && (
+              <p className="text-sm text-gray-400">No hay meses cargados. Sube un reporte al final de la página.</p>
             )}
           </div>
-        )}
+        </div>
 
         {/* ── No data placeholder ─────────────────────────────────────── */}
-        {!data && (
+        {!data && trafMeses.length > 0 && (
+          <div className="text-center py-10 text-gray-400">
+            <p>Selecciona un mes para ver el análisis.</p>
+          </div>
+        )}
+        {!data && trafMeses.length === 0 && (
           <div className="text-center py-20 text-gray-400">
             <p className="text-5xl mb-4">📊</p>
             <p className="text-lg font-semibold">No hay datos cargados</p>
@@ -904,6 +908,52 @@ export default function InformeTada({ isAdmin }) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Subir nuevo mes tráfico (Admin) — al final */}
+        {isAdmin && (
+          <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5">
+            <h3 className="font-bold text-gray-700 text-sm mb-3">📂 Subir nuevo mes</h3>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Año</label>
+                <select value={trafAnio} onChange={e => setTrafAnio(Number(e.target.value))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes</label>
+                <select value={trafMesNum} onChange={e => setTrafMesNum(Number(e.target.value))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  {MESES_LABEL.slice(1).map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Archivo Excel (.xlsx)</label>
+                <label className="cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow hover:shadow-lg transition" style={{ background: BRAND_GRADIENT }}>
+                  {loading ? "Procesando..." : "Seleccionar archivo"}
+                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={loading} />
+                </label>
+              </div>
+            </div>
+            {error && <p className="mt-2 text-sm text-red-600">❌ {error}</p>}
+            {trafMeses.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({trafMeses.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {trafMeses.map(m => (
+                    <div key={m} className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition ${
+                      trafMesSel === m ? "bg-purple-600 text-white border-purple-600" : "border-gray-200 text-gray-600 hover:bg-purple-50"
+                    }`}>
+                      <button onClick={() => setTrafMesSel(m)}>{m}</button>
+                      <button onClick={() => handleTrafDeleteMes(m)} className="text-red-300 hover:text-red-500 ml-1">✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
       )}
