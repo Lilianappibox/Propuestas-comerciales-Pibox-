@@ -44,6 +44,8 @@ function processRows(rows) {
   const mesMap       = {};
   const pilotos      = new Set();
   const pilotoMap    = {};
+  const horaMap      = {};
+  const horaDiaMap   = {};
 
   for (const r of rows) {
     const coloc = String(r["COLOCACION"] || r["COLOCACIÓN"] || "").trim().toUpperCase();
@@ -66,6 +68,25 @@ function processRows(rows) {
     if (isNO) colocacionesNO++;
     if (isPunt) puntualidadSI++;
     if (piloto) pilotos.add(piloto);
+
+    // Hora de inicio de turno (decimal Excel → hora)
+    const inicioRaw = Number(r["INICIO DE TURNO"] || r["INICIO_TURNO"] || 0);
+    if (inicioRaw > 0 && inicioRaw <= 1) {
+      const horaNum = Math.floor(inicioRaw * 24);
+      const horaLabel = `${String(horaNum).padStart(2,"0")}:00`;
+      if (!horaMap[horaLabel]) horaMap[horaLabel] = { turnos: 0, si: 0, punt: 0 };
+      horaMap[horaLabel].turnos++;
+      if (isSI) horaMap[horaLabel].si++;
+      if (isPunt) horaMap[horaLabel].punt++;
+
+      // Hora + Día cruzado
+      if (dia) {
+        const hdKey = `${dia}|${horaLabel}`;
+        if (!horaDiaMap[hdKey]) horaDiaMap[hdKey] = { dia, hora: horaLabel, turnos: 0, si: 0 };
+        horaDiaMap[hdKey].turnos++;
+        if (isSI) horaDiaMap[hdKey].si++;
+      }
+    }
 
     // Tracking por piloto — ID como key principal
     const pilotoKey = piloto || pilotoNombre;
@@ -143,6 +164,8 @@ function processRows(rows) {
     diaMap,
     mesMap,
     pilotosImpuntuales,
+    porHora: Object.entries(horaMap).map(([h, v]) => ({ hora: h, ...v, pctColoc: v.turnos > 0 ? (v.si/v.turnos*100) : 0 })).sort((a,b) => a.hora.localeCompare(b.hora)),
+    porHoraDia: Object.values(horaDiaMap),
   };
 }
 
@@ -1246,6 +1269,77 @@ export default function InformeTada({ isAdmin }) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Turnos por hora de inicio + heatmap hora x día */}
+        {data?.porHora?.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Turnos por hora de inicio */}
+            {chartCard("⏰ Turnos por Hora de Inicio", (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={data.porHora}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                  <XAxis dataKey="hora" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(v, n) => [v, n === "turnos" ? "Turnos" : n === "si" ? "Colocados" : n]} />
+                  <Legend />
+                  <Bar dataKey="turnos" name="Turnos" fill={PIBOX_PURPLE} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="si" name="Colocados" fill={SEM_VERDE} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ))}
+
+            {/* Heatmap: día x hora */}
+            {data.porHoraDia?.length > 0 && chartCard("📊 Turnos por Día y Hora", (
+              <div className="overflow-x-auto">
+                {(() => {
+                  const dias = ["Lunes","Martes","Miercoles","Miércoles","Jueves","Viernes","Sabado","Sábado","Domingo"];
+                  const diasOrden = [...new Set(data.porHoraDia.map(d => d.dia))].sort((a,b) => {
+                    const ia = dias.findIndex(d => d.toLowerCase() === a.toLowerCase());
+                    const ib = dias.findIndex(d => d.toLowerCase() === b.toLowerCase());
+                    return (ia===-1?99:ia) - (ib===-1?99:ib);
+                  });
+                  const horas = [...new Set(data.porHoraDia.map(d => d.hora))].sort();
+                  const maxT = Math.max(...data.porHoraDia.map(d => d.turnos), 1);
+                  const getVal = (dia, hora) => data.porHoraDia.find(d => d.dia === dia && d.hora === hora);
+                  return (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr>
+                          <th className="px-2 py-1.5 text-left text-gray-500 font-semibold">Día / Hora</th>
+                          {horas.map(h => <th key={h} className="px-2 py-1.5 text-center text-gray-500 font-semibold">{h}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {diasOrden.map(dia => (
+                          <tr key={dia} className="border-t border-gray-100">
+                            <td className="px-2 py-1.5 font-semibold text-gray-700 whitespace-nowrap">{dia}</td>
+                            {horas.map(hora => {
+                              const v = getVal(dia, hora);
+                              const t = v?.turnos || 0;
+                              const intensity = t > 0 ? Math.max(0.15, t / maxT) : 0;
+                              return (
+                                <td key={hora} className="px-1 py-1 text-center" title={`${dia} ${hora}: ${t} turnos`}>
+                                  {t > 0 ? (
+                                    <div className="rounded-md px-1 py-1 text-xs font-bold" style={{
+                                      backgroundColor: `rgba(124, 34, 212, ${intensity})`,
+                                      color: intensity > 0.5 ? "#fff" : "#7C22D4",
+                                    }}>{t}</div>
+                                  ) : (
+                                    <span className="text-gray-200">—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Top 10 pilotos impuntuales */}
