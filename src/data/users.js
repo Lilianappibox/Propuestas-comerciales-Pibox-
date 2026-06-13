@@ -109,6 +109,18 @@ export const DEFAULT_USERS = [
     telefono: "",
     permisosCustom: { verTarifario: true, editarTarifas: true, verCierreComercial: true },
   },
+  {
+    id: "4",
+    nombre: "Anderson Perez",
+    email: "aperez@pibox.app",
+    password: "pibox2026",
+    rol: ROLES.OPERATIVO,
+    activo: true,
+    cargo: "Coordinador Tada",
+    celular: "",
+    telefono: "",
+    permisosCustom: { verInformeTada: true },
+  },
 ];
 
 export function loadUsers() {

@@ -109,7 +109,18 @@ export default function App() {
 
   const toast = (msg) => { setSavedMsg(msg); setTimeout(() => setSavedMsg(""), 3000); };
 
-  const handleLogin = (user) => { setCurrentUser(user); setView(VIEW_PROPUESTAS); setSubTab(SUB_BUILDER); };
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    // Ir a la primera vista que el usuario tenga permiso
+    const p = getPermisos(user);
+    if (p.verPropuesta) setView(VIEW_PROPUESTAS);
+    else if (p.verCierreComercial) setView(VIEW_CIERRE);
+    else if (p.verRiesgoComercial) setView(VIEW_RIESGO);
+    else if (p.verInformeTada) setView(VIEW_TADA);
+    else if (p.gestionarUsuarios) setView(VIEW_USUARIOS);
+    else setView(VIEW_TADA); // fallback
+    setSubTab(SUB_BUILDER);
+  };
   const handleLogout = () => { setCurrentUser(null); setView(VIEW_PROPUESTAS); };
 
   const handleSaveUsers = (updated) => {
