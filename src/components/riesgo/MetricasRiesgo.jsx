@@ -153,10 +153,23 @@ export default function MetricasRiesgo() {
   const nEmpPrev      = empPrevAll.length;
   const nRojoPrev     = empPrevAll.filter(e=>calcularScore(e,null,umb).color==="rojo").length;
 
+  // Servicios, paquetes, drivers actuales
+  const totalServicios = empresasFiltradas.reduce((s,e)=>s+e.total, 0);
+  const totalPaquetes  = empresasFiltradas.reduce((s,e)=>s+(e.paquetes||0), 0);
+  const totalDrivers   = tot?.totalDriversActivos || 0;
+
+  // Mes anterior
+  const totalServPrev   = empPrevAll.reduce((s,e)=>s+e.total, 0);
+  const totalPaqPrev    = empPrevAll.reduce((s,e)=>s+(e.paquetes||0), 0);
+  const totalDriversPrev = dataPrev?.totales?.totalDriversActivos || 0;
+
   const varGmv     = gmvPrevTotal  > 0 ? (gmvTotal - gmvPrevTotal)/gmvPrevTotal  : null;
   const varEmp     = nEmpPrev      > 0 ? (empresasFiltradas.length - nEmpPrev)/nEmpPrev : null;
   const varRojo    = nRojoPrev     > 0 ? (nRojo - nRojoPrev)/nRojoPrev            : null;
   const varTc      = tcPrev !== null   ? tcGlobal - tcPrev                         : null;
+  const varServ    = totalServPrev > 0 ? (totalServicios - totalServPrev)/totalServPrev : null;
+  const varPaq     = totalPaqPrev  > 0 ? (totalPaquetes - totalPaqPrev)/totalPaqPrev   : null;
+  const varDrivers = totalDriversPrev > 0 ? (totalDrivers - totalDriversPrev)/totalDriversPrev : null;
 
   const empSel = empresaSel ? empresasConScore.find(e=>e.empresa===empresaSel) : null;
 
@@ -188,20 +201,25 @@ export default function MetricasRiesgo() {
         </div>
       </div>
 
-      {/* KPIs globales */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+      {/* KPIs globales — fila 1: operacionales */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
         <KpiCard icon="🏢" label="Empresas"       value={empresasFiltradas.length.toLocaleString()} borderColor={PIBOX_PURPLE} delta={varEmp}/>
-        <KpiCard icon="🔴" label="Riesgo crítico" value={nRojo}     borderColor={SEM_ROJO}     delta={varRojo}  invertDelta/>
-        <KpiCard icon="🟡" label="Riesgo medio"   value={nAmarillo} borderColor={SEM_AMARILLO} delta={null} deltaLabel={mesPrevMeta ? `Prev: ${empPrevAll.filter(e=>calcularScore(e,null,umb).color==="amarillo").length}` : "Sin mes anterior"}/>
-        <KpiCard icon="🟢" label="Saludables"     value={nVerde}    borderColor={SEM_VERDE}    delta={null} deltaLabel={mesPrevMeta ? `Prev: ${empPrevAll.filter(e=>calcularScore(e,null,umb).color==="verde").length}` : "Sin mes anterior"}/>
-        <KpiCard icon="💰" label="GMV Total"       value={fmtFull(gmvTotal)} borderColor={PIBOX_PURPLE} delta={varGmv}
-          deltaLabel={mesPrevMeta ? `Prev: ${fmtFull(gmvPrevTotal)}` : "Sin mes anterior"}/>
-        <KpiCard icon="✅" label="% Completado"    value={fmtPct(tcGlobal)} borderColor={SEM_VERDE} delta={varTc}/>
+        <KpiCard icon="💰" label="GMV Total"       value={fmtFull(gmvTotal)} borderColor={PIBOX_PURPLE} delta={varGmv}/>
+        <KpiCard icon="📦" label="Servicios"       value={totalServicios.toLocaleString()} borderColor="#6366F1" delta={varServ}/>
+        <KpiCard icon="📮" label="Paquetes"        value={totalPaquetes.toLocaleString()} borderColor="#0EA5E9" delta={varPaq}/>
+        <KpiCard icon="🏍️" label="Drivers Activos" value={totalDrivers.toLocaleString()} borderColor="#F59E0B" delta={varDrivers}/>
       </div>
 
-      {/* Gráficas resumen */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Dona semáforo */}
+      {/* KPIs riesgo + gráfica distribución alineados */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+        {/* 3 cards de riesgo */}
+        <div className="space-y-3">
+          <KpiCard icon="🔴" label="Riesgo crítico" value={nRojo}     borderColor={SEM_ROJO}     delta={varRojo}  invertDelta/>
+          <KpiCard icon="🟡" label="Riesgo medio"   value={nAmarillo} borderColor={SEM_AMARILLO} delta={null} deltaLabel={mesPrevMeta ? `Prev: ${empPrevAll.filter(e=>calcularScore(e,null,umb).color==="amarillo").length}` : "Sin mes anterior"}/>
+          <KpiCard icon="🟢" label="Saludables"     value={nVerde}    borderColor={SEM_VERDE}    delta={null} deltaLabel={mesPrevMeta ? `Prev: ${empPrevAll.filter(e=>calcularScore(e,null,umb).color==="verde").length}` : "Sin mes anterior"}/>
+        </div>
+
+        {/* Dona semáforo alineada */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
           <h3 className="font-bold text-gray-700 text-sm mb-3">Distribución de riesgo</h3>
           <ResponsiveContainer width="100%" height={200}>
@@ -218,10 +236,15 @@ export default function MetricasRiesgo() {
               <Tooltip formatter={(v,n)=>[v,n]}/>
             </PieChart>
           </ResponsiveContainer>
+          <div className="flex justify-center gap-3 mt-2 text-xs">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{background:SEM_ROJO}}/> {nRojo}</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{background:SEM_AMARILLO}}/> {nAmarillo}</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{background:SEM_VERDE}}/> {nVerde}</span>
+          </div>
         </div>
 
         {/* GMV por ciudad */}
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 lg:col-span-2">
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 lg:col-span-2 min-w-0">
           <h3 className="font-bold text-gray-700 text-sm mb-1">💰 GMV por ciudad (top 10)</h3>
           {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
           <ResponsiveContainer width="100%" height={200}>
