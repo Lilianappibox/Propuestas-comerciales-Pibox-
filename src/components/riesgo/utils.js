@@ -34,8 +34,18 @@ export function saveIndex(idx) {
   localStorage.setItem(SK_INDEX, JSON.stringify(idx));
 }
 export function loadMesData(key) {
-  try { return JSON.parse(localStorage.getItem(SK_MES(key)) || "null"); }
-  catch { return null; }
+  try {
+    const data = JSON.parse(localStorage.getItem(SK_MES(key)) || "null");
+    if (!data) return null;
+    // Si tiene filas crudas guardadas y falta driversPorOp, reprocesar
+    if (data._rawRows && data.empresas?.length > 0 && !data.totales?.driversPorTipoOp) {
+      const processed = procesarDatos(data._rawRows);
+      const refreshed = { ...data, empresas: processed.empresas, ciudades: processed.ciudades, totales: processed.totales };
+      localStorage.setItem(SK_MES(key), JSON.stringify(refreshed));
+      return refreshed;
+    }
+    return data;
+  } catch { return null; }
 }
 export function saveMesData(key, data) {
   localStorage.setItem(SK_MES(key), JSON.stringify(data));
