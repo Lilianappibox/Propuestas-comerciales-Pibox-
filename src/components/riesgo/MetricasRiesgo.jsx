@@ -422,6 +422,69 @@ export default function MetricasRiesgo() {
         </div>
       </div>
 
+      {/* Drivers activos por tipo de operación */}
+      {tot?.driversPorTipoOp?.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <div className="flex flex-wrap items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-700 text-sm">🏍️ Drivers Activos por Tipo de Operación</h3>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-bold" style={{background:BRAND_GRADIENT,color:"#fff"}}>
+              Total: {tot.totalDriversActivos.toLocaleString()} drivers únicos
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Tabla */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{background:PIBOX_PURPLE}} className="text-white">
+                    <th className="px-3 py-2.5 text-left font-semibold">Tipo de Operación</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">Drivers Activos</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">Servicios</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">Prom. Serv/Driver</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tot.driversPorTipoOp.map((d, i) => (
+                    <tr key={d.op} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
+                      <td className="px-3 py-2 font-semibold text-gray-800">{d.op}</td>
+                      <td className="px-3 py-2 text-right font-bold text-purple-700">{d.driversActivos.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-gray-600">{d.servicios.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">
+                        <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-bold">{d.promServPorDriver}</span>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-purple-300 bg-purple-50 font-bold">
+                    <td className="px-3 py-2 text-purple-800">TOTAL</td>
+                    <td className="px-3 py-2 text-right text-purple-800">{tot.totalDriversActivos.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{tot.driversPorTipoOp.reduce((s, d) => s + d.servicios, 0).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right">
+                      <span className="bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                        {tot.totalDriversActivos > 0 ? Math.round(tot.driversPorTipoOp.reduce((s, d) => s + d.servicios, 0) / tot.totalDriversActivos) : 0}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Gráfico */}
+            <ResponsiveContainer width="100%" height={Math.max(200, tot.driversPorTipoOp.length * 40)}>
+              <BarChart data={tot.driversPorTipoOp} layout="vertical" margin={{left:5,right:10}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                <XAxis type="number" tick={{fontSize:9}}/>
+                <YAxis type="category" dataKey="op" tick={{fontSize:9}} width={90}/>
+                <Tooltip formatter={(v,n) => [v.toLocaleString(), n]}/>
+                <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                <Bar dataKey="driversActivos" name="Drivers Activos" fill={PIBOX_PURPLE} radius={[0,4,4,0]}/>
+                <Bar dataKey="promServPorDriver" name="Prom. Serv/Driver" fill={PIBOX_PINK} radius={[0,4,4,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {/* Evolución semanal */}
       {tot?.weekly?.length > 0 && (
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">

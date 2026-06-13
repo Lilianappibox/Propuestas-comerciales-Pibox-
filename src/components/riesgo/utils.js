@@ -232,25 +232,43 @@ export function procesarDatos(rows) {
     };
   });
 
-  // ── Agregados globales: tipo operación, status, vehículo ──
+  // ── Agregados globales: tipo operación, status, vehículo, drivers ──
   const globalOps = {};
   const globalStatus = {};
   const globalVehicle = {};
+  const driversPorOp = {}; // op → Set de driver IDs únicos
+  const driversGlobal = new Set();
   for (const row of rows) {
-    const op = toStr(row["operation_type"] || "Otro");
-    const st = toStr(row["service_status"] || "Sin estado");
-    const vh = toStr(row["vehicle_type"] || row["vehicleType"] || row["tipo_vehiculo"] || "Sin vehículo");
+    const op = toStr(row["operation_type"] || row["OPERATION TYPE"] || "Otro");
+    const st = toStr(row["service_status"] || row["Service Status"] || "Sin estado");
+    const vh = toStr(row["vehicle_type"] || row["vehicleType"] || row["Vehicle Type"] || row["tipo_vehiculo"] || "Sin vehículo");
     const gmv = toNum(row["gmv"]);
+    const driverId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
+    const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
+    const driverKey = driverId || driverName; // usar ID si existe, si no nombre
+
     if (!globalOps[op]) globalOps[op] = { total: 0, gmv: 0 };
     globalOps[op].total++; globalOps[op].gmv += gmv;
     if (!globalStatus[st]) globalStatus[st] = { total: 0, gmv: 0 };
     globalStatus[st].total++; globalStatus[st].gmv += gmv;
     if (!globalVehicle[vh]) globalVehicle[vh] = { total: 0, gmv: 0 };
     globalVehicle[vh].total++; globalVehicle[vh].gmv += gmv;
+
+    // Drivers únicos por tipo de operación
+    if (driverKey) {
+      driversGlobal.add(driverKey);
+      if (!driversPorOp[op]) driversPorOp[op] = { drivers: new Set(), servicios: 0 };
+      driversPorOp[op].drivers.add(driverKey);
+      driversPorOp[op].servicios++;
+    }
   }
   const porTipoOp = Object.entries(globalOps).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const porStatus = Object.entries(globalStatus).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const porVehiculo = Object.entries(globalVehicle).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+  const driversPorTipoOp = Object.entries(driversPorOp)
+    .map(([op, v]) => ({ op, driversActivos: v.drivers.size, servicios: v.servicios, promServPorDriver: v.drivers.size > 0 ? Math.round(v.servicios / v.drivers.size) : 0 }))
+    .sort((a, b) => b.driversActivos - a.driversActivos);
+  const totalDriversActivos = driversGlobal.size;
 
   // totales globales
   const totalGmv = rows.reduce((s,r)=>s+toNum(r["gmv"]),0);
@@ -325,6 +343,8 @@ export function procesarDatos(rows) {
       porTipoOp,
       porStatus,
       porVehiculo,
+      driversPorTipoOp,
+      totalDriversActivos,
     }
   };
 }
