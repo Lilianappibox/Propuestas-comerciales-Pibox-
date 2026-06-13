@@ -135,7 +135,7 @@ export const DEFAULT_USERS = [
   },
   {
     id: "6",
-    nombre: "Manuel Rincón",
+    nombre: "Maria Paula Rincón",
     email: "mrincon@pibox.app",
     password: "pibox2026",
     rol: ROLES.OPERATIVO,
