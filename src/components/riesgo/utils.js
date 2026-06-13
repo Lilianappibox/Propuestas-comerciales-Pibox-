@@ -232,6 +232,26 @@ export function procesarDatos(rows) {
     };
   });
 
+  // ── Agregados globales: tipo operación, status, vehículo ──
+  const globalOps = {};
+  const globalStatus = {};
+  const globalVehicle = {};
+  for (const row of rows) {
+    const op = toStr(row["operation_type"] || "Otro");
+    const st = toStr(row["service_status"] || "Sin estado");
+    const vh = toStr(row["vehicle_type"] || row["vehicleType"] || row["tipo_vehiculo"] || "Sin vehículo");
+    const gmv = toNum(row["gmv"]);
+    if (!globalOps[op]) globalOps[op] = { total: 0, gmv: 0 };
+    globalOps[op].total++; globalOps[op].gmv += gmv;
+    if (!globalStatus[st]) globalStatus[st] = { total: 0, gmv: 0 };
+    globalStatus[st].total++; globalStatus[st].gmv += gmv;
+    if (!globalVehicle[vh]) globalVehicle[vh] = { total: 0, gmv: 0 };
+    globalVehicle[vh].total++; globalVehicle[vh].gmv += gmv;
+  }
+  const porTipoOp = Object.entries(globalOps).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+  const porStatus = Object.entries(globalStatus).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+  const porVehiculo = Object.entries(globalVehicle).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+
   // totales globales
   const totalGmv = rows.reduce((s,r)=>s+toNum(r["gmv"]),0);
   const topCiudadesGlobal = (() => {
@@ -300,6 +320,9 @@ export function procesarDatos(rows) {
       n_empresas: empresas.length,
       topCiudades: topCiudadesGlobal,
       weekly: weeklyGlobal,
+      porTipoOp,
+      porStatus,
+      porVehiculo,
     }
   };
 }

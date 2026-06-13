@@ -247,6 +247,91 @@ export default function MetricasRiesgo() {
         </div>
       </div>
 
+      {/* Tipo de Operación, Estado del Servicio, Tipo de Vehículo */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Tipo de Operación */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="font-bold text-gray-700 text-sm mb-3">🔧 Tipo de Operación</h3>
+          {(tot?.porTipoOp?.length > 0) ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={tot.porTipoOp} dataKey="total" nameKey="name"
+                  cx="50%" cy="50%" innerRadius={45} outerRadius={75}
+                  label={({name,percent})=>`${name.split(" ")[0]} ${(percent*100).toFixed(0)}%`}
+                  labelLine={false}>
+                  {tot.porTipoOp.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                </Pie>
+                <Tooltip formatter={(v,n)=>[v.toLocaleString()+" servicios",n]}/>
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-gray-400 text-center py-8">Sin datos</p>}
+          {tot?.porTipoOp?.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {tot.porTipoOp.slice(0,5).map((d,i)=>(
+                <div key={d.name} className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{background:COLORS[i%COLORS.length]}}/>
+                    <span className="text-gray-600 truncate max-w-[120px]">{d.name}</span>
+                  </span>
+                  <span className="font-semibold text-gray-700">{d.total.toLocaleString()} <span className="text-gray-400 font-normal">({fmtM(d.gmv)})</span></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Estado del Servicio */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="font-bold text-gray-700 text-sm mb-3">📋 Estado del Servicio</h3>
+          {(tot?.porStatus?.length > 0) ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={tot.porStatus.slice(0,8)} layout="vertical" margin={{left:5,right:5}}>
+                <XAxis type="number" tick={{fontSize:9}} tickFormatter={v=>v.toLocaleString()}/>
+                <YAxis type="category" dataKey="name" tick={{fontSize:9}} width={80}/>
+                <Tooltip formatter={(v)=>[v.toLocaleString()+" servicios"]}/>
+                <Bar dataKey="total" name="Servicios" radius={[0,4,4,0]}>
+                  {tot.porStatus.slice(0,8).map((d,i)=>{
+                    const c = d.name==="Completed"?SEM_VERDE:d.name.startsWith("Canceled")?SEM_ROJO:d.name==="Expired"?SEM_AMARILLO:COLORS[i%COLORS.length];
+                    return <Cell key={i} fill={c}/>;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-gray-400 text-center py-8">Sin datos</p>}
+        </div>
+
+        {/* Tipo de Vehículo */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="font-bold text-gray-700 text-sm mb-3">🚗 Tipo de Vehículo</h3>
+          {(tot?.porVehiculo?.length > 0) ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={tot.porVehiculo} dataKey="total" nameKey="name"
+                  cx="50%" cy="50%" innerRadius={45} outerRadius={75}
+                  label={({name,percent})=>`${name.split(" ")[0]} ${(percent*100).toFixed(0)}%`}
+                  labelLine={false}>
+                  {tot.porVehiculo.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                </Pie>
+                <Tooltip formatter={(v,n)=>[v.toLocaleString()+" servicios",n]}/>
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-gray-400 text-center py-8">Sin datos</p>}
+          {tot?.porVehiculo?.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {tot.porVehiculo.slice(0,5).map((d,i)=>(
+                <div key={d.name} className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{background:COLORS[i%COLORS.length]}}/>
+                    <span className="text-gray-600 truncate max-w-[120px]">{d.name}</span>
+                  </span>
+                  <span className="font-semibold text-gray-700">{d.total.toLocaleString()} <span className="text-gray-400 font-normal">({fmtM(d.gmv)})</span></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Evolución semanal */}
       {tot?.weekly?.length > 0 && (
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
