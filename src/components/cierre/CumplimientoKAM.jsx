@@ -49,10 +49,14 @@ export default function CumplimientoKAM({ data }) {
         {kamsFiltrados.map((k) => {
           const nuevos = (data.clientesNuevos || []).filter((c) => c.kam === k.nombre);
           const perdidos = (data.clientesPerdidos || []).filter((c) => c.kam === k.nombre);
-          // Clientes activos: aparecen en top10 con ese KAM
-          const activos = (data.top10Clientes || []).filter((c) => c.kam === k.nombre);
-          const crecPct = k.crecimientoVsMesPct || 0;
-          const crecVal = k.crecimientoVsMes || 0;
+          // Clientes activos: todos los del Top 10 asignados a este KAM
+          const clientesKam = (data.top10Clientes || []).filter((c) => c.kam === k.nombre);
+          const activos = clientesKam.length;
+          // Crecimiento calculado desde Top 10: GMV actual vs anterior
+          const gmvActualTop = clientesKam.reduce((a, c) => a + (c.gmvActual || 0), 0);
+          const gmvAnteriorTop = clientesKam.reduce((a, c) => a + (c.gmvAnterior || 0), 0);
+          const crecPct = gmvAnteriorTop > 0 ? ((gmvActualTop - gmvAnteriorTop) / gmvAnteriorTop) * 100 : 0;
+          const crecVal = gmvActualTop - gmvAnteriorTop;
           return (
             <div
               key={k.nombre}
@@ -82,12 +86,12 @@ export default function CumplimientoKAM({ data }) {
                 <div className={`rounded-md px-1 py-0.5 ${crecPct >= 0 ? "bg-green-50" : "bg-red-50"}`}>
                   <p className="text-gray-400">vs mes ant.</p>
                   <p className={`font-bold ${crecPct >= 0 ? "text-green-600" : "text-red-500"}`}>
-                    {crecPct >= 0 ? "▲" : "▼"} {crecPct !== 0 ? `${Math.abs(crecPct).toFixed(1)}%` : M(Math.abs(crecVal))}
+                    {crecPct >= 0 ? "▲" : "▼"} {Math.abs(crecPct).toFixed(1)}%
                   </p>
                 </div>
                 <div className="bg-blue-50 rounded-md px-1 py-0.5">
                   <p className="text-gray-400">Activos</p>
-                  <p className="font-bold text-blue-700">{activos.length}</p>
+                  <p className="font-bold text-blue-700">{activos}</p>
                 </div>
                 <div className="bg-emerald-50 rounded-md px-1 py-0.5">
                   <p className="text-gray-400">Nuevos</p>
