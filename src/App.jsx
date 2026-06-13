@@ -14,6 +14,7 @@ import CierreComercial  from "./components/CierreComercial";
 import RiesgoComercial  from "./components/RiesgoComercial";
 import TarifarioInterno from "./components/TarifarioInterno";
 import InformeTada from "./components/InformeTada";
+import welcomeBg from "./assets/pibox-welcome.png";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -111,14 +112,13 @@ export default function App() {
 
   const handleLogin = (user) => {
     setCurrentUser(user);
-    // Ir a la primera vista que el usuario tenga permiso
     const p = getPermisos(user);
     if (p.verPropuesta) setView(VIEW_PROPUESTAS);
     else if (p.verCierreComercial) setView(VIEW_CIERRE);
     else if (p.verRiesgoComercial) setView(VIEW_RIESGO);
     else if (p.verInformeTada) setView(VIEW_TADA);
     else if (p.gestionarUsuarios) setView(VIEW_USUARIOS);
-    else setView(VIEW_TADA); // fallback
+    else setView("welcome");
     setSubTab(SUB_BUILDER);
   };
   const handleLogout = () => { setCurrentUser(null); setView(VIEW_PROPUESTAS); };
@@ -552,6 +552,13 @@ export default function App() {
         <main className="max-w-7xl mx-auto px-4 py-6">
           <InformeTada isAdmin={currentUser?.rol === "Administrativo"} />
         </main>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+           PANTALLA DE BIENVENIDA
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === "welcome" && (
+        <div className="min-h-[calc(100vh-56px)]" style={{ background: `url(${welcomeBg}) center/cover no-repeat` }} />
       )}
     </div>
   );
