@@ -1,10 +1,9 @@
-import * as XLSX from "xlsx";
-
 /**
  * Lee un File de Excel/CSV y devuelve array de objetos
  * (primera fila = cabeceras, resto = datos)
  */
-export function parseExcelFile(file) {
+export async function parseExcelFile(file) {
+  const XLSX = await import("xlsx");
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
