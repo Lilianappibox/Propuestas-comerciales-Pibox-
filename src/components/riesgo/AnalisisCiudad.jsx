@@ -373,6 +373,78 @@ export default function AnalisisCiudad() {
               </div>
             </div>
           )}
+
+          {/* Drivers activos por tipo de operación */}
+          {cityData.driversPorOp?.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <div className="flex flex-wrap items-center justify-between mb-4">
+                <h3 className="font-bold text-gray-700 text-sm">🏍️ Drivers Activos por Tipo de Operación — {ciudad}</h3>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-bold text-white" style={{background:BRAND_GRADIENT}}>
+                  Total: {(cityData.totalDrivers || 0).toLocaleString()} drivers
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{background:PIBOX_PURPLE}} className="text-white">
+                        <th className="px-3 py-2.5 text-left font-semibold">Tipo de Operación</th>
+                        <th className="px-3 py-2.5 text-right font-semibold">Drivers</th>
+                        <th className="px-3 py-2.5 text-right font-semibold">Servicios</th>
+                        <th className="px-3 py-2.5 text-right font-semibold">Prom/Driver</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cityData.driversPorOp.map((d, i) => {
+                        const prevOp = cityPrev?.driversPorOp?.find(p => p.op === d.op);
+                        const varD = prevOp?.driversActivos > 0 ? ((d.driversActivos - prevOp.driversActivos) / prevOp.driversActivos * 100) : null;
+                        return (
+                          <tr key={d.op} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
+                            <td className="px-3 py-2 font-semibold text-gray-800">{d.op}</td>
+                            <td className="px-3 py-2 text-right">
+                              <span className="font-bold text-purple-700">{d.driversActivos.toLocaleString()}</span>
+                              {varD !== null && (
+                                <span className={`ml-1 text-xs font-bold ${varD >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                  {varD >= 0 ? "▲" : "▼"}{Math.abs(varD).toFixed(0)}%
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">{d.servicios.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right">
+                              <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-bold">{d.promServPorDriver}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="border-t-2 border-purple-300 bg-purple-50 font-bold">
+                        <td className="px-3 py-2 text-purple-800">TOTAL</td>
+                        <td className="px-3 py-2 text-right text-purple-800">{(cityData.totalDrivers || 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{cityData.driversPorOp.reduce((s, d) => s + d.servicios, 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">
+                          <span className="bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                            {(cityData.totalDrivers || 0) > 0 ? Math.round(cityData.driversPorOp.reduce((s, d) => s + d.servicios, 0) / cityData.totalDrivers) : 0}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <ResponsiveContainer width="100%" height={Math.max(180, cityData.driversPorOp.length * 40)}>
+                  <BarChart data={cityData.driversPorOp} layout="vertical" margin={{left:5,right:10}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                    <XAxis type="number" tick={{fontSize:9}}/>
+                    <YAxis type="category" dataKey="op" tick={{fontSize:9}} width={90}/>
+                    <Tooltip formatter={(v,n) => [v.toLocaleString(), n]}/>
+                    <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                    <Bar dataKey="driversActivos" name="Drivers Activos" fill={PIBOX_PURPLE} radius={[0,4,4,0]}/>
+                    <Bar dataKey="promServPorDriver" name="Prom. Serv/Driver" fill={PIBOX_PINK} radius={[0,4,4,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

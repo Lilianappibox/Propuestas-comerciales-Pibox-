@@ -156,10 +156,20 @@ export function procesarDatos(rows) {
 
     if (!cityMap[city]) cityMap[city] = {
       city, total:0, gmv:0, paquetes:0, completados:0, cancelados:0, expirados:0,
-      localidades:{}, ops:{}, estados:{}, weekly:{},
+      localidades:{}, ops:{}, estados:{}, weekly:{}, driversPorOp:{},
     };
     const cv = cityMap[city];
     cv.total++;  cv.gmv += gmv;  cv.paquetes += pkgs;
+
+    // Drivers por tipo de operación en esta ciudad
+    const driverId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
+    const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
+    const driverKeyCv = driverId || driverName;
+    if (driverKeyCv) {
+      if (!cv.driversPorOp[op]) cv.driversPorOp[op] = { drivers: new Set(), servicios: 0 };
+      cv.driversPorOp[op].drivers.add(driverKeyCv);
+      cv.driversPorOp[op].servicios++;
+    }
     if (esCompletado) cv.completados++;
     if (esCancelado)  cv.cancelados++;
     if (esExpirado)   cv.expirados++;
@@ -322,12 +332,20 @@ export function procesarDatos(rows) {
       }))
       .sort((a,b)=>a.semana-b.semana);
 
+    // Serializar drivers por operación (Sets → números)
+    const driversPorOp = Object.entries(cv.driversPorOp)
+      .map(([op, v]) => ({ op, driversActivos: v.drivers.size, servicios: v.servicios, promServPorDriver: v.drivers.size > 0 ? Math.round(v.servicios / v.drivers.size) : 0 }))
+      .sort((a, b) => b.driversActivos - a.driversActivos);
+    const totalDriversCiudad = new Set();
+    Object.values(cv.driversPorOp).forEach(v => v.drivers.forEach(d => totalDriversCiudad.add(d)));
+
     return {
       city: cv.city, total: cv.total, gmv: cv.gmv, paquetes: cv.paquetes,
       completados: cv.completados, cancelados: cv.cancelados, expirados: cv.expirados,
       tasa_completado: cv.total>0?cv.completados/cv.total:0,
       tasa_cancelacion: cv.total>0?cv.cancelados/cv.total:0,
-      localidades, ops, estados, weekly,
+      localidades, ops, estados, weekly, driversPorOp,
+      totalDrivers: totalDriversCiudad.size,
     };
   }).sort((a,b)=>b.paquetes-a.paquetes);
 
