@@ -280,23 +280,58 @@ export default function MetricasRiesgo() {
           )}
         </div>
 
-        {/* Estado del Servicio */}
+        {/* Estado del Servicio — comparativo vs mes anterior */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <h3 className="font-bold text-gray-700 text-sm mb-3">📋 Estado del Servicio</h3>
+          <h3 className="font-bold text-gray-700 text-sm mb-1">📋 Estado del Servicio</h3>
+          {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
           {(tot?.porStatus?.length > 0) ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={tot.porStatus.slice(0,8)} layout="vertical" margin={{left:5,right:5}}>
-                <XAxis type="number" tick={{fontSize:9}} tickFormatter={v=>v.toLocaleString()}/>
-                <YAxis type="category" dataKey="name" tick={{fontSize:9}} width={80}/>
-                <Tooltip formatter={(v)=>[v.toLocaleString()+" servicios"]}/>
-                <Bar dataKey="total" name="Servicios" radius={[0,4,4,0]}>
-                  {tot.porStatus.slice(0,8).map((d,i)=>{
-                    const c = d.name==="Completed"?SEM_VERDE:d.name.startsWith("Canceled")?SEM_ROJO:d.name==="Expired"?SEM_AMARILLO:COLORS[i%COLORS.length];
-                    return <Cell key={i} fill={c}/>;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart
+                  data={(() => {
+                    const prevStatus = dataPrev?.totales?.porStatus || [];
+                    return tot.porStatus.slice(0,8).map(d => ({
+                      ...d,
+                      totalPrev: prevStatus.find(p => p.name === d.name)?.total || 0,
+                    }));
+                  })()}
+                  layout="vertical" margin={{left:5,right:5}}>
+                  <XAxis type="number" tick={{fontSize:9}} tickFormatter={v=>v.toLocaleString()}/>
+                  <YAxis type="category" dataKey="name" tick={{fontSize:9}} width={80}/>
+                  <Tooltip formatter={(v)=>[v.toLocaleString()+" servicios"]}/>
+                  <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                  <Bar dataKey="total" name={dataMes?.label||"Actual"} radius={[0,4,4,0]}>
+                    {tot.porStatus.slice(0,8).map((d,i)=>{
+                      const c = d.name==="Completed"?SEM_VERDE:d.name.startsWith("Canceled")?SEM_ROJO:d.name==="Expired"?SEM_AMARILLO:COLORS[i%COLORS.length];
+                      return <Cell key={i} fill={c}/>;
+                    })}
+                  </Bar>
+                  {mesPrevMeta && <Bar dataKey="totalPrev" name={mesPrevMeta.label} fill={PIBOX_PINK} fillOpacity={0.45} radius={[0,4,4,0]}/>}
+                </BarChart>
+              </ResponsiveContainer>
+              {/* Tabla comparativa debajo */}
+              <div className="mt-3 space-y-1">
+                {tot.porStatus.slice(0,6).map(d => {
+                  const prev = (dataPrev?.totales?.porStatus || []).find(p => p.name === d.name);
+                  const prevTotal = prev?.total || 0;
+                  const varPct = prevTotal > 0 ? ((d.total - prevTotal) / prevTotal * 100) : 0;
+                  const c = d.name==="Completed"?SEM_VERDE:d.name.startsWith("Canceled")?SEM_ROJO:d.name==="Expired"?SEM_AMARILLO:"#6b7280";
+                  return (
+                    <div key={d.name} className="flex justify-between text-xs items-center">
+                      <span className="text-gray-600 truncate max-w-[100px]" style={{color:c}}>{d.name}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-700">{d.total.toLocaleString()}</span>
+                        {prevTotal > 0 && (
+                          <span className={`text-xs font-bold ${varPct >= 0 ? (d.name==="Completed"?"text-green-600":"text-red-500") : (d.name==="Completed"?"text-red-500":"text-green-600")}`}>
+                            {varPct >= 0 ? "▲" : "▼"} {Math.abs(varPct).toFixed(1)}%
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           ) : <p className="text-xs text-gray-400 text-center py-8">Sin datos</p>}
         </div>
 
