@@ -231,9 +231,12 @@ export default function InformeTada({ isAdmin }) {
   const [uploadDate, setUploadDate] = useState(stored?.uploadDate || null);
 
   // Facturación por mes
+  const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   const [factIndex, setFactIndex] = useState(loadFactIndex);
   const factMeses = Object.keys(factIndex).sort().reverse();
   const [factMesSel, setFactMesSel] = useState(factMeses[0] || "");
+  const [factAnio, setFactAnio] = useState(2026);
+  const [factMesNum, setFactMesNum] = useState(new Date().getMonth() + 1);
   const [factLoading, setFactLoading] = useState(false);
   const [factError, setFactError] = useState(null);
 
@@ -353,9 +356,9 @@ export default function InformeTada({ isAdmin }) {
       const buf = await file.arrayBuffer();
       const wb  = XLSX.read(buf, { type: "array" });
       const processed = processFactExcel(wb);
-      const key = processed.mes;
+      const key = `${MESES_LABEL[factMesNum]} ${factAnio}`;
       // Guardar mes individual
-      saveFactMes(key, { ...processed, archivo: file.name, fecha: new Date().toISOString() });
+      saveFactMes(key, { ...processed, mes: key, archivo: file.name, fecha: new Date().toISOString() });
       // Actualizar índice
       const idx = loadFactIndex();
       idx[key] = { archivo: file.name, fecha: new Date().toISOString(), gmv: processed.totalGmv, paquetes: processed.totalPaq, servicios: processed.totalServ };
@@ -440,17 +443,57 @@ export default function InformeTada({ isAdmin }) {
       {/* ── TAB: FACTURACIÓN ─────────────────────────────────────────── */}
       {tab === "facturacion" && (
         <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-          {/* Upload + Selector de mes */}
-          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-            <div className="flex flex-wrap gap-4 items-end">
-              {isAdmin && (
+          {/* Subir nuevo mes (Admin) */}
+          {isAdmin && (
+            <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5">
+              <h3 className="font-bold text-gray-700 text-sm mb-3">📂 Subir nuevo mes</h3>
+              <div className="flex flex-wrap gap-3 items-end">
                 <div>
-                  <label className="cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold shadow hover:shadow-lg transition" style={{ background: BRAND_GRADIENT }}>
-                    {factLoading ? "Procesando..." : "📥 Subir Facturación (.xlsx)"}
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Año</label>
+                  <select value={factAnio} onChange={e => setFactAnio(Number(e.target.value))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes</label>
+                  <select value={factMesNum} onChange={e => setFactMesNum(Number(e.target.value))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    {MESES_LABEL.slice(1).map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Archivo Excel (.xlsx)</label>
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow hover:shadow-lg transition" style={{ background: BRAND_GRADIENT }}>
+                    {factLoading ? "Procesando..." : "Seleccionar archivo"}
                     <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFactUpload} disabled={factLoading} />
                   </label>
                 </div>
+              </div>
+              {factError && <p className="mt-2 text-sm text-red-600">❌ {factError}</p>}
+
+              {/* Meses cargados */}
+              {factMeses.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({factMeses.length})</p>
+                  <div className="flex flex-wrap gap-2">
+                    {factMeses.map(m => (
+                      <div key={m} className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition ${
+                        factMesSel === m ? "bg-purple-600 text-white border-purple-600" : "border-gray-200 text-gray-600 hover:bg-purple-50"
+                      }`}>
+                        <button onClick={() => setFactMesSel(m)}>{m}</button>
+                        <button onClick={() => handleFactDeleteMes(m)} className="text-red-300 hover:text-red-500 ml-1">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
+            </div>
+          )}
+
+          {/* Selector de mes para análisis */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
+            <div className="flex flex-wrap gap-4 items-end">
               {factMeses.length > 0 && (
                 <div>
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
@@ -473,12 +516,7 @@ export default function InformeTada({ isAdmin }) {
                   })()}
                 </div>
               )}
-              {isAdmin && factMesSel && (
-                <button onClick={() => handleFactDeleteMes(factMesSel)} className="text-xs text-red-500 hover:underline">🗑️ Eliminar mes</button>
-              )}
             </div>
-            {factError && <p className="mt-2 text-sm text-red-600">❌ {factError}</p>}
-            {isAdmin && <p className="mt-2 text-xs text-gray-400">Sube un archivo por mes. Cada mes se guarda por separado para comparativas.</p>}
           </div>
 
           {factActual ? (() => {
