@@ -1,8 +1,9 @@
-import { useState } from "react";
-import ConfiguracionRiesgo from "./riesgo/ConfiguracionRiesgo";
-import MetricasRiesgo      from "./riesgo/MetricasRiesgo";
-import InformeEmpresa      from "./riesgo/InformeEmpresa";
-import AnalisisCiudad      from "./riesgo/AnalisisCiudad";
+import { useState, lazy, Suspense } from "react";
+
+const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
+const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
+const InformeEmpresa      = lazy(() => import("./riesgo/InformeEmpresa"));
+const AnalisisCiudad      = lazy(() => import("./riesgo/AnalisisCiudad"));
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 
@@ -51,10 +52,12 @@ export default function RiesgoComercial({ currentUser }) {
 
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
-        {tab === "metricas" && <MetricasRiesgo />}
-        {tab === "ciudad"   && <AnalisisCiudad />}
-        {tab === "informe"  && <InformeEmpresa />}
+        <Suspense fallback={<div className="text-center py-10 text-purple-400 text-sm">Cargando...</div>}>
+          {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
+          {tab === "metricas" && <MetricasRiesgo />}
+          {tab === "ciudad"   && <AnalisisCiudad />}
+          {tab === "informe"  && <InformeEmpresa />}
+        </Suspense>
       </div>
     </div>
   );
