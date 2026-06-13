@@ -215,6 +215,272 @@ function processFactExcel(wb) {
   return { totalGmv, totalPaq, totalServ, ciudadMap, puntoMap, mes: mesDetectado };
 }
 
+// ── Insights Tab Component ─────────────────────────────────────────────────
+const SK_TADA_UMB = "pibox_tada_umbrales";
+const UMB_DEFAULT = {
+  colocAlerta: 80, colocExcelente: 95,
+  puntAlerta: 70, puntExcelente: 90,
+  ciudadColocAlerta: 75, puntoColocAlerta: 60,
+  varTurnosAlerta: -10, varTurnosWin: 10,
+  gmvCiudadAlerta: -20, gmvCiudadWin: 30,
+  gmvPuntoAlerta: -25, gmvTotalAlerta: -15, gmvTotalWin: 15,
+  paqAlerta: -15, paqWin: 15,
+  minTurnosCiudad: 10, minTurnosPunto: 5, minGmvPunto: 50000,
+};
+
+function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin }) {
+  const [showConfig, setShowConfig] = useState(false);
+  const [umb, setUmb] = useState(() => { try { return { ...UMB_DEFAULT, ...JSON.parse(localStorage.getItem(SK_TADA_UMB) || "{}") }; } catch { return UMB_DEFAULT; } });
+  const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
+  const [mesSel, setMesSel] = useState(insightsMeses[0] || "");
+
+  const saveUmb = (u) => { setUmb(u); localStorage.setItem(SK_TADA_UMB, JSON.stringify(u)); };
+  const UmbField = ({ label, k, suffix = "%" }) => (
+    <div>
+      <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
+      <div className="flex items-center gap-1">
+        <input type="number" value={umb[k]} onChange={e => saveUmb({ ...umb, [k]: Number(e.target.value) })}
+          className="w-20 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400" />
+        <span className="text-xs text-gray-400">{suffix}</span>
+      </div>
+    </div>
+  );
+
+  if (insightsMeses.length === 0) return (
+    <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="bg-purple-50 border border-purple-100 rounded-xl p-8 text-center text-purple-700">
+        <p className="text-2xl mb-2">💡</p>
+        <p className="text-sm font-medium">Sube datos de tráfico y facturación para generar insights.</p>
+      </div>
+    </div>
+  );
+
+  const traf = loadTrafMes(mesSel)?.data;
+  const fact = loadFactMes(mesSel);
+  const trafP = (() => { const s = Object.keys(trafIndex).sort(); const i = s.indexOf(mesSel); return i > 0 ? loadTrafMes(s[i-1])?.data : null; })();
+  const factP = (() => { const s = Object.keys(factIndex).sort(); const i = s.indexOf(mesSel); return i > 0 ? loadFactMes(s[i-1]) : null; })();
+
+  const alerts = [], wins = [], detallePuntos = [], detalleCiudades = [];
+
+  if (traf) {
+    const pctColoc = traf.total > 0 ? (traf.colocacionesSI / traf.total * 100) : 0;
+    const pctPunt = traf.total > 0 ? (traf.puntualidadSI / traf.total * 100) : 0;
+    if (pctColoc < umb.colocAlerta) alerts.push({ cat: "Tráfico", icon: "🔴", text: `Colocación baja: ${pctColoc.toFixed(1)}% — objetivo mínimo ${umb.colocAlerta}%` });
+    else if (pctColoc >= umb.colocExcelente) wins.push({ cat: "Tráfico", icon: "🟢", text: `Colocación excelente: ${pctColoc.toFixed(1)}%` });
+    if (pctPunt < umb.puntAlerta) alerts.push({ cat: "Tráfico", icon: "🔴", text: `Puntualidad crítica: ${pctPunt.toFixed(1)}% — mínimo ${umb.puntAlerta}%` });
+    else if (pctPunt >= umb.puntExcelente) wins.push({ cat: "Tráfico", icon: "🟢", text: `Puntualidad destacada: ${pctPunt.toFixed(1)}%` });
+    if (trafP) {
+      const v = trafP.total > 0 ? ((traf.total - trafP.total) / trafP.total * 100) : 0;
+      if (v < umb.varTurnosAlerta) alerts.push({ cat: "Tráfico", icon: "📉", text: `Turnos cayeron ${Math.abs(v).toFixed(1)}% vs mes anterior` });
+      else if (v > umb.varTurnosWin) wins.push({ cat: "Tráfico", icon: "📈", text: `Turnos crecieron ${v.toFixed(1)}%` });
+    }
+    // Detalle ciudades tráfico
+    if (traf.ciudadMap) {
+      Object.entries(traf.ciudadMap).forEach(([c, v]) => {
+        const pct = v.turnos > 0 ? (v.si / v.turnos * 100) : 0;
+        const pctP = v.turnos > 0 ? (v.punt / v.turnos * 100) : 0;
+        if (v.turnos >= umb.minTurnosCiudad) {
+          const color = pct < umb.ciudadColocAlerta ? "rojo" : pct >= umb.colocExcelente ? "verde" : "amarillo";
+          detalleCiudades.push({ ciudad: c, turnos: v.turnos, coloc: pct, punt: pctP, color });
+          if (pct < umb.ciudadColocAlerta) alerts.push({ cat: "Ciudad", icon: "📍", text: `${c}: colocación ${pct.toFixed(1)}% (${v.turnos} turnos)` });
+          else if (pct >= umb.colocExcelente) wins.push({ cat: "Ciudad", icon: "📍", text: `${c}: colocación ${pct.toFixed(1)}%` });
+        }
+      });
+    }
+    // Detalle puntos tráfico
+    if (traf.puntoMap) {
+      Object.entries(traf.puntoMap).forEach(([p, v]) => {
+        const pct = v.turnos > 0 ? (v.si / v.turnos * 100) : 0;
+        if (v.turnos >= umb.minTurnosPunto) {
+          const color = pct < umb.puntoColocAlerta ? "rojo" : pct >= umb.colocExcelente ? "verde" : "amarillo";
+          detallePuntos.push({ punto: p, ciudad: v.ciudad || "", turnos: v.turnos, coloc: pct, color });
+        }
+      });
+    }
+  }
+  if (fact) {
+    if (factP && factP.totalGmv > 0) {
+      const v = ((fact.totalGmv - factP.totalGmv) / factP.totalGmv * 100);
+      if (v < umb.gmvTotalAlerta) alerts.push({ cat: "Facturación", icon: "🚨", text: `GMV total cayó ${Math.abs(v).toFixed(1)}%: ${fmtMoney(fact.totalGmv)} vs ${fmtMoney(factP.totalGmv)}` });
+      else if (v > umb.gmvTotalWin) wins.push({ cat: "Facturación", icon: "🚀", text: `GMV creció ${v.toFixed(1)}%: ${fmtMoney(fact.totalGmv)}` });
+    }
+    if (factP && factP.totalPaq > 0) {
+      const v = ((fact.totalPaq - factP.totalPaq) / factP.totalPaq * 100);
+      if (v < umb.paqAlerta) alerts.push({ cat: "Facturación", icon: "📦", text: `Paquetes cayeron ${Math.abs(v).toFixed(1)}%` });
+      else if (v > umb.paqWin) wins.push({ cat: "Facturación", icon: "📦", text: `Paquetes crecieron ${v.toFixed(1)}%` });
+    }
+    if (fact.ciudadMap && factP?.ciudadMap) {
+      Object.entries(fact.ciudadMap).forEach(([c, v]) => {
+        const prev = factP.ciudadMap[c];
+        if (prev?.gmv > 0) {
+          const vg = ((v.gmv - prev.gmv) / prev.gmv * 100);
+          if (vg < umb.gmvCiudadAlerta) alerts.push({ cat: "Fact. Ciudad", icon: "💸", text: `${c}: GMV cayó ${Math.abs(vg).toFixed(1)}% (${fmtMoney(v.gmv)} vs ${fmtMoney(prev.gmv)})` });
+          else if (vg > umb.gmvCiudadWin) wins.push({ cat: "Fact. Ciudad", icon: "💰", text: `${c}: GMV creció ${vg.toFixed(1)}%` });
+        }
+      });
+    }
+    if (fact.puntoMap && factP?.puntoMap) {
+      Object.entries(fact.puntoMap).filter(([,v]) => v.gmv > 0).forEach(([p, v]) => {
+        const prev = factP.puntoMap[p];
+        if (prev?.gmv > umb.minGmvPunto) {
+          const vg = ((v.gmv - prev.gmv) / prev.gmv * 100);
+          if (vg < umb.gmvPuntoAlerta) alerts.push({ cat: "Fact. Punto", icon: "🏪", text: `${p} (${v.ciudad}): GMV cayó ${Math.abs(vg).toFixed(0)}% — ${fmtMoney(prev.gmv)} → ${fmtMoney(v.gmv)}` });
+        }
+      });
+    }
+  }
+
+  detallePuntos.sort((a, b) => a.coloc - b.coloc);
+  detalleCiudades.sort((a, b) => a.coloc - b.coloc);
+  const SEM = { rojo: "#DC2626", amarillo: "#D97706", verde: "#16A34A" };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      {/* Selector de mes + config */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes</label>
+            <select value={mesSel} onChange={e => setMesSel(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+              {insightsMeses.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          {isAdmin && (
+            <button onClick={() => setShowConfig(!showConfig)}
+              className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-purple-50 transition">
+              ⚙️ {showConfig ? "Ocultar umbrales" : "Editar umbrales"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Config umbrales */}
+      {showConfig && isAdmin && (
+        <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5">
+          <h3 className="font-bold text-purple-800 text-sm mb-3">⚙️ Umbrales de alertas</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <UmbField label="Colocación alerta" k="colocAlerta" />
+            <UmbField label="Colocación excelente" k="colocExcelente" />
+            <UmbField label="Puntualidad alerta" k="puntAlerta" />
+            <UmbField label="Puntualidad excelente" k="puntExcelente" />
+            <UmbField label="Ciudad coloc. alerta" k="ciudadColocAlerta" />
+            <UmbField label="Punto coloc. alerta" k="puntoColocAlerta" />
+            <UmbField label="Var. turnos alerta" k="varTurnosAlerta" />
+            <UmbField label="Var. turnos win" k="varTurnosWin" />
+            <UmbField label="GMV ciudad alerta" k="gmvCiudadAlerta" />
+            <UmbField label="GMV ciudad win" k="gmvCiudadWin" />
+            <UmbField label="GMV punto alerta" k="gmvPuntoAlerta" />
+            <UmbField label="GMV total alerta" k="gmvTotalAlerta" />
+            <UmbField label="GMV total win" k="gmvTotalWin" />
+            <UmbField label="Paquetes alerta" k="paqAlerta" />
+            <UmbField label="Mín turnos ciudad" k="minTurnosCiudad" suffix="" />
+            <UmbField label="Mín turnos punto" k="minTurnosPunto" suffix="" />
+            <UmbField label="Mín GMV punto" k="minGmvPunto" suffix="$" />
+          </div>
+          <button onClick={() => saveUmb(UMB_DEFAULT)} className="mt-3 text-xs text-red-500 hover:underline">Restaurar valores por defecto</button>
+        </div>
+      )}
+
+      {/* Alertas y wins */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h4 className="text-sm font-bold text-red-600 mb-3">⚠️ Requiere atención ({alerts.length})</h4>
+          {alerts.length > 0 ? (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {alerts.map((a, i) => (
+                <div key={i} className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
+                  <span className="shrink-0">{a.icon}</span>
+                  <div><span className="font-semibold text-red-600">[{a.cat}]</span> {a.text}</div>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Sin alertas para {mesSel}</p>}
+        </div>
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h4 className="text-sm font-bold text-green-600 mb-3">✅ Puntos positivos ({wins.length})</h4>
+          {wins.length > 0 ? (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {wins.map((w, i) => (
+                <div key={i} className="bg-green-50 border border-green-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
+                  <span className="shrink-0">{w.icon}</span>
+                  <div><span className="font-semibold text-green-600">[{w.cat}]</span> {w.text}</div>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Sin highlights para {mesSel}</p>}
+        </div>
+      </div>
+
+      {/* Detalle por ciudad */}
+      {detalleCiudades.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">📍 Detalle por Ciudad — {mesSel}</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="bg-purple-600 text-white">
+                {["Ciudad","Turnos","Colocación %","Puntualidad %","Estado"].map(h => <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {detalleCiudades.map((c, i) => (
+                  <tr key={c.ciudad} className={`border-t ${i%2===0?"bg-white":"bg-purple-50/30"}`}>
+                    <td className="px-3 py-2 font-semibold">{c.ciudad}</td>
+                    <td className="px-3 py-2">{c.turnos}</td>
+                    <td className="px-3 py-2 font-bold" style={{color:SEM[c.color]}}>{c.coloc.toFixed(1)}%</td>
+                    <td className="px-3 py-2">{c.punt.toFixed(1)}%</td>
+                    <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-white text-xs font-bold" style={{background:SEM[c.color]}}>{c.color === "rojo" ? "Crítico" : c.color === "verde" ? "Excelente" : "Moderado"}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Detalle por punto */}
+      {detallePuntos.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">🏪 Detalle por Punto — {mesSel}</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="bg-purple-600 text-white">
+                {["Punto","Ciudad","Turnos","Colocación %","Estado"].map(h => <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {detallePuntos.slice(0, 30).map((p, i) => (
+                  <tr key={p.punto} className={`border-t ${i%2===0?"bg-white":"bg-purple-50/30"}`}>
+                    <td className="px-3 py-2 font-semibold max-w-[200px] truncate">{p.punto}</td>
+                    <td className="px-3 py-2 text-gray-500">{p.ciudad}</td>
+                    <td className="px-3 py-2">{p.turnos}</td>
+                    <td className="px-3 py-2 font-bold" style={{color:SEM[p.color]}}>{p.coloc.toFixed(1)}%</td>
+                    <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-white text-xs font-bold" style={{background:SEM[p.color]}}>{p.color === "rojo" ? "Crítico" : p.color === "verde" ? "Excelente" : "Moderado"}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {detallePuntos.length > 30 && <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 30 de {detallePuntos.length} puntos</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Recomendaciones */}
+      {alerts.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+          <p className="text-sm font-bold text-amber-800 mb-2">🎯 Recomendaciones para {mesSel}</p>
+          <ul className="text-xs text-gray-600 space-y-1.5">
+            {alerts.some(a => a.cat === "Ciudad") && <li>• <b>Ciudades críticas:</b> Revisar disponibilidad de pilotos y capacidad operativa en ciudades con baja colocación.</li>}
+            {alerts.some(a => a.cat === "Tráfico" && a.text.includes("Puntualidad")) && <li>• <b>Puntualidad:</b> Implementar control con alertas tempranas y seguimiento individual a pilotos.</li>}
+            {alerts.some(a => a.cat.includes("Fact")) && <li>• <b>Facturación:</b> Investigar caídas de GMV — ¿menos puntos activos, menor volumen, o cambio de demanda?</li>}
+            {alerts.some(a => a.cat === "Fact. Punto") && <li>• <b>Puntos en caída:</b> Contactar a los puntos con mayor decrecimiento para entender causas.</li>}
+            {alerts.some(a => a.icon === "📉") && <li>• <b>Turnos:</b> Analizar si la reducción es por falta de demanda o falta de pilotos.</li>}
+            {alerts.some(a => a.icon === "🚨") && <li>• <b>Urgente:</b> Reunión con el equipo para plan de acción ante caída general.</li>}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InformeTada({ isAdmin }) {
   const [tab, setTab] = useState("trafico");
   const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -657,169 +923,7 @@ export default function InformeTada({ isAdmin }) {
       )}
 
       {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
-      {tab === "insights" && (
-        <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-          {(() => {
-            // Generar insights cruzando tráfico y facturación de todos los meses
-            const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
-
-            if (insightsMeses.length === 0) return (
-              <div className="bg-purple-50 border border-purple-100 rounded-xl p-8 text-center text-purple-700">
-                <p className="text-2xl mb-2">💡</p>
-                <p className="text-sm font-medium">Sube datos de tráfico y facturación para generar insights.</p>
-              </div>
-            );
-
-            return insightsMeses.map(mes => {
-              const traf = loadTrafMes(mes)?.data;
-              const fact = loadFactMes(mes);
-              const trafP = (() => { const sorted = Object.keys(trafIndex).sort(); const i = sorted.indexOf(mes); return i > 0 ? loadTrafMes(sorted[i-1])?.data : null; })();
-              const factP = (() => { const sorted = Object.keys(factIndex).sort(); const i = sorted.indexOf(mes); return i > 0 ? loadFactMes(sorted[i-1]) : null; })();
-
-              const alerts = [];
-              const wins = [];
-
-              // ── Insights de TRÁFICO ──
-              if (traf) {
-                const pctColoc = traf.total > 0 ? (traf.colocacionesSI / traf.total * 100) : 0;
-                const pctPunt = traf.total > 0 ? (traf.puntualidadSI / traf.total * 100) : 0;
-
-                if (pctColoc < 80) alerts.push({ icon: "🔴", text: `Colocación baja: ${pctColoc.toFixed(1)}% — objetivo mínimo 80%` });
-                else if (pctColoc >= 95) wins.push({ icon: "🟢", text: `Colocación excelente: ${pctColoc.toFixed(1)}%` });
-
-                if (pctPunt < 70) alerts.push({ icon: "🔴", text: `Puntualidad crítica: ${pctPunt.toFixed(1)}% — requiere acción inmediata` });
-                else if (pctPunt >= 90) wins.push({ icon: "🟢", text: `Puntualidad destacada: ${pctPunt.toFixed(1)}%` });
-
-                // Peores ciudades en colocación
-                if (traf.ciudadMap) {
-                  const ciudades = Object.entries(traf.ciudadMap).map(([c, v]) => ({ ciudad: c, pct: v.turnos > 0 ? (v.si / v.turnos * 100) : 0, turnos: v.turnos })).filter(c => c.turnos >= 10);
-                  const peores = ciudades.filter(c => c.pct < 75).sort((a, b) => a.pct - b.pct);
-                  const mejores = ciudades.filter(c => c.pct >= 95).sort((a, b) => b.pct - a.pct);
-                  peores.slice(0, 3).forEach(c => alerts.push({ icon: "📍", text: `${c.ciudad}: colocación ${c.pct.toFixed(1)}% (${c.turnos} turnos)` }));
-                  mejores.slice(0, 2).forEach(c => wins.push({ icon: "📍", text: `${c.ciudad}: colocación ${c.pct.toFixed(1)}% (${c.turnos} turnos)` }));
-                }
-
-                // Comparativa vs mes anterior
-                if (trafP) {
-                  const varTurnos = trafP.total > 0 ? ((traf.total - trafP.total) / trafP.total * 100) : 0;
-                  if (varTurnos < -10) alerts.push({ icon: "📉", text: `Turnos cayeron ${Math.abs(varTurnos).toFixed(1)}% vs mes anterior` });
-                  else if (varTurnos > 10) wins.push({ icon: "📈", text: `Turnos crecieron ${varTurnos.toFixed(1)}% vs mes anterior` });
-                }
-
-                // Peores puntos
-                if (traf.puntoMap) {
-                  const puntos = Object.entries(traf.puntoMap).map(([p, v]) => ({ punto: p, pct: v.turnos > 0 ? (v.si / v.turnos * 100) : 0, turnos: v.turnos })).filter(p => p.turnos >= 5);
-                  const peoresPuntos = puntos.filter(p => p.pct < 60).sort((a, b) => a.pct - b.pct);
-                  peoresPuntos.slice(0, 3).forEach(p => alerts.push({ icon: "🏪", text: `Punto ${p.punto}: colocación ${p.pct.toFixed(1)}% (${p.turnos} turnos)` }));
-                }
-              }
-
-              // ── Insights de FACTURACIÓN ──
-              if (fact) {
-                // Ciudades con baja facturación o decrecimiento
-                if (fact.ciudadMap && factP?.ciudadMap) {
-                  Object.entries(fact.ciudadMap).forEach(([c, v]) => {
-                    const prev = factP.ciudadMap[c];
-                    if (prev && prev.gmv > 0) {
-                      const varGmv = ((v.gmv - prev.gmv) / prev.gmv * 100);
-                      if (varGmv < -20) alerts.push({ icon: "💸", text: `${c}: GMV cayó ${Math.abs(varGmv).toFixed(1)}% (${fmtMoney(v.gmv)} vs ${fmtMoney(prev.gmv)})` });
-                      else if (varGmv > 30) wins.push({ icon: "💰", text: `${c}: GMV creció ${varGmv.toFixed(1)}% (${fmtMoney(v.gmv)})` });
-                    }
-                  });
-                }
-
-                // Puntos con decrecimiento
-                if (fact.puntoMap && factP?.puntoMap) {
-                  const puntosDown = Object.entries(fact.puntoMap)
-                    .map(([p, v]) => {
-                      const prev = factP.puntoMap[p];
-                      return { punto: p, ciudad: v.ciudad, gmv: v.gmv, gmvPrev: prev?.gmv || 0, var: prev?.gmv > 0 ? ((v.gmv - prev.gmv) / prev.gmv * 100) : null };
-                    })
-                    .filter(p => p.var !== null && p.var < -25 && p.gmvPrev > 50000)
-                    .sort((a, b) => a.var - b.var);
-                  puntosDown.slice(0, 5).forEach(p => alerts.push({ icon: "🏪", text: `${p.punto} (${p.ciudad}): GMV cayó ${Math.abs(p.var).toFixed(0)}% — de ${fmtMoney(p.gmvPrev)} a ${fmtMoney(p.gmv)}` }));
-                }
-
-                // GMV total bajo comparado con anterior
-                if (factP && factP.totalGmv > 0) {
-                  const varTotal = ((fact.totalGmv - factP.totalGmv) / factP.totalGmv * 100);
-                  if (varTotal < -15) alerts.push({ icon: "🚨", text: `GMV total cayó ${Math.abs(varTotal).toFixed(1)}%: ${fmtMoney(fact.totalGmv)} vs ${fmtMoney(factP.totalGmv)}` });
-                  else if (varTotal > 15) wins.push({ icon: "🚀", text: `GMV total creció ${varTotal.toFixed(1)}%: ${fmtMoney(fact.totalGmv)}` });
-                }
-
-                // Paquetes
-                if (factP && factP.totalPaq > 0) {
-                  const varPaq = ((fact.totalPaq - factP.totalPaq) / factP.totalPaq * 100);
-                  if (varPaq < -15) alerts.push({ icon: "📦", text: `Paquetes cayeron ${Math.abs(varPaq).toFixed(1)}%: ${fact.totalPaq.toLocaleString()} vs ${factP.totalPaq.toLocaleString()}` });
-                  else if (varPaq > 15) wins.push({ icon: "📦", text: `Paquetes crecieron ${varPaq.toFixed(1)}%` });
-                }
-              }
-
-              if (alerts.length === 0 && wins.length === 0 && !traf && !fact) return null;
-
-              return (
-                <div key={mes} className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                  <h3 className="text-base font-bold text-purple-800 mb-4 flex items-center gap-2">
-                    📅 {mes}
-                    {traf && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Tráfico</span>}
-                    {fact && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Facturación</span>}
-                  </h3>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Alertas */}
-                    <div>
-                      <h4 className="text-sm font-bold text-red-600 mb-2 flex items-center gap-1">⚠️ Requiere atención ({alerts.length})</h4>
-                      {alerts.length > 0 ? (
-                        <div className="space-y-2">
-                          {alerts.map((a, i) => (
-                            <div key={i} className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
-                              <span className="shrink-0">{a.icon}</span>
-                              <span>{a.text}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Sin alertas este mes</p>
-                      )}
-                    </div>
-
-                    {/* Logros */}
-                    <div>
-                      <h4 className="text-sm font-bold text-green-600 mb-2 flex items-center gap-1">✅ Puntos positivos ({wins.length})</h4>
-                      {wins.length > 0 ? (
-                        <div className="space-y-2">
-                          {wins.map((w, i) => (
-                            <div key={i} className="bg-green-50 border border-green-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
-                              <span className="shrink-0">{w.icon}</span>
-                              <span>{w.text}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Sin highlights positivos</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Recomendaciones */}
-                  {alerts.length > 0 && (
-                    <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <p className="text-xs font-bold text-amber-800 mb-1">🎯 Recomendaciones</p>
-                      <ul className="text-xs text-gray-600 space-y-1">
-                        {alerts.some(a => a.icon === "📍" || a.icon === "🏪") && <li>• Revisar operación en los puntos/ciudades con baja colocación — validar disponibilidad de pilotos.</li>}
-                        {alerts.some(a => a.icon === "🔴" && a.text.includes("Puntualidad")) && <li>• Implementar control de puntualidad con alertas tempranas y seguimiento a pilotos.</li>}
-                        {alerts.some(a => a.icon === "💸") && <li>• Investigar causas de caída de GMV por ciudad — verificar si hay menos puntos activos o menor volumen por punto.</li>}
-                        {alerts.some(a => a.icon === "📉") && <li>• Analizar la reducción de turnos — ¿falta demanda o falta de pilotos disponibles?</li>}
-                        {alerts.some(a => a.icon === "🚨") && <li>• Reunión urgente con el equipo para revisar la caída general de facturación.</li>}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              );
-            }).filter(Boolean);
-          })()}
-        </div>
-      )}
+      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={loadTrafMes} loadFactMes={loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} />}
 
       {/* ── TAB: TRÁFICO ─────────────────────────────────────────────── */}
       {tab === "trafico" && (
