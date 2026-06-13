@@ -13,6 +13,7 @@ import SyncData from "./components/SyncData";
 import CierreComercial  from "./components/CierreComercial";
 import RiesgoComercial  from "./components/RiesgoComercial";
 import TarifarioInterno from "./components/TarifarioInterno";
+import InformeTada from "./components/InformeTada";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -34,6 +35,7 @@ const VIEW_PROPUESTAS = "propuestas";
 const VIEW_USUARIOS   = "usuarios";
 const VIEW_CIERRE     = "cierre";
 const VIEW_RIESGO     = "riesgo";
+const VIEW_TADA       = "tada";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700",
@@ -205,6 +207,7 @@ export default function App() {
     { id: VIEW_USUARIOS,   label: "👥 Usuarios",               visible: permisos.gestionarUsuarios },
     { id: VIEW_CIERRE,     label: "📊 Cierre Comercial",       visible: !!permisos.verCierreComercial },
     { id: VIEW_RIESGO,     label: "🚨 Riesgo Comercial",       visible: !!permisos.verRiesgoComercial },
+    { id: VIEW_TADA,      label: "🍺 Informe TaDa",           visible: !!permisos.verCierreComercial },
   ].filter((v) => v.visible);
 
   // ── Sub-tabs de Propuestas Comerciales ──
@@ -528,6 +531,15 @@ export default function App() {
          ══════════════════════════════════════════════════════════════════════ */}
       {view === VIEW_RIESGO && permisos.verRiesgoComercial && (
         <RiesgoComercial currentUser={currentUser} />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: INFORME TADA
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_TADA && (
+        <main className="max-w-7xl mx-auto px-4 py-6">
+          <InformeTada isAdmin={currentUser?.rol === "Administrativo"} />
+        </main>
       )}
     </div>
   );
