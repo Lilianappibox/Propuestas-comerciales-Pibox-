@@ -119,7 +119,7 @@ export const DEFAULT_USERS = [
     cargo: "Coordinador Tada",
     celular: "",
     telefono: "",
-    permisosCustom: { verInformeTada: true },
+    permisosCustom: { verInformeTada: true, verRiesgoComercial: true },
   },
   {
     id: "5",
