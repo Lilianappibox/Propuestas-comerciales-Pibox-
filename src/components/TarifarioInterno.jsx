@@ -1,5 +1,6 @@
 import { useState } from "react";
 import IncrementoTarifas from "./IncrementoTarifas";
+import InformeTada from "./InformeTada";
 
 const TABS = [
   { id: "distancia", label: "Distancia (Km)" },
@@ -14,6 +15,7 @@ const TABS = [
   { id: "onboarding", label: "🚀 Onboarding 2.0" },
   { id: "calculadora", label: "🧮 Calculadora" },
   { id: "incremento", label: "📈 Incremento Tarifas" },
+  { id: "tada", label: "🍺 Informe TaDa" },
 ];
 
 const fmt = (v) => {
@@ -654,6 +656,8 @@ export default function TarifarioInterno({ currentUser }) {
         <Calculadora />
       ) : tab === "incremento" ? (
         <IncrementoTarifas isAdmin={isAdmin} />
+      ) : tab === "tada" ? (
+        <InformeTada isAdmin={isAdmin} />
       ) : (
         <>
           {editing && isAdmin ? (
