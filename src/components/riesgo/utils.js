@@ -72,6 +72,8 @@ export function procesarDatos(rows) {
     const cost     = toNum(row["service_cost"]);
     const pkgs     = toNum(row["packages"]);
     const exec     = toStr(row["account_manager"] || "Sin asignar");
+    const driverId   = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
+    const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
     const usuario  = toStr(row["passenger_name"]  || "Sin usuario");
 
     // Semana del mes (1–5): qué semana dentro del mes calendario
@@ -170,8 +172,6 @@ export function procesarDatos(rows) {
     cv.total++;  cv.gmv += gmv;  cv.paquetes += pkgs;
 
     // Drivers por tipo de operación en esta ciudad
-    const driverId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
-    const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
     const driverKeyCv = driverId || driverName;
     if (driverKeyCv) {
       if (!cv.driversPorOp[op]) cv.driversPorOp[op] = { drivers: new Set(), servicios: 0 };
