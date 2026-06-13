@@ -427,6 +427,7 @@ export default function InformeTada({ isAdmin }) {
   const TABS_TADA = [
     { id: "trafico", label: "📊 Tráfico Pilotos" },
     { id: "facturacion", label: "💰 Facturación" },
+    { id: "insights", label: "💡 Insights" },
   ];
 
   return (
@@ -652,6 +653,171 @@ export default function InformeTada({ isAdmin }) {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
+      {tab === "insights" && (
+        <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+          {(() => {
+            // Generar insights cruzando tráfico y facturación de todos los meses
+            const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
+
+            if (insightsMeses.length === 0) return (
+              <div className="bg-purple-50 border border-purple-100 rounded-xl p-8 text-center text-purple-700">
+                <p className="text-2xl mb-2">💡</p>
+                <p className="text-sm font-medium">Sube datos de tráfico y facturación para generar insights.</p>
+              </div>
+            );
+
+            return insightsMeses.map(mes => {
+              const traf = loadTrafMes(mes)?.data;
+              const fact = loadFactMes(mes);
+              const trafP = (() => { const sorted = Object.keys(trafIndex).sort(); const i = sorted.indexOf(mes); return i > 0 ? loadTrafMes(sorted[i-1])?.data : null; })();
+              const factP = (() => { const sorted = Object.keys(factIndex).sort(); const i = sorted.indexOf(mes); return i > 0 ? loadFactMes(sorted[i-1]) : null; })();
+
+              const alerts = [];
+              const wins = [];
+
+              // ── Insights de TRÁFICO ──
+              if (traf) {
+                const pctColoc = traf.total > 0 ? (traf.colocacionesSI / traf.total * 100) : 0;
+                const pctPunt = traf.total > 0 ? (traf.puntualidadSI / traf.total * 100) : 0;
+
+                if (pctColoc < 80) alerts.push({ icon: "🔴", text: `Colocación baja: ${pctColoc.toFixed(1)}% — objetivo mínimo 80%` });
+                else if (pctColoc >= 95) wins.push({ icon: "🟢", text: `Colocación excelente: ${pctColoc.toFixed(1)}%` });
+
+                if (pctPunt < 70) alerts.push({ icon: "🔴", text: `Puntualidad crítica: ${pctPunt.toFixed(1)}% — requiere acción inmediata` });
+                else if (pctPunt >= 90) wins.push({ icon: "🟢", text: `Puntualidad destacada: ${pctPunt.toFixed(1)}%` });
+
+                // Peores ciudades en colocación
+                if (traf.ciudadMap) {
+                  const ciudades = Object.entries(traf.ciudadMap).map(([c, v]) => ({ ciudad: c, pct: v.turnos > 0 ? (v.si / v.turnos * 100) : 0, turnos: v.turnos })).filter(c => c.turnos >= 10);
+                  const peores = ciudades.filter(c => c.pct < 75).sort((a, b) => a.pct - b.pct);
+                  const mejores = ciudades.filter(c => c.pct >= 95).sort((a, b) => b.pct - a.pct);
+                  peores.slice(0, 3).forEach(c => alerts.push({ icon: "📍", text: `${c.ciudad}: colocación ${c.pct.toFixed(1)}% (${c.turnos} turnos)` }));
+                  mejores.slice(0, 2).forEach(c => wins.push({ icon: "📍", text: `${c.ciudad}: colocación ${c.pct.toFixed(1)}% (${c.turnos} turnos)` }));
+                }
+
+                // Comparativa vs mes anterior
+                if (trafP) {
+                  const varTurnos = trafP.total > 0 ? ((traf.total - trafP.total) / trafP.total * 100) : 0;
+                  if (varTurnos < -10) alerts.push({ icon: "📉", text: `Turnos cayeron ${Math.abs(varTurnos).toFixed(1)}% vs mes anterior` });
+                  else if (varTurnos > 10) wins.push({ icon: "📈", text: `Turnos crecieron ${varTurnos.toFixed(1)}% vs mes anterior` });
+                }
+
+                // Peores puntos
+                if (traf.puntoMap) {
+                  const puntos = Object.entries(traf.puntoMap).map(([p, v]) => ({ punto: p, pct: v.turnos > 0 ? (v.si / v.turnos * 100) : 0, turnos: v.turnos })).filter(p => p.turnos >= 5);
+                  const peoresPuntos = puntos.filter(p => p.pct < 60).sort((a, b) => a.pct - b.pct);
+                  peoresPuntos.slice(0, 3).forEach(p => alerts.push({ icon: "🏪", text: `Punto ${p.punto}: colocación ${p.pct.toFixed(1)}% (${p.turnos} turnos)` }));
+                }
+              }
+
+              // ── Insights de FACTURACIÓN ──
+              if (fact) {
+                // Ciudades con baja facturación o decrecimiento
+                if (fact.ciudadMap && factP?.ciudadMap) {
+                  Object.entries(fact.ciudadMap).forEach(([c, v]) => {
+                    const prev = factP.ciudadMap[c];
+                    if (prev && prev.gmv > 0) {
+                      const varGmv = ((v.gmv - prev.gmv) / prev.gmv * 100);
+                      if (varGmv < -20) alerts.push({ icon: "💸", text: `${c}: GMV cayó ${Math.abs(varGmv).toFixed(1)}% (${fmtMoney(v.gmv)} vs ${fmtMoney(prev.gmv)})` });
+                      else if (varGmv > 30) wins.push({ icon: "💰", text: `${c}: GMV creció ${varGmv.toFixed(1)}% (${fmtMoney(v.gmv)})` });
+                    }
+                  });
+                }
+
+                // Puntos con decrecimiento
+                if (fact.puntoMap && factP?.puntoMap) {
+                  const puntosDown = Object.entries(fact.puntoMap)
+                    .map(([p, v]) => {
+                      const prev = factP.puntoMap[p];
+                      return { punto: p, ciudad: v.ciudad, gmv: v.gmv, gmvPrev: prev?.gmv || 0, var: prev?.gmv > 0 ? ((v.gmv - prev.gmv) / prev.gmv * 100) : null };
+                    })
+                    .filter(p => p.var !== null && p.var < -25 && p.gmvPrev > 50000)
+                    .sort((a, b) => a.var - b.var);
+                  puntosDown.slice(0, 5).forEach(p => alerts.push({ icon: "🏪", text: `${p.punto} (${p.ciudad}): GMV cayó ${Math.abs(p.var).toFixed(0)}% — de ${fmtMoney(p.gmvPrev)} a ${fmtMoney(p.gmv)}` }));
+                }
+
+                // GMV total bajo comparado con anterior
+                if (factP && factP.totalGmv > 0) {
+                  const varTotal = ((fact.totalGmv - factP.totalGmv) / factP.totalGmv * 100);
+                  if (varTotal < -15) alerts.push({ icon: "🚨", text: `GMV total cayó ${Math.abs(varTotal).toFixed(1)}%: ${fmtMoney(fact.totalGmv)} vs ${fmtMoney(factP.totalGmv)}` });
+                  else if (varTotal > 15) wins.push({ icon: "🚀", text: `GMV total creció ${varTotal.toFixed(1)}%: ${fmtMoney(fact.totalGmv)}` });
+                }
+
+                // Paquetes
+                if (factP && factP.totalPaq > 0) {
+                  const varPaq = ((fact.totalPaq - factP.totalPaq) / factP.totalPaq * 100);
+                  if (varPaq < -15) alerts.push({ icon: "📦", text: `Paquetes cayeron ${Math.abs(varPaq).toFixed(1)}%: ${fact.totalPaq.toLocaleString()} vs ${factP.totalPaq.toLocaleString()}` });
+                  else if (varPaq > 15) wins.push({ icon: "📦", text: `Paquetes crecieron ${varPaq.toFixed(1)}%` });
+                }
+              }
+
+              if (alerts.length === 0 && wins.length === 0 && !traf && !fact) return null;
+
+              return (
+                <div key={mes} className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                  <h3 className="text-base font-bold text-purple-800 mb-4 flex items-center gap-2">
+                    📅 {mes}
+                    {traf && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Tráfico</span>}
+                    {fact && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Facturación</span>}
+                  </h3>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Alertas */}
+                    <div>
+                      <h4 className="text-sm font-bold text-red-600 mb-2 flex items-center gap-1">⚠️ Requiere atención ({alerts.length})</h4>
+                      {alerts.length > 0 ? (
+                        <div className="space-y-2">
+                          {alerts.map((a, i) => (
+                            <div key={i} className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
+                              <span className="shrink-0">{a.icon}</span>
+                              <span>{a.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Sin alertas este mes</p>
+                      )}
+                    </div>
+
+                    {/* Logros */}
+                    <div>
+                      <h4 className="text-sm font-bold text-green-600 mb-2 flex items-center gap-1">✅ Puntos positivos ({wins.length})</h4>
+                      {wins.length > 0 ? (
+                        <div className="space-y-2">
+                          {wins.map((w, i) => (
+                            <div key={i} className="bg-green-50 border border-green-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
+                              <span className="shrink-0">{w.icon}</span>
+                              <span>{w.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Sin highlights positivos</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Recomendaciones */}
+                  {alerts.length > 0 && (
+                    <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-xs font-bold text-amber-800 mb-1">🎯 Recomendaciones</p>
+                      <ul className="text-xs text-gray-600 space-y-1">
+                        {alerts.some(a => a.icon === "📍" || a.icon === "🏪") && <li>• Revisar operación en los puntos/ciudades con baja colocación — validar disponibilidad de pilotos.</li>}
+                        {alerts.some(a => a.icon === "🔴" && a.text.includes("Puntualidad")) && <li>• Implementar control de puntualidad con alertas tempranas y seguimiento a pilotos.</li>}
+                        {alerts.some(a => a.icon === "💸") && <li>• Investigar causas de caída de GMV por ciudad — verificar si hay menos puntos activos o menor volumen por punto.</li>}
+                        {alerts.some(a => a.icon === "📉") && <li>• Analizar la reducción de turnos — ¿falta demanda o falta de pilotos disponibles?</li>}
+                        {alerts.some(a => a.icon === "🚨") && <li>• Reunión urgente con el equipo para revisar la caída general de facturación.</li>}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            }).filter(Boolean);
+          })()}
         </div>
       )}
 
