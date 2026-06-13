@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { ROLES, generateId, PERMISOS_CONFIGURABLES_KAM, PERMISOS_BASE, getPermisos } from "../data/users";
+import { ROLES, generateId, PERMISOS_CONFIGURABLES, PERMISOS_BASE, getPermisos } from "../data/users";
 
 const BRAND = "linear-gradient(135deg,#7C22D4,#C026D3)";
 const PURPLE = "#7C22D4";
 
 const ROLE_COLORS = {
-  [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
-  [ROLES.KAM]:   "bg-purple-100 text-purple-700 border-purple-200",
+  [ROLES.ADMIN]:     "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
+  [ROLES.KAM]:       "bg-purple-100 text-purple-700 border-purple-200",
+  [ROLES.OPERATIVO]: "bg-blue-100 text-blue-700 border-blue-200",
 };
-const ROLE_ICONS = { [ROLES.ADMIN]: "🛡️", [ROLES.KAM]: "💼" };
+const ROLE_ICONS = { [ROLES.ADMIN]: "🛡️", [ROLES.KAM]: "💼", [ROLES.OPERATIVO]: "🔧" };
 
 const Field = ({ label, required, children }) => (
   <div>
@@ -28,14 +29,14 @@ export default function UserManager({ users, onSave }) {
   const [error, setError]      = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  const blank = { nombre: "", email: "", password: "", rol: ROLES.KAM, activo: true, cargo: "", celular: "", telefono: "", permisosCustom: {} };
+  const blank = { nombre: "", email: "", password: "", rol: ROLES.OPERATIVO, activo: true, cargo: "", celular: "", telefono: "", permisosCustom: {} };
 
   const openNew  = () => { setForm(blank); setError(""); setShowPass(false); setEditing("new"); };
   const openEdit = (u) => { setForm({ ...blank, ...u }); setError(""); setShowPass(false); setEditing(u.id); };
   const cancel   = () => { setEditing(null); setError(""); };
 
   const togglePermiso = (id) => {
-    const base    = PERMISOS_BASE[ROLES.KAM][id];
+    const base    = (PERMISOS_BASE[form.rol] || PERMISOS_BASE[ROLES.OPERATIVO])[id] || false;
     const current = form.permisosCustom?.[id] ?? base;
     setForm((f) => ({ ...f, permisosCustom: { ...(f.permisosCustom || {}), [id]: !current } }));
   };
@@ -120,14 +121,14 @@ export default function UserManager({ users, onSave }) {
                     {user.cargo && <p className="text-xs text-gray-400">{user.cargo}</p>}
 
                     {/* Permisos activos KAM */}
-                    {user.rol === ROLES.KAM && (
+                    {(user.rol === ROLES.KAM || user.rol === ROLES.OPERATIVO) && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
-                        {PERMISOS_CONFIGURABLES_KAM.filter((p) => getPermisos(user)[p.id]).map((p) => (
+                        {PERMISOS_CONFIGURABLES.filter((p) => getPermisos(user)[p.id]).map((p) => (
                           <span key={p.id} className="text-xs bg-green-100 text-green-700 border border-green-200 rounded-full px-2 py-0.5">
                             ✓ {p.label}
                           </span>
                         ))}
-                        {!PERMISOS_CONFIGURABLES_KAM.some((p) => getPermisos(user)[p.id]) && (
+                        {!PERMISOS_CONFIGURABLES.some((p) => getPermisos(user)[p.id]) && (
                           <span className="text-xs text-gray-400 italic">Sin permisos adicionales</span>
                         )}
                       </div>
@@ -193,7 +194,7 @@ export default function UserManager({ users, onSave }) {
                 <li>✅ Guardar propuestas</li>
               </ul>
               <p className="text-xs font-semibold text-purple-600 mb-1">🔑 Configurables:</p>
-              {PERMISOS_CONFIGURABLES_KAM.map((p) => (
+              {PERMISOS_CONFIGURABLES.map((p) => (
                 <p key={p.id} className="text-xs text-gray-500">• {p.label}</p>
               ))}
             </div>
@@ -319,13 +320,14 @@ export default function UserManager({ users, onSave }) {
                 </Field>
               </div>
 
-              {/* ── Permisos KAM ── */}
-              {form.rol === ROLES.KAM && (
+              {/* ── Permisos KAM / Operativo ── */}
+              {(form.rol === ROLES.KAM || form.rol === ROLES.OPERATIVO) && (
                 <div className="border border-purple-200 rounded-xl p-4 bg-purple-50">
-                  <p className="text-xs font-bold text-purple-800 mb-3">🔑 Permisos adicionales para este KAM</p>
+                  <p className="text-xs font-bold text-purple-800 mb-3">🔑 Permisos para este {form.rol}</p>
                   <div className="space-y-2">
-                    {PERMISOS_CONFIGURABLES_KAM.map((p) => {
-                      const current = form.permisosCustom?.[p.id] ?? PERMISOS_BASE[ROLES.KAM][p.id];
+                    {PERMISOS_CONFIGURABLES.map((p) => {
+                      const base = PERMISOS_BASE[form.rol] || PERMISOS_BASE[ROLES.OPERATIVO];
+                      const current = form.permisosCustom?.[p.id] ?? base[p.id];
                       return (
                         <label key={p.id}
                           className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer border transition-all ${

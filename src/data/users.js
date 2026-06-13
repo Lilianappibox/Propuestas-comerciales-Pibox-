@@ -1,9 +1,10 @@
 export const ROLES = {
   KAM: "KAM",
   ADMIN: "Administrativo",
+  OPERATIVO: "Operativo",
 };
 
-// Permisos base por rol — el Admin nunca cambia
+// Permisos base por rol
 export const PERMISOS_BASE = {
   [ROLES.KAM]: {
     verPropuesta:        true,
@@ -13,7 +14,19 @@ export const PERMISOS_BASE = {
     verUsuarios:         false,
     gestionarUsuarios:   false,
     verCierreComercial:  false,
-    verRiesgoComercial:  false,  // el Admin lo activa por KAM
+    verRiesgoComercial:  false,
+    verInformeTada:      false,
+  },
+  [ROLES.OPERATIVO]: {
+    verPropuesta:        false,
+    verTarifario:        false,
+    editarTarifas:       false,
+    editarPlantilla:     false,
+    verUsuarios:         false,
+    gestionarUsuarios:   false,
+    verCierreComercial:  false,
+    verRiesgoComercial:  false,
+    verInformeTada:      false,
   },
   [ROLES.ADMIN]: {
     verPropuesta:        true,
@@ -23,30 +36,36 @@ export const PERMISOS_BASE = {
     verUsuarios:         true,
     gestionarUsuarios:   true,
     verCierreComercial:  true,
-    verRiesgoComercial:  true,   // Admin siempre puede verlo
+    verRiesgoComercial:  true,
+    verInformeTada:      true,
   },
 };
 
-// Permisos que el Admin PUEDE activar/desactivar para un KAM
-export const PERMISOS_CONFIGURABLES_KAM = [
-  { id: "verTarifario",       label: "Ver tarifario",              desc: "Puede ver las tablas de tarifas" },
-  { id: "editarTarifas",      label: "Editar tarifas",             desc: "Puede modificar precios y ciudades" },
-  { id: "editarPlantilla",    label: "Editar plantilla",           desc: "Puede editar los textos estándar y ver historial" },
-  { id: "verCierreComercial",  label: "Ver Cierre Comercial",         desc: "Puede acceder al tablero de cierre mensual" },
-  { id: "verRiesgoComercial",  label: "Ver Riesgo Comercial 360°",   desc: "Puede acceder al tablero de riesgo de clientes" },
+// Permisos que el Admin PUEDE activar/desactivar para KAM y Operativo
+export const PERMISOS_CONFIGURABLES = [
+  { id: "verPropuesta",        label: "Ver Propuestas Comerciales", desc: "Puede acceder al módulo de propuestas" },
+  { id: "verTarifario",        label: "Ver tarifario",              desc: "Puede ver las tablas de tarifas" },
+  { id: "editarTarifas",       label: "Editar tarifas",             desc: "Puede modificar precios y ciudades" },
+  { id: "editarPlantilla",     label: "Editar plantilla",           desc: "Puede editar los textos estándar y ver historial" },
+  { id: "verCierreComercial",  label: "Ver Cierre Comercial",       desc: "Puede acceder al tablero de cierre mensual" },
+  { id: "verRiesgoComercial",  label: "Ver Riesgo Comercial 360°",  desc: "Puede acceder al tablero de riesgo de clientes" },
+  { id: "verInformeTada",      label: "Ver Informe TaDa",           desc: "Puede acceder al informe operacional TaDa (Bavaria)" },
 ];
+
+// Backward compatibility
+export const PERMISOS_CONFIGURABLES_KAM = PERMISOS_CONFIGURABLES;
 
 /**
  * Resuelve los permisos efectivos de un usuario:
  * - Admin → siempre permisos completos
- * - KAM  → base KAM fusionado con sus permisos personalizados
+ * - KAM / Operativo → base del rol fusionado con permisos personalizados
  */
 export function getPermisos(user) {
   if (!user) return {};
   if (user.rol === ROLES.ADMIN) return { ...PERMISOS_BASE[ROLES.ADMIN] };
-  // KAM: aplica overrides guardados en user.permisosCustom
+  const base = PERMISOS_BASE[user.rol] || PERMISOS_BASE[ROLES.OPERATIVO];
   return {
-    ...PERMISOS_BASE[ROLES.KAM],
+    ...base,
     ...(user.permisosCustom || {}),
   };
 }
@@ -101,12 +120,7 @@ export function loadUsers() {
       cargo: "", celular: "", telefono: "", permisosCustom: {},
       ...u,
     }));
-    // Merge: los del código siempre presentes (localStorage puede editarlos),
-    // más cualquier usuario adicional creado desde la app
     const merged = [...base];
-    const baseEmails = new Set(base.map((u) => u.email.toLowerCase()));
-    // Sobreescribir datos del código con ediciones del localStorage
-    // permisosCustom se fusiona: código + localStorage (código tiene prioridad en nuevos permisos)
     for (const lu of local) {
       const idx = merged.findIndex((m) => m.email.toLowerCase() === lu.email.toLowerCase());
       if (idx >= 0) {

@@ -38,10 +38,11 @@ const VIEW_RIESGO     = "riesgo";
 const VIEW_TADA       = "tada";
 
 const ROLE_COLORS = {
-  [ROLES.ADMIN]: "bg-fuchsia-100 text-fuchsia-700",
-  [ROLES.KAM]:   "bg-purple-100 text-purple-700",
+  [ROLES.ADMIN]:     "bg-fuchsia-100 text-fuchsia-700",
+  [ROLES.KAM]:       "bg-purple-100 text-purple-700",
+  [ROLES.OPERATIVO]: "bg-blue-100 text-blue-700",
 };
-const ROLE_ICONS = { [ROLES.ADMIN]: "🛡️", [ROLES.KAM]: "💼" };
+const ROLE_ICONS = { [ROLES.ADMIN]: "🛡️", [ROLES.KAM]: "💼", [ROLES.OPERATIVO]: "🔧" };
 
 const BRAND_GRADIENT = "linear-gradient(135deg, #5B17A8 0%, #7C22D4 50%, #C026D3 100%)";
 
@@ -203,11 +204,11 @@ export default function App() {
 
   // ── Vistas principales del topbar ──
   const mainViews = [
-    { id: VIEW_PROPUESTAS, label: "📋 Propuestas Comerciales", visible: true },
+    { id: VIEW_PROPUESTAS, label: "📋 Propuestas Comerciales", visible: !!permisos.verPropuesta },
     { id: VIEW_USUARIOS,   label: "👥 Usuarios",               visible: permisos.gestionarUsuarios },
     { id: VIEW_CIERRE,     label: "📊 Cierre Comercial",       visible: !!permisos.verCierreComercial },
     { id: VIEW_RIESGO,     label: "🚨 Riesgo Comercial",       visible: !!permisos.verRiesgoComercial },
-    { id: VIEW_TADA,      label: "🍺 Informe TaDa",           visible: !!permisos.verCierreComercial },
+    { id: VIEW_TADA,      label: "🍺 Informe TaDa",           visible: !!permisos.verInformeTada },
   ].filter((v) => v.visible);
 
   // ── Sub-tabs de Propuestas Comerciales ──
