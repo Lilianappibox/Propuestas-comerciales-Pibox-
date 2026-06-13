@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import * as XLSX from "xlsx";
 import {
   procesarDatos, deleteMes, mesesDisponibles,
   saveIndex, loadIndex, mesKey, labelMes, MESES_ES, PIBOX_PURPLE,
@@ -28,6 +27,7 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
     setLoading(true);
     setMsg(null);
     try {
+      const XLSX = await import("xlsx");
       const buf  = await file.arrayBuffer();
       const wb   = XLSX.read(new Uint8Array(buf), {type:"array", cellDates:true});
       const ws   = wb.Sheets[wb.SheetNames[0]];
