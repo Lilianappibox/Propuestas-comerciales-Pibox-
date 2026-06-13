@@ -99,7 +99,7 @@ export function procesarDatos(rows) {
       empMap[empresa] = {
         empresa, total:0, completados:0, cancelados:0, expirados:0,
         gmv:0, paquetes:0, service_cost:0, ejecutivo: exec,
-        ciudades: {}, ops: {}, weekly: {}, usuarios: {}, sedes: {},
+        ciudades: {}, ops: {}, weekly: {}, usuarios: {}, sedes: {}, driversPorOp: {},
       };
     }
     const e = empMap[empresa];
@@ -130,6 +130,14 @@ export function procesarDatos(rows) {
     // ops
     if (!e.ops[op]) e.ops[op] = 0;
     e.ops[op]++;
+
+    // drivers por operación en empresa
+    const driverKeyEmp = driverId || driverName;
+    if (driverKeyEmp) {
+      if (!e.driversPorOp[op]) e.driversPorOp[op] = { drivers: new Set(), servicios: 0 };
+      e.driversPorOp[op].drivers.add(driverKeyEmp);
+      e.driversPorOp[op].servicios++;
+    }
 
     // weekly por empresa
     if (semana > 0) {
@@ -232,6 +240,13 @@ export function procesarDatos(rows) {
       .map(([s,v])=>({sede:s, ...v}))
       .sort((a,b)=>b.gmv-a.gmv);
 
+    // Drivers por operación en esta empresa
+    const empDriversPorOp = Object.entries(e.driversPorOp)
+      .map(([op, v]) => ({ op, driversActivos: v.drivers.size, servicios: v.servicios, promServPorDriver: v.drivers.size > 0 ? Math.round(v.servicios / v.drivers.size) : 0 }))
+      .sort((a, b) => b.driversActivos - a.driversActivos);
+    const empTotalDrivers = new Set();
+    Object.values(e.driversPorOp).forEach(v => v.drivers.forEach(d => empTotalDrivers.add(d)));
+
     return {
       empresa: e.empresa, total: e.total,
       completados: e.completados, cancelados: e.cancelados, expirados: e.expirados,
@@ -239,6 +254,7 @@ export function procesarDatos(rows) {
       ciudad: ciudadTop, ejecutivo: e.ejecutivo,
       tasa_completado: tc, tasa_cancelacion: tca, tasa_expirado: te,
       topCiudades, topOps, weekly, topUsuarios, topSedes,
+      driversPorOp: empDriversPorOp, totalDrivers: empTotalDrivers.size,
     };
   });
 
