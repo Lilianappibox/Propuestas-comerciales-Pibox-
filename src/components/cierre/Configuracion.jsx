@@ -639,11 +639,7 @@ function UploadEvolucion({ proy, setForm, setMsg, cargandoOps, setCargandoOps })
     setCargandoOps(true);
     setMsg({ txt: "⏳ Procesando archivo...", ok: true });
     try {
-      const buf = await file.arrayBuffer();
-      const XLSX = (await import("../../utils/xlsxHelper")).default;
-      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 });
+      const raw = await parseExcelRaw(file);
 
       if (raw.length < 2) throw new Error("Archivo vacío");
 
