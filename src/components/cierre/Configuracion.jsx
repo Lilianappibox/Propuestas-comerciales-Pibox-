@@ -462,66 +462,78 @@ export default function Configuracion({ data, onSave }) {
       {tab === "proyeccion" && (() => {
         const proy = form.proyeccion || {};
         const updateProy = (key, val) => {
-          setForm((p) => ({ ...p, proyeccion: { ...(p.proyeccion || {}), [key]: isNaN(val) ? val : Number(val) } }));
+          // Solo convertir a número si es string numérico, no arrays/objetos/null
+          const parsed = (typeof val === "string" && val.trim() !== "" && !isNaN(Number(val))) ? Number(val) : val;
+          setForm((p) => ({ ...p, proyeccion: { ...(p.proyeccion || {}), [key]: parsed } }));
         };
         return (
           <div className="space-y-4">
             <p className="text-xs text-gray-500 mb-2">Configura los datos de proyección del mes actual.</p>
 
             {/* Upload archivo de operaciones para evolución diaria */}
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-bold shadow hover:shadow-lg transition" style={{ background: "linear-gradient(135deg,#5B17A8,#C026D3)" }}>
-                  📥 Subir Operaciones del Mes (.xlsx)
-                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const rows = await parseExcelFile(file);
-                      const porDia = {};
-                      rows.forEach(r => {
-                        const dateVal = Number(r.date || r.DATE || r.fecha || r.FECHA);
-                        if (!dateVal) return;
-                        const d = new Date((dateVal - 25569) * 86400000);
-                        if (isNaN(d.getTime())) return;
-                        const key = d.toISOString().slice(0, 10);
-                        if (!porDia[key]) porDia[key] = { gmv: 0, servicios: 0, paquetes: 0 };
-                        porDia[key].gmv += Number(r.gmv || r.GMV || 0) || 0;
-                        porDia[key].servicios++;
-                        porDia[key].paquetes += Number(r.packages || r.PACKAGES || r.paquetes || 0) || 0;
-                      });
-                      const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
-                      let acum = 0;
-                      evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
-                      // Actualizar todo en un solo setForm para evitar conflictos
-                      setForm(prev => ({
-                        ...prev,
-                        proyeccion: { ...(prev.proyeccion || {}), evolucionDiaria: evolucion, archivoOps: file.name },
-                      }));
-                      setMsg({ txt: `✅ ${evolucion.length} días procesados desde "${file.name}"`, ok: true });
-                      setTimeout(() => setMsg(null), 4000);
-                    } catch (err) {
-                      setMsg({ txt: `❌ Error: ${err.message}`, ok: false });
-                    }
-                    e.target.value = "";
-                  }} />
-                </label>
-                {proy.archivoOps && (
-                  <>
-                    <span className="text-xs text-gray-500">Archivo: <b>{proy.archivoOps}</b> · {(proy.evolucionDiaria || []).length} días</span>
-                    <button onClick={() => {
-                      setForm(prev => ({
-                        ...prev,
-                        proyeccion: { ...(prev.proyeccion || {}), evolucionDiaria: null, archivoOps: null },
-                      }));
-                      setMsg({ txt: "🗑️ Datos de evolución eliminados. Guarda para confirmar.", ok: true });
-                      setTimeout(() => setMsg(null), 3000);
-                    }} className="text-xs text-red-500 hover:underline">🗑️ Eliminar</button>
-                  </>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">Sube el archivo de operaciones del mes (con columnas date, gmv, packages). Se calculará la evolución diaria automáticamente.</p>
-            </div>
+            {(() => {
+              const [cargando, setCargando] = useState(false);
+              return (
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-bold shadow hover:shadow-lg transition ${cargando ? "opacity-50" : ""}`} style={{ background: "linear-gradient(135deg,#5B17A8,#C026D3)" }}>
+                      {cargando ? (
+                        <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx={12} cy={12} r={10} stroke="currentColor" strokeWidth={4}/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Procesando...</>
+                      ) : "📥 Subir Operaciones del Mes (.xlsx)"}
+                      <input type="file" accept=".xlsx,.xls" className="hidden" disabled={cargando} onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setCargando(true);
+                        try {
+                          const rows = await parseExcelFile(file);
+                          const porDia = {};
+                          rows.forEach(r => {
+                            const dateVal = Number(r.date || r.DATE || r.fecha || r.FECHA);
+                            if (!dateVal) return;
+                            const d = new Date((dateVal - 25569) * 86400000);
+                            if (isNaN(d.getTime())) return;
+                            const key = d.toISOString().slice(0, 10);
+                            if (!porDia[key]) porDia[key] = { gmv: 0, servicios: 0, paquetes: 0 };
+                            porDia[key].gmv += Number(r.gmv || r.GMV || 0) || 0;
+                            porDia[key].servicios++;
+                            porDia[key].paquetes += Number(r.packages || r.PACKAGES || r.paquetes || 0) || 0;
+                          });
+                          const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
+                          let acum = 0;
+                          evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
+                          setForm(prev => ({
+                            ...prev,
+                            proyeccion: { ...(prev.proyeccion || {}), evolucionDiaria: evolucion, archivoOps: file.name },
+                          }));
+                          setMsg({ txt: `✅ ${evolucion.length} días y ${rows.length.toLocaleString()} servicios procesados. Haz clic en Guardar.`, ok: true });
+                          setTimeout(() => setMsg(null), 6000);
+                        } catch (err) {
+                          setMsg({ txt: `❌ Error: ${err.message}`, ok: false });
+                        }
+                        setCargando(false);
+                        e.target.value = "";
+                      }} />
+                    </label>
+                    {proy.archivoOps && !cargando && (
+                      <>
+                        <span className="text-xs text-gray-500">Archivo: <b>{proy.archivoOps}</b> · {(proy.evolucionDiaria || []).length} días</span>
+                        <button onClick={() => {
+                          setForm(prev => {
+                            const p = { ...(prev.proyeccion || {}) };
+                            delete p.evolucionDiaria;
+                            delete p.archivoOps;
+                            return { ...prev, proyeccion: p };
+                          });
+                          setMsg({ txt: "🗑️ Eliminado. Guarda para confirmar.", ok: true });
+                          setTimeout(() => setMsg(null), 3000);
+                        }} className="text-xs text-red-500 hover:underline">🗑️ Eliminar</button>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">Sube el archivo de operaciones (columnas: date, gmv, packages). Después de procesar, haz clic en <b>Guardar</b>.</p>
+                </div>
+              );
+            })()}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Meta del Mes ($)" value={proy.metaMes || ""} onChange={(v) => updateProy("metaMes", v)} />
               <Field label="GMV Actual en Sistema ($)" value={proy.gmvActual || ""} onChange={(v) => updateProy("gmvActual", v)} />
