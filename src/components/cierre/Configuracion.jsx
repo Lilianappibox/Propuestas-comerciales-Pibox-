@@ -465,6 +465,57 @@ export default function Configuracion({ data, onSave }) {
               <Field label="Días Totales del Mes" value={proy.diasTotalesMes || ""} onChange={(v) => updateProy("diasTotalesMes", v)} />
               <Field label="GMV Mes Pasado ($)" value={proy.gmvMesPasado || ""} onChange={(v) => updateProy("gmvMesPasado", v)} />
             </div>
+
+            {/* Proyección por KAM */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <h4 className="text-sm font-bold text-purple-800 mb-3">👥 Meta y GMV por KAM</h4>
+              <p className="text-xs text-gray-400 mb-3">Configura la meta y GMV individual de cada KAM para la proyección del mes.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-purple-50 text-purple-800 text-xs">
+                      <th className="text-left p-2">KAM</th>
+                      <th className="text-right p-2">Meta ($)</th>
+                      <th className="text-right p-2">GMV ($)</th>
+                      <th className="text-right p-2">Cumplimiento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(form.kams || []).map((k, i) => {
+                      const pk = (proy.kams || []).find(p => p.nombre === k.nombre);
+                      const metaK = pk?.meta ?? k.meta;
+                      const gmvK = pk?.gmv ?? k.gmv;
+                      const cumplK = metaK > 0 ? (gmvK / metaK * 100) : 0;
+                      const updateKam = (field, val) => {
+                        const kams = [...(proy.kams || form.kams.map(km => ({ nombre: km.nombre, meta: km.meta, gmv: km.gmv })))];
+                        const idx = kams.findIndex(p => p.nombre === k.nombre);
+                        if (idx >= 0) kams[idx] = { ...kams[idx], [field]: Number(val) || 0 };
+                        else kams.push({ nombre: k.nombre, meta: field === "meta" ? Number(val) || 0 : k.meta, gmv: field === "gmv" ? Number(val) || 0 : k.gmv });
+                        updateProy("kams", kams);
+                      };
+                      return (
+                        <tr key={k.nombre} className={`border-b ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                          <td className="p-2 font-medium text-purple-700">{k.nombre}</td>
+                          <td className="p-1">
+                            <input type="number" value={metaK || ""} onChange={(e) => updateKam("meta", e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                          </td>
+                          <td className="p-1">
+                            <input type="number" value={gmvK || ""} onChange={(e) => updateKam("gmv", e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                          </td>
+                          <td className="p-2 text-right">
+                            <span className={`text-xs font-bold ${cumplK >= 95 ? "text-green-600" : cumplK >= 80 ? "text-yellow-600" : "text-red-500"}`}>
+                              {cumplK.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         );
       })()}

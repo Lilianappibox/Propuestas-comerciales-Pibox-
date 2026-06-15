@@ -143,8 +143,22 @@ export default function ProyeccionCierre({ data }) {
   const wStorage = (storagePendiente / maxVal) * 100;
   const metaLine = (proy.metaMes / maxVal) * 100;
 
-  // ── KAM chart data ────────────────────────────────────────────────────
-  const kamChartData = (data.kams || []).map((k) => ({
+  // ── KAM data: merge proyeccion KAMs con data.kams ──────────────────────
+  const proyKams = proy.kams || [];
+  const kamsData = (data.kams || []).map((k) => {
+    const pk = proyKams.find(p => p.nombre === k.nombre);
+    return {
+      nombre: k.nombre,
+      meta: pk?.meta ?? k.meta,
+      gmv: pk?.gmv ?? k.gmv,
+      cumplimiento: (pk?.meta ?? k.meta) > 0 ? ((pk?.gmv ?? k.gmv) / (pk?.meta ?? k.meta) * 100) : 0,
+      falta: Math.max(0, (pk?.meta ?? k.meta) - (pk?.gmv ?? k.gmv)),
+      promDiario: diasT > 0 ? (pk?.gmv ?? k.gmv) / diasT : 0,
+      proyFin: diasT > 0 ? ((pk?.gmv ?? k.gmv) / diasT) * diasTot : 0,
+    };
+  });
+
+  const kamChartData = kamsData.map((k) => ({
     nombre: k.nombre,
     Meta: moneda === "USD" ? k.meta / trm : k.meta,
     GMV: moneda === "USD" ? k.gmv / trm : k.gmv,
@@ -301,32 +315,32 @@ export default function ProyeccionCierre({ data }) {
                   <th className="text-right p-3">Meta</th>
                   <th className="text-right p-3">GMV</th>
                   <th className="text-right p-3">Cumplimiento</th>
-                  <th className="text-right p-3 rounded-tr-xl">Falta para meta</th>
+                  <th className="text-right p-3">Falta</th>
+                  <th className="text-right p-3">Prom. Diario</th>
+                  <th className="text-right p-3 rounded-tr-xl">Proyección Mes</th>
                 </tr>
               </thead>
               <tbody>
-                {data.kams.map((k, i) => {
-                  const falta = k.meta - k.gmv;
+                {kamsData.map((k, i) => {
+                  const proyVsMeta = k.meta > 0 ? (k.proyFin / k.meta * 100) : 0;
                   return (
                     <tr key={k.nombre} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                       <td className="p-3 font-medium text-gray-800">{k.nombre}</td>
                       <td className="p-3 text-right text-gray-600">{M(k.meta)}</td>
                       <td className="p-3 text-right text-gray-600">{M(k.gmv)}</td>
                       <td className="p-3 text-right">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${
-                            k.cumplimiento >= 95
-                              ? "bg-green-100 text-green-700"
-                              : k.cumplimiento >= 80
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {k.cumplimiento.toFixed(1)}%
-                        </span>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${
+                          k.cumplimiento >= 95 ? "bg-green-100 text-green-700" : k.cumplimiento >= 80 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
+                        }`}>{k.cumplimiento.toFixed(1)}%</span>
                       </td>
-                      <td className={`p-3 text-right font-semibold ${falta > 0 ? "text-red-500" : "text-green-600"}`}>
-                        {falta > 0 ? M(falta) : "Meta cumplida"}
+                      <td className={`p-3 text-right font-semibold ${k.falta > 0 ? "text-red-500" : "text-green-600"}`}>
+                        {k.falta > 0 ? M(k.falta) : "✅"}
+                      </td>
+                      <td className="p-3 text-right text-gray-500">{fmtAbr(k.promDiario)}/día</td>
+                      <td className="p-3 text-right">
+                        <span className={`font-semibold ${proyVsMeta >= 100 ? "text-green-600" : proyVsMeta >= 80 ? "text-yellow-600" : "text-red-500"}`}>
+                          {fmtAbr(k.proyFin)} <span className="text-xs">({proyVsMeta.toFixed(0)}%)</span>
+                        </span>
                       </td>
                     </tr>
                   );
