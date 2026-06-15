@@ -519,28 +519,91 @@ export default function ProyeccionCierre({ data }) {
         </div>
       </div>
 
-      {/* ── Section 5: Evolucion diaria (placeholder) ────────────────────── */}
+      {/* ── Section 5: Evolución diaria ────────────────────────────────── */}
       <div>
-        <h3 className="text-base font-semibold text-gray-700 mb-3">Evolucion Diaria del GMV</h3>
-        {data.proyeccion?.evolucionDiaria && data.proyeccion.evolucionDiaria.length > 0 ? (
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={data.proyeccion.evolucionDiaria} margin={{ left: 20, right: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="dia" tick={{ fontSize: 11 }} />
-              <YAxis tickFormatter={fmtAbr} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v) => fmtFull(v)} />
-              <Line type="monotone" dataKey="gmv" stroke={PIBOX_PURPLE} strokeWidth={2} dot={{ r: 3 }} name="GMV Diario" />
-              {data.proyeccion.evolucionDiaria[0]?.acumulado !== undefined && (
-                <Line type="monotone" dataKey="acumulado" stroke={PIBOX_PINK} strokeWidth={2} dot={false} name="Acumulado" />
-              )}
-              <Legend />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
+        <h3 className="text-base font-semibold text-gray-700 mb-3">Evolución Diaria del GMV</h3>
+        {proy.evolucionDiaria && proy.evolucionDiaria.length > 0 ? (() => {
+          const evData = proy.evolucionDiaria.map(d => ({
+            ...d,
+            dia: d.fecha ? d.fecha.slice(5) : d.dia || "",
+            meta80: proy.metaMes * 0.8,
+          }));
+          return (
+            <div className="space-y-4">
+              {/* GMV diario + acumulado */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl border border-gray-100 p-4">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">GMV Diario</p>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={evData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                      <XAxis dataKey="dia" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={50} />
+                      <YAxis tickFormatter={fmtAbr} tick={{ fontSize: 9 }} />
+                      <Tooltip formatter={(v) => fmtFull(v)} />
+                      <Bar dataKey="gmv" name="GMV Diario" fill={PIBOX_PURPLE} radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-100 p-4">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">GMV Acumulado vs Meta</p>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={evData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                      <XAxis dataKey="dia" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={50} />
+                      <YAxis tickFormatter={fmtAbr} tick={{ fontSize: 9 }} />
+                      <Tooltip formatter={(v) => fmtFull(v)} />
+                      <Legend />
+                      <Line type="monotone" dataKey="gmvAcumulado" stroke={PIBOX_PURPLE} strokeWidth={2.5} dot={{ r: 2 }} name="GMV Acumulado" />
+                      <Line type="monotone" dataKey="meta80" stroke={YELLOW} strokeWidth={1.5} strokeDasharray="5 3" dot={false} name="Umbral 80%" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Servicios y paquetes diarios */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <p className="text-xs font-semibold text-gray-500 mb-2">Servicios y Paquetes Diarios</p>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={evData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                    <XAxis dataKey="dia" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={50} />
+                    <YAxis tick={{ fontSize: 9 }} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="servicios" name="Servicios" fill={PIBOX_PURPLE} radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="paquetes" name="Paquetes" fill={PIBOX_PINK} radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Resumen */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="bg-purple-50 rounded-lg p-3">
+                  <p className="text-gray-500">Día más alto</p>
+                  <p className="font-bold text-purple-700">{fmtAbr(Math.max(...evData.map(d => d.gmv)))}</p>
+                  <p className="text-gray-400">{evData.reduce((best, d) => d.gmv > best.gmv ? d : best, evData[0]).dia}</p>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3">
+                  <p className="text-gray-500">Día más bajo</p>
+                  <p className="font-bold text-red-600">{fmtAbr(Math.min(...evData.map(d => d.gmv)))}</p>
+                  <p className="text-gray-400">{evData.reduce((worst, d) => d.gmv < worst.gmv ? d : worst, evData[0]).dia}</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-gray-500">Promedio diario</p>
+                  <p className="font-bold text-blue-700">{fmtAbr(evData.reduce((s, d) => s + d.gmv, 0) / evData.length)}</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3">
+                  <p className="text-gray-500">Total acumulado</p>
+                  <p className="font-bold text-green-700">{fmtAbr(evData[evData.length - 1]?.gmvAcumulado || 0)}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })() : (
           <div className="flex items-center justify-center h-48 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
             <div className="text-center">
-              <p className="text-gray-400 text-sm">Grafico de evolucion diaria</p>
-              <p className="text-gray-300 text-xs mt-1">Disponible cuando se carguen datos diarios en la proyeccion</p>
+              <p className="text-gray-400 text-sm">Gráfico de evolución diaria</p>
+              <p className="text-gray-300 text-xs mt-1">Sube el archivo de operaciones del mes en ⚙️ Config → Proyección Cierre</p>
             </div>
           </div>
         )}

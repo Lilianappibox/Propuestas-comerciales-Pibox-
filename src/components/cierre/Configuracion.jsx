@@ -454,7 +454,51 @@ export default function Configuracion({ data, onSave }) {
         };
         return (
           <div className="space-y-4">
-            <p className="text-xs text-gray-500 mb-2">Configura los datos de proyección del mes actual. Los campos de GMV pendiente (TaDa y Storage) también se pueden editar en tiempo real desde la pestaña de Proyección.</p>
+            <p className="text-xs text-gray-500 mb-2">Configura los datos de proyección del mes actual.</p>
+
+            {/* Upload archivo de operaciones para evolución diaria */}
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-bold shadow hover:shadow-lg transition" style={{ background: "linear-gradient(135deg,#5B17A8,#C026D3)" }}>
+                  📥 Subir Operaciones del Mes (.xlsx)
+                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const XLSX = await import("../../utils/xlsxHelper").then(m => m.default);
+                      const buf = await file.arrayBuffer();
+                      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+                      const ws = wb.Sheets[wb.SheetNames[0]];
+                      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+                      const porDia = {};
+                      rows.forEach(r => {
+                        const dateVal = Number(r.date || r.DATE || r.fecha || r.FECHA);
+                        if (!dateVal) return;
+                        const d = new Date((dateVal - 25569) * 86400000);
+                        if (isNaN(d.getTime())) return;
+                        const key = d.toISOString().slice(0, 10);
+                        if (!porDia[key]) porDia[key] = { gmv: 0, servicios: 0, paquetes: 0 };
+                        porDia[key].gmv += Number(r.gmv || r.GMV || 0) || 0;
+                        porDia[key].servicios++;
+                        porDia[key].paquetes += Number(r.packages || r.PACKAGES || r.paquetes || 0) || 0;
+                      });
+                      const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
+                      let acum = 0;
+                      evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
+                      updateProy("evolucionDiaria", evolucion);
+                      updateProy("archivoOps", file.name);
+                      setMsg({ txt: `✅ ${evolucion.length} días procesados desde "${file.name}"`, ok: true });
+                      setTimeout(() => setMsg(null), 4000);
+                    } catch (err) {
+                      setMsg({ txt: `❌ Error: ${err.message}`, ok: false });
+                    }
+                    e.target.value = "";
+                  }} />
+                </label>
+                {proy.archivoOps && <span className="text-xs text-gray-500">Archivo: <b>{proy.archivoOps}</b> · {(proy.evolucionDiaria || []).length} días</span>}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">Sube el archivo de operaciones del mes (con columnas date, gmv, packages). Se calculará la evolución diaria automáticamente.</p>
+            </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Meta del Mes ($)" value={proy.metaMes || ""} onChange={(v) => updateProy("metaMes", v)} />
               <Field label="GMV Actual en Sistema ($)" value={proy.gmvActual || ""} onChange={(v) => updateProy("gmvActual", v)} />
