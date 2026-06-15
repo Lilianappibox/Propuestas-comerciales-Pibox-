@@ -159,19 +159,24 @@ export default function ProyeccionCierre({ data }) {
   // ── KAM data: merge proyeccion KAMs con data.kams ──────────────────────
   const diasT = proy.diasTranscurridos || 1;
   const diasTot = proy.diasTotalesMes || 30;
-  const proyKams = proy.kams || [];
-  const kamsData = (data.kams || []).map((k) => {
-    const pk = proyKams.find(p => p.nombre === k.nombre);
-    return {
-      nombre: k.nombre,
-      meta: pk?.meta ?? k.meta,
-      gmv: pk?.gmv ?? k.gmv,
-      cumplimiento: (pk?.meta ?? k.meta) > 0 ? ((pk?.gmv ?? k.gmv) / (pk?.meta ?? k.meta) * 100) : 0,
-      falta: Math.max(0, (pk?.meta ?? k.meta) - (pk?.gmv ?? k.gmv)),
-      promDiario: diasT > 0 ? (pk?.gmv ?? k.gmv) / diasT : 0,
-      proyFin: diasT > 0 ? ((pk?.gmv ?? k.gmv) / diasT) * diasTot : 0,
-    };
-  });
+  // Si hay KAMs en proyeccion, usar esos. Si no, merge con data.kams
+  const allKams = proy.kams && proy.kams.length > 0
+    ? proy.kams.map(pk => ({
+        nombre: pk.nombre,
+        meta: Number(pk.meta) || 0,
+        gmv: Number(pk.gmv) || 0,
+      }))
+    : (data.kams || []).map(k => ({ nombre: k.nombre, meta: k.meta, gmv: k.gmv }));
+
+  const kamsData = allKams.filter(k => k.nombre).map((k) => ({
+    nombre: k.nombre,
+    meta: k.meta,
+    gmv: k.gmv,
+    cumplimiento: k.meta > 0 ? (k.gmv / k.meta * 100) : 0,
+    falta: Math.max(0, k.meta - k.gmv),
+    promDiario: diasT > 0 ? k.gmv / diasT : 0,
+    proyFin: diasT > 0 ? (k.gmv / diasT) * diasTot : 0,
+  }));
 
   const kamChartData = kamsData.map((k) => ({
     nombre: k.nombre,

@@ -468,8 +468,19 @@ export default function Configuracion({ data, onSave }) {
 
             {/* Proyección por KAM */}
             <div className="mt-6 pt-4 border-t border-gray-200">
-              <h4 className="text-sm font-bold text-purple-800 mb-3">👥 Meta y GMV por KAM</h4>
-              <p className="text-xs text-gray-400 mb-3">Configura la meta y GMV individual de cada KAM para la proyección del mes.</p>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-purple-800">👥 Meta y GMV por KAM</h4>
+                  <p className="text-xs text-gray-400">Configura la meta y GMV individual. Puedes agregar KAMs adicionales.</p>
+                </div>
+                <button onClick={() => {
+                  const kams = [...(proy.kams || form.kams.map(km => ({ nombre: km.nombre, meta: km.meta, gmv: km.gmv })))];
+                  kams.push({ nombre: "", meta: 0, gmv: 0 });
+                  updateProy("kams", kams);
+                }} className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-200 transition">
+                  + Agregar KAM
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -478,40 +489,50 @@ export default function Configuracion({ data, onSave }) {
                       <th className="text-right p-2">Meta ($)</th>
                       <th className="text-right p-2">GMV ($)</th>
                       <th className="text-right p-2">Cumplimiento</th>
+                      <th className="p-2 w-8"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(form.kams || []).map((k, i) => {
-                      const pk = (proy.kams || []).find(p => p.nombre === k.nombre);
-                      const metaK = pk?.meta ?? k.meta;
-                      const gmvK = pk?.gmv ?? k.gmv;
-                      const cumplK = metaK > 0 ? (gmvK / metaK * 100) : 0;
-                      const updateKam = (field, val) => {
-                        const kams = [...(proy.kams || form.kams.map(km => ({ nombre: km.nombre, meta: km.meta, gmv: km.gmv })))];
-                        const idx = kams.findIndex(p => p.nombre === k.nombre);
-                        if (idx >= 0) kams[idx] = { ...kams[idx], [field]: Number(val) || 0 };
-                        else kams.push({ nombre: k.nombre, meta: field === "meta" ? Number(val) || 0 : k.meta, gmv: field === "gmv" ? Number(val) || 0 : k.gmv });
-                        updateProy("kams", kams);
-                      };
-                      return (
-                        <tr key={k.nombre} className={`border-b ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                          <td className="p-2 font-medium text-purple-700">{k.nombre}</td>
-                          <td className="p-1">
-                            <input type="number" value={metaK || ""} onChange={(e) => updateKam("meta", e.target.value)}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
-                          </td>
-                          <td className="p-1">
-                            <input type="number" value={gmvK || ""} onChange={(e) => updateKam("gmv", e.target.value)}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
-                          </td>
-                          <td className="p-2 text-right">
-                            <span className={`text-xs font-bold ${cumplK >= 95 ? "text-green-600" : cumplK >= 80 ? "text-yellow-600" : "text-red-500"}`}>
-                              {cumplK.toFixed(1)}%
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {(() => {
+                      const allKams = proy.kams || form.kams.map(km => ({ nombre: km.nombre, meta: km.meta, gmv: km.gmv }));
+                      return allKams.map((pk, i) => {
+                        const cumplK = pk.meta > 0 ? (pk.gmv / pk.meta * 100) : 0;
+                        const updateKamField = (field, val) => {
+                          const kams = [...allKams];
+                          kams[i] = { ...kams[i], [field]: field === "nombre" ? val : (Number(val) || 0) };
+                          updateProy("kams", kams);
+                        };
+                        const removeKam = () => {
+                          const kams = allKams.filter((_, idx) => idx !== i);
+                          updateProy("kams", kams);
+                        };
+                        return (
+                          <tr key={i} className={`border-b ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                            <td className="p-1">
+                              <input type="text" value={pk.nombre || ""} onChange={(e) => updateKamField("nombre", e.target.value)}
+                                placeholder="Nombre del KAM"
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-xs font-medium text-purple-700 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                            </td>
+                            <td className="p-1">
+                              <input type="number" value={pk.meta || ""} onChange={(e) => updateKamField("meta", e.target.value)}
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                            </td>
+                            <td className="p-1">
+                              <input type="number" value={pk.gmv || ""} onChange={(e) => updateKamField("gmv", e.target.value)}
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                            </td>
+                            <td className="p-2 text-right">
+                              <span className={`text-xs font-bold ${cumplK >= 95 ? "text-green-600" : cumplK >= 80 ? "text-yellow-600" : "text-red-500"}`}>
+                                {cumplK.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="p-1">
+                              <button onClick={removeKam} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
