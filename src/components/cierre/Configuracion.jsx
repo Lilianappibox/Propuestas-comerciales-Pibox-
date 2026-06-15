@@ -471,78 +471,8 @@ export default function Configuracion({ data, onSave }) {
           <div className="space-y-4">
             <p className="text-xs text-gray-500 mb-2">Configura los datos de proyección del mes actual.</p>
 
-            {/* Upload archivo de operaciones para evolución diaria */}
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-bold shadow hover:shadow-lg transition ${cargandoOps ? "opacity-50" : ""}`} style={{ background: "linear-gradient(135deg,#5B17A8,#C026D3)" }}>
-                  {cargandoOps ? (
-                    <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx={12} cy={12} r={10} stroke="currentColor" strokeWidth={4}/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Procesando...</>
-                  ) : "📥 Subir Operaciones del Mes (.xlsx)"}
-                  <input type="file" accept=".xlsx,.xls" className="hidden" disabled={cargandoOps} onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    setCargandoOps(true);
-                    setMsg({ txt: "⏳ Leyendo archivo...", ok: true });
-                    try {
-                      const raw = await parseExcelRaw(file);
-                      if (raw.length < 2) throw new Error("Archivo vacío");
-                      const headers = raw[0].map(h => String(h).toLowerCase().trim());
-                      const iDate = headers.findIndex(h => h === "date" || h === "fecha");
-                      const iGmv = headers.findIndex(h => h === "gmv");
-                      const iPkg = headers.findIndex(h => h === "packages" || h === "paquetes");
-                      if (iDate < 0 || iGmv < 0) throw new Error("No se encontraron columnas 'date' y 'gmv'");
-                      const porDia = {};
-                      let totalRows = 0;
-                      for (let i = 1; i < raw.length; i++) {
-                        const row = raw[i];
-                        const dateVal = Number(row[iDate]);
-                        if (!dateVal) continue;
-                        const d = new Date((dateVal - 25569) * 86400000);
-                        if (isNaN(d.getTime())) continue;
-                        const key = d.toISOString().slice(0, 10);
-                        if (!porDia[key]) porDia[key] = { gmv: 0, servicios: 0, paquetes: 0 };
-                        porDia[key].gmv += Number(row[iGmv]) || 0;
-                        porDia[key].servicios++;
-                        if (iPkg >= 0) porDia[key].paquetes += Number(row[iPkg]) || 0;
-                        totalRows++;
-                      }
-                      const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
-                      let acum = 0;
-                      evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
-                      try { localStorage.setItem("pibox_cierre_evolucion", JSON.stringify(evolucion)); } catch {}
-                      setForm(prev => ({
-                        ...prev,
-                        proyeccion: { ...(prev.proyeccion || {}), archivoOps: file.name, diasEvolucion: evolucion.length },
-                      }));
-                      setMsg({ txt: `✅ ${evolucion.length} días y ${totalRows.toLocaleString()} servicios procesados. Haz clic en Guardar.`, ok: true });
-                      setTimeout(() => setMsg(null), 6000);
-                    } catch (err) {
-                      setMsg({ txt: `❌ Error: ${err.message}`, ok: false });
-                    }
-                    setCargandoOps(false);
-                    e.target.value = "";
-                  }} />
-                </label>
-                {proy.archivoOps && !cargandoOps && (
-                  <>
-                    <span className="text-xs text-gray-500">Archivo: <b>{proy.archivoOps}</b> · {(proy.evolucionDiaria || []).length} días</span>
-                    <button onClick={() => {
-                      try { localStorage.removeItem("pibox_cierre_evolucion"); } catch {}
-                      setForm(prev => {
-                        const p = { ...(prev.proyeccion || {}) };
-                        delete p.archivoOps;
-                        delete p.diasEvolucion;
-                        delete p.evolucionDiaria;
-                        return { ...prev, proyeccion: p };
-                      });
-                      setMsg({ txt: "🗑️ Eliminado. Guarda para confirmar.", ok: true });
-                      setTimeout(() => setMsg(null), 3000);
-                    }} className="text-xs text-red-500 hover:underline">🗑️ Eliminar</button>
-                  </>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 mt-2">Sube el archivo de operaciones (columnas: date, gmv, packages). Después de procesar, haz clic en <b>Guardar</b>.</p>
-            </div>
+            {/* Upload evolución diaria */}
+            <UploadEvolucion proy={proy} setForm={setForm} setMsg={setMsg} cargandoOps={cargandoOps} setCargandoOps={setCargandoOps} />
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Meta del Mes ($)" value={proy.metaMes || ""} onChange={(v) => updateProy("metaMes", v)} />
               <Field label="GMV Actual en Sistema ($)" value={proy.gmvActual || ""} onChange={(v) => updateProy("gmvActual", v)} />
@@ -698,6 +628,111 @@ function EditableTable({ rows, columns, onChange, columnLabels = {} }) {
       >
         + Agregar fila
       </button>
+    </div>
+  );
+}
+
+function UploadEvolucion({ proy, setForm, setMsg, cargandoOps, setCargandoOps }) {
+  const fileRef = useRef();
+
+  const procesarArchivo = async (file) => {
+    setCargandoOps(true);
+    setMsg({ txt: "⏳ Procesando archivo...", ok: true });
+    try {
+      const buf = await file.arrayBuffer();
+      const XLSX = (await import("../../utils/xlsxHelper")).default;
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 });
+
+      if (raw.length < 2) throw new Error("Archivo vacío");
+
+      // Buscar columnas date y gmv por nombre
+      const h = raw[0].map(x => String(x).toLowerCase().trim());
+      const iDate = h.findIndex(x => x === "date" || x === "fecha");
+      const iGmv  = h.findIndex(x => x === "gmv");
+      const iPkg  = h.findIndex(x => x === "packages" || x === "paquetes");
+
+      if (iDate < 0 || iGmv < 0) throw new Error("No se encontraron columnas 'date' y 'gmv' en el archivo.");
+
+      const porDia = {};
+      let n = 0;
+      for (let i = 1; i < raw.length; i++) {
+        const r = raw[i];
+        const dv = Number(r[iDate]);
+        if (!dv) continue;
+        const dt = new Date((dv - 25569) * 86400000);
+        if (isNaN(dt.getTime())) continue;
+        const k = dt.toISOString().slice(0, 10);
+        if (!porDia[k]) porDia[k] = { gmv: 0, servicios: 0, paquetes: 0 };
+        porDia[k].gmv += Number(r[iGmv]) || 0;
+        porDia[k].servicios++;
+        if (iPkg >= 0) porDia[k].paquetes += Number(r[iPkg]) || 0;
+        n++;
+      }
+
+      const ev = Object.entries(porDia)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([fecha, v]) => ({ fecha, ...v }));
+      let ac = 0;
+      ev.forEach(d => { ac += d.gmv; d.gmvAcumulado = ac; });
+
+      localStorage.setItem("pibox_cierre_evolucion", JSON.stringify(ev));
+
+      setForm(prev => ({
+        ...prev,
+        proyeccion: {
+          ...(prev.proyeccion || {}),
+          archivoOps: file.name,
+          diasEvolucion: ev.length,
+        },
+      }));
+
+      setMsg({ txt: `✅ Listo: ${ev.length} días, ${n.toLocaleString()} servicios. Haz clic en Guardar.`, ok: true });
+      setTimeout(() => setMsg(null), 8000);
+    } catch (err) {
+      setMsg({ txt: `❌ ${err.message}`, ok: false });
+    }
+    setCargandoOps(false);
+  };
+
+  const eliminar = () => {
+    localStorage.removeItem("pibox_cierre_evolucion");
+    setForm(prev => {
+      const p = { ...(prev.proyeccion || {}) };
+      delete p.archivoOps;
+      delete p.diasEvolucion;
+      return { ...prev, proyeccion: p };
+    });
+    setMsg({ txt: "🗑️ Eliminado. Guarda para confirmar.", ok: true });
+    setTimeout(() => setMsg(null), 3000);
+  };
+
+  return (
+    <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
+      <p className="text-xs font-bold text-purple-800 mb-2">📈 Evolución Diaria del GMV</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          disabled={cargandoOps}
+          onClick={() => fileRef.current?.click()}
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-bold shadow transition ${cargandoOps ? "opacity-50 cursor-wait" : "hover:shadow-lg cursor-pointer"}`}
+          style={{ background: "linear-gradient(135deg,#5B17A8,#C026D3)" }}
+        >
+          {cargandoOps ? (
+            <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx={12} cy={12} r={10} stroke="currentColor" strokeWidth={4}/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Procesando...</>
+          ) : "📥 Subir archivo (.xlsx)"}
+        </button>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+          onChange={(e) => { if (e.target.files?.[0]) procesarArchivo(e.target.files[0]); e.target.value = ""; }} />
+
+        {proy.archivoOps && !cargandoOps && (
+          <>
+            <span className="text-xs text-gray-600">✅ <b>{proy.archivoOps}</b> · {proy.diasEvolucion || 0} días</span>
+            <button onClick={eliminar} className="text-xs text-red-500 hover:text-red-700 hover:underline">🗑️ Eliminar</button>
+          </>
+        )}
+      </div>
+      <p className="text-xs text-gray-400 mt-2">Archivo con columnas: <b>date</b>, <b>gmv</b>, <b>packages</b>. Después de subir, haz clic en Guardar.</p>
     </div>
   );
 }
