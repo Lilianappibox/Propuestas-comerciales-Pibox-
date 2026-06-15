@@ -474,6 +474,7 @@ export default function Configuracion({ data, onSave }) {
             {/* Upload evolución diaria */}
             <UploadEvolucion proy={proy} setForm={setForm} setMsg={setMsg} cargandoOps={cargandoOps} setCargandoOps={setCargandoOps} />
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Field label="Mes a Proyectar" value={proy.mesProyeccion || ""} onChange={(v) => updateProy("mesProyeccion", v)} type="text" />
               <Field label="Meta del Mes ($)" value={proy.metaMes || ""} onChange={(v) => updateProy("metaMes", v)} />
               <Field label="GMV Actual en Sistema ($)" value={proy.gmvActual || ""} onChange={(v) => updateProy("gmvActual", v)} />
               <Field label="GMV TaDa Pendiente ($)" value={proy.gmvTadaPendiente || ""} onChange={(v) => updateProy("gmvTadaPendiente", v)} />

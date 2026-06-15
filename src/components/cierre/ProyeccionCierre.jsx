@@ -194,8 +194,8 @@ export default function ProyeccionCierre({ data }) {
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-purple-800">Proyeccion de Cierre</h2>
-          <p className="text-sm text-gray-500">{data.mes}</p>
+          <h2 className="text-xl font-bold text-purple-800">Proyección de Cierre</h2>
+          <p className="text-sm text-gray-500">{proy.mesProyeccion || data.mes}</p>
         </div>
         <div className="flex items-center gap-2">
           <span
