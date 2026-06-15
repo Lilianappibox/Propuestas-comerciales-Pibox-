@@ -90,6 +90,7 @@ export default function ProyeccionCierre({ data }) {
 
   // Normalizar valores a números (pueden venir como strings desde Config)
   const proy = rawProy ? {
+    mesProyeccion: rawProy.mesProyeccion || "",
     metaMes: Number(rawProy.metaMes) || 0,
     gmvActual: Number(rawProy.gmvActual) || 0,
     gmvTadaPendiente: Number(rawProy.gmvTadaPendiente) || 0,
@@ -100,6 +101,8 @@ export default function ProyeccionCierre({ data }) {
     diasTotalesMes: Number(rawProy.diasTotalesMes) || 30,
     gmvMesPasado: Number(rawProy.gmvMesPasado) || 0,
     kams: rawProy.kams || [],
+    archivoOps: rawProy.archivoOps || "",
+    diasEvolucion: Number(rawProy.diasEvolucion) || 0,
   } : null;
 
   const [tadaPendiente, setTadaPendiente] = useState(proy?.gmvTadaPendiente || 0);
