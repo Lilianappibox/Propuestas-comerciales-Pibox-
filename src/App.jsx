@@ -229,13 +229,15 @@ export default function App() {
 
   const modulosActivos = MODULOS_CONFIG.filter((m) => modulos[m.id]).length;
 
-  // ── Vistas principales del topbar ──
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // ── Vistas principales (orden solicitado) ──
   const mainViews = [
-    { id: VIEW_PROPUESTAS, label: "📋 Propuestas Comerciales", visible: !!permisos.verPropuesta },
-    { id: VIEW_USUARIOS,   label: "👥 Usuarios",               visible: permisos.gestionarUsuarios },
-    { id: VIEW_CIERRE,     label: "📊 Cierre Comercial",       visible: !!permisos.verCierreComercial },
-    { id: VIEW_RIESGO,     label: "🚨 Riesgo Comercial",       visible: !!permisos.verRiesgoComercial },
-    { id: VIEW_TADA,      label: "🍺 Informe TaDa",           visible: !!permisos.verInformeTada },
+    { id: VIEW_PROPUESTAS, label: "Propuestas Comerciales", icon: "📋", visible: !!permisos.verPropuesta },
+    { id: VIEW_CIERRE,     label: "Cierre Comercial",       icon: "📊", visible: !!permisos.verCierreComercial },
+    { id: VIEW_RIESGO,     label: "Riesgo Comercial",       icon: "🚨", visible: !!permisos.verRiesgoComercial },
+    { id: VIEW_TADA,       label: "Informe TaDa",           icon: "🍺", visible: !!permisos.verInformeTada },
+    { id: VIEW_USUARIOS,   label: "Usuarios",               icon: "👥", visible: permisos.gestionarUsuarios },
   ].filter((v) => v.visible);
 
   // ── Sub-tabs de Propuestas Comerciales ──
@@ -251,44 +253,61 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* ── Topbar principal ── */}
-      <header className="text-white shadow-lg print:hidden" style={{ background: BRAND_GRADIENT }}>
-        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 shrink-0">
-            <PiboxLogo size="sm" white />
-            <span className="text-white/60 text-xs hidden sm:block tracking-wide">Tablero Comercial</span>
+      {/* ── Sidebar vertical ── */}
+      <div className={`fixed top-0 left-0 h-full z-50 transition-all duration-300 print:hidden ${sidebarOpen ? "w-64" : "w-16"}`}
+        style={{ background: BRAND_GRADIENT }}
+        onMouseEnter={() => setSidebarOpen(true)}
+        onMouseLeave={() => setSidebarOpen(false)}>
+
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-3 py-4 border-b border-white/10">
+          <div className="w-10 h-10 shrink-0 flex items-center justify-center">
+            <PiboxLogo size="xs" white />
           </div>
+          {sidebarOpen && <span className="text-white/70 text-xs tracking-wide whitespace-nowrap">Tablero Comercial</span>}
+        </div>
 
-          <nav className="flex items-center gap-1 flex-1 justify-center flex-wrap">
-            {mainViews.map((v) => (
-              <button key={v.id} onClick={() => setView(v.id)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  view === v.id
-                    ? "bg-white text-purple-700 shadow"
-                    : "text-white/80 hover:bg-white/15"
-                }`}>
-                {v.label}
-              </button>
-            ))}
-          </nav>
+        {/* Navigation */}
+        <nav className="flex flex-col gap-1 px-2 py-3">
+          {mainViews.map((v) => (
+            <button key={v.id} onClick={() => { setView(v.id); setSidebarOpen(false); }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                view === v.id
+                  ? "bg-white text-purple-700 shadow"
+                  : "text-white/80 hover:bg-white/15"
+              }`}>
+              <span className="text-lg shrink-0 w-6 text-center">{v.icon}</span>
+              {sidebarOpen && <span>{v.label}</span>}
+            </button>
+          ))}
+        </nav>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold leading-tight">{currentUser.nombre}</p>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[currentUser.rol]}`}>
-                {ROLE_ICONS[currentUser.rol]} {currentUser.rol}
-              </span>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-white/20 border border-white/40 font-bold flex items-center justify-center text-sm shrink-0">
+        {/* Usuario (abajo) */}
+        <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 px-2 py-3">
+          <div className={`flex items-center gap-2 px-3 py-2 ${sidebarOpen ? "" : "justify-center"}`}>
+            <div className="w-8 h-8 rounded-full bg-white/20 border border-white/40 font-bold flex items-center justify-center text-sm text-white shrink-0">
               {currentUser.nombre.charAt(0).toUpperCase()}
             </div>
-            <button onClick={handleLogout}
-              className="text-white/70 hover:text-white text-xs px-2 py-1 rounded hover:bg-white/15 transition-colors">
-              Salir
-            </button>
+            {sidebarOpen && (
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-white truncate">{currentUser.nombre}</p>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ROLE_COLORS[currentUser.rol]}`}>
+                  {ROLE_ICONS[currentUser.rol]} {currentUser.rol}
+                </span>
+              </div>
+            )}
           </div>
+          {sidebarOpen && (
+            <button onClick={handleLogout}
+              className="w-full mt-1 text-white/60 hover:text-white text-xs px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors text-left">
+              ↩ Cerrar sesión
+            </button>
+          )}
         </div>
-      </header>
+      </div>
+
+      {/* ── Main content (con margen para sidebar) ── */}
+      <div className={`transition-all duration-300 print:ml-0 ${sidebarOpen ? "ml-64" : "ml-16"}`}>
 
       {/* Toast */}
       {savedMsg && (
@@ -574,8 +593,9 @@ export default function App() {
            PANTALLA DE BIENVENIDA
          ══════════════════════════════════════════════════════════════════════ */}
       {view === "welcome" && (
-        <div className="min-h-[calc(100vh-56px)]" style={{ background: `url(${welcomeBg}) center/cover no-repeat` }} />
+        <div className="min-h-screen" style={{ background: `url(${welcomeBg}) center/cover no-repeat` }} />
       )}
+      </div>
     </div>
   );
 }
