@@ -255,49 +255,115 @@ export default function ProyeccionCierre({ data }) {
       <div>
         <h3 className="text-base font-semibold text-gray-700 mb-3">Cumplimiento Visual</h3>
         <div className="bg-gray-50 rounded-xl p-5">
-          {/* Stacked bar */}
-          <div className="relative h-10 bg-gray-200 rounded-full overflow-visible">
-            <div className="absolute inset-y-0 left-0 flex rounded-full overflow-hidden" style={{ width: `${Math.min(wActual + wTada + wStorage, 100)}%` }}>
-              <div style={{ width: `${wActual > 0 ? (proy.gmvActual / calc.gmvTotal) * 100 : 0}%` }} className="h-full bg-purple-600" />
-              <div style={{ width: `${tadaPendiente > 0 ? (tadaPendiente / calc.gmvTotal) * 100 : 0}%` }} className="h-full bg-orange-400" />
-              <div style={{ width: `${storagePendiente > 0 ? (storagePendiente / calc.gmvTotal) * 100 : 0}%` }} className="h-full bg-blue-500" />
-            </div>
-            {/* Meta line */}
-            <div
-              className="absolute top-[-6px] bottom-[-6px] w-0.5 border-l-2 border-dashed border-gray-700"
-              style={{ left: `${Math.min(metaLine, 100)}%` }}
-            >
-              <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-gray-600 whitespace-nowrap">
-                Meta: {fmtAbr(proy.metaMes)}
-              </span>
-            </div>
-          </div>
+          {(() => {
+            const umbral80 = proy.metaMes * 0.8;
+            const umbral80Line = (umbral80 / maxVal) * 100;
+            const faltaPara80 = umbral80 - calc.gmvTotal;
+            const faltaPara80SinPend = umbral80 - proy.gmvActual;
+            const [hover, setHover] = useState(null);
 
-          {/* Legend */}
-          <div className="flex flex-wrap gap-4 mt-4 text-xs">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-purple-600 inline-block" /> GMV Actual: {fmtAbr(proy.gmvActual)}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-orange-400 inline-block" /> TaDa Pendiente: {fmtAbr(tadaPendiente)}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Storage Pendiente: {fmtAbr(storagePendiente)}
-            </span>
-          </div>
+            return (
+              <>
+                {/* Stacked bar */}
+                <div className="relative h-12 bg-gray-200 rounded-full overflow-visible cursor-pointer"
+                  onMouseLeave={() => setHover(null)}>
+                  {/* Barra GMV Actual */}
+                  <div className="absolute inset-y-0 left-0 rounded-l-full bg-purple-600 transition-all"
+                    style={{ width: `${Math.min(wActual, 100)}%` }}
+                    onMouseEnter={() => setHover("actual")} />
+                  {/* Barra TaDa */}
+                  <div className="absolute inset-y-0 bg-orange-400 transition-all"
+                    style={{ left: `${Math.min(wActual, 100)}%`, width: `${Math.min(wTada, 100 - wActual)}%` }}
+                    onMouseEnter={() => setHover("tada")} />
+                  {/* Barra Storage */}
+                  <div className="absolute inset-y-0 bg-blue-500 transition-all"
+                    style={{ left: `${Math.min(wActual + wTada, 100)}%`, width: `${Math.min(wStorage, 100 - wActual - wTada)}%`, borderRadius: storagePendiente > 0 ? "0 9999px 9999px 0" : 0 }}
+                    onMouseEnter={() => setHover("storage")} />
 
-          {/* Gap message */}
-          <div className="mt-3">
-            {calc.gap > 0 ? (
-              <p className="text-sm font-semibold text-red-600">
-                Falta {M(calc.gap)} para la meta
-              </p>
-            ) : (
-              <p className="text-sm font-semibold text-green-600">
-                Supero la meta por {M(Math.abs(calc.gap))}
-              </p>
-            )}
-          </div>
+                  {/* Línea umbral 80% */}
+                  <div className="absolute top-[-8px] bottom-[-8px] w-0.5 border-l-2 border-dashed border-yellow-500"
+                    style={{ left: `${Math.min(umbral80Line, 100)}%` }}>
+                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-yellow-600 whitespace-nowrap bg-yellow-50 px-1 rounded">
+                      80%: {fmtAbr(umbral80)}
+                    </span>
+                  </div>
+
+                  {/* Línea Meta 100% */}
+                  <div className="absolute top-[-8px] bottom-[-8px] w-0.5 border-l-2 border-dashed border-gray-700"
+                    style={{ left: `${Math.min(metaLine, 100)}%` }}>
+                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-gray-600 whitespace-nowrap bg-white px-1 rounded">
+                      Meta: {fmtAbr(proy.metaMes)}
+                    </span>
+                  </div>
+
+                  {/* Tooltip flotante */}
+                  {hover && (
+                    <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-white border border-purple-200 rounded-xl shadow-lg px-4 py-3 z-10 min-w-[280px]">
+                      {hover === "actual" && (
+                        <>
+                          <p className="font-bold text-purple-700 text-sm mb-1">GMV en Sistema</p>
+                          <p className="text-gray-700">{M(proy.gmvActual)}</p>
+                          <p className="text-xs text-gray-500">Cumplimiento solo sistema: <b className="text-purple-700">{calc.cumplActualPct.toFixed(1)}%</b></p>
+                        </>
+                      )}
+                      {hover === "tada" && (
+                        <>
+                          <p className="font-bold text-orange-600 text-sm mb-1">+ TaDa Pendiente</p>
+                          <p className="text-gray-700">{M(tadaPendiente)}</p>
+                          <p className="text-xs text-gray-500">Acumulado con TaDa: <b className="text-orange-600">{proy.metaMes > 0 ? ((proy.gmvActual + tadaPendiente) / proy.metaMes * 100).toFixed(1) : 0}%</b></p>
+                        </>
+                      )}
+                      {hover === "storage" && (
+                        <>
+                          <p className="font-bold text-blue-600 text-sm mb-1">+ Storage Pendiente</p>
+                          <p className="text-gray-700">{M(storagePendiente)}</p>
+                          <p className="text-xs text-gray-500">Cumplimiento total: <b className="text-blue-600">{calc.cumplPct.toFixed(1)}%</b></p>
+                        </>
+                      )}
+                      <div className="border-t border-gray-100 mt-2 pt-2 text-xs">
+                        <p>Sistema: {fmtAbr(proy.gmvActual)} ({calc.cumplActualPct.toFixed(1)}%)</p>
+                        <p>+ TaDa: {fmtAbr(tadaPendiente)} → {proy.metaMes > 0 ? ((proy.gmvActual + tadaPendiente) / proy.metaMes * 100).toFixed(1) : 0}%</p>
+                        <p>+ Storage: {fmtAbr(storagePendiente)} → <b>{calc.cumplPct.toFixed(1)}%</b></p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Legend */}
+                <div className="flex flex-wrap gap-4 mt-4 text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-purple-600 inline-block" /> GMV Actual: {fmtAbr(proy.gmvActual)} ({calc.cumplActualPct.toFixed(1)}%)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-orange-400 inline-block" /> TaDa: {fmtAbr(tadaPendiente)}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Storage: {fmtAbr(storagePendiente)}
+                  </span>
+                  <span className="flex items-center gap-1.5 font-bold" style={{ color: calc.cumplPct >= 80 ? GREEN : RED }}>
+                    Total: {calc.cumplPct.toFixed(1)}%
+                  </span>
+                </div>
+
+                {/* Gap messages */}
+                <div className="mt-3 space-y-1">
+                  {calc.gap > 0 ? (
+                    <p className="text-sm font-semibold text-red-600">Falta {M(calc.gap)} para la meta (100%)</p>
+                  ) : (
+                    <p className="text-sm font-semibold text-green-600">Superó la meta por {M(Math.abs(calc.gap))}</p>
+                  )}
+                  {faltaPara80 > 0 ? (
+                    <p className="text-sm font-semibold text-yellow-600">Falta {M(faltaPara80)} para el umbral mínimo (80% = {fmtAbr(umbral80)})</p>
+                  ) : (
+                    <p className="text-sm font-semibold text-green-600">✅ Ya superó el umbral mínimo del 80%</p>
+                  )}
+                  {faltaPara80SinPend > 0 && faltaPara80 <= 0 && (
+                    <p className="text-xs text-gray-500">Nota: sin pendientes (solo sistema), faltarían {M(faltaPara80SinPend)} para el 80%</p>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
