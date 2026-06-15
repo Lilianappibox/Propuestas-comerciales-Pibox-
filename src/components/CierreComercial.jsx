@@ -30,11 +30,12 @@ function leer(isAdmin) {
     const s = localStorage.getItem(SK);
     if (s) {
       const data = JSON.parse(s);
-      // Limpiar evolucionDiaria corrupta si existe
-      if (data.proyeccion && data.proyeccion.evolucionDiaria) {
-        delete data.proyeccion.evolucionDiaria;
-        delete data.proyeccion.archivoOps;
-        localStorage.setItem(SK, JSON.stringify(data));
+      // Limpiar datos problemáticos de proyeccion
+      if (data.proyeccion) {
+        let changed = false;
+        if (data.proyeccion.evolucionDiaria) { delete data.proyeccion.evolucionDiaria; changed = true; }
+        if (data.proyeccion.archivoOps && !data.proyeccion.diasEvolucion) { delete data.proyeccion.archivoOps; changed = true; }
+        if (changed) localStorage.setItem(SK, JSON.stringify(data));
       }
       return data;
     }

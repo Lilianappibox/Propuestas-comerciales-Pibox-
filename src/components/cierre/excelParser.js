@@ -1,6 +1,29 @@
 import XLSX from "../../utils/xlsxHelper";
 
 /**
+ * Lee un File de Excel/CSV y devuelve array de arrays (header en row 0)
+ * Más rápido para archivos grandes — no crea objetos por fila
+ */
+export function parseExcelRaw(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb   = XLSX.read(data, { type: "array" });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 });
+        resolve(rows);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
  * Lee un File de Excel/CSV y devuelve array de objetos
  * (primera fila = cabeceras, resto = datos)
  */

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { fmtM } from "./utils";
-import { parseExcelFile, PARSERS } from "./excelParser";
+import { parseExcelFile, parseExcelRaw, PARSERS } from "./excelParser";
 
 export default function Configuracion({ data, onSave }) {
   const [form, setForm] = useState({ ...data });
@@ -482,55 +482,45 @@ export default function Configuracion({ data, onSave }) {
                     const file = e.target.files?.[0];
                     if (!file) return;
                     setCargandoOps(true);
-                    setMsg({ txt: "⏳ Leyendo archivo... puede tardar unos segundos.", ok: true });
-                    // Usar setTimeout para que el spinner se renderice antes de bloquear
-                    setTimeout(async () => {
-                      try {
-                        const XLSX = (await import("../../utils/xlsxHelper")).default;
-                        const buf = await file.arrayBuffer();
-                        const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false });
-                        const ws = wb.Sheets[wb.SheetNames[0]];
-                        // Leer como array de arrays (más rápido que json para archivos grandes)
-                        const raw = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 });
-                        if (raw.length < 2) throw new Error("Archivo vacío");
-                        // Encontrar índices de columnas
-                        const headers = raw[0].map(h => String(h).toLowerCase().trim());
-                        const iDate = headers.findIndex(h => h === "date" || h === "fecha");
-                        const iGmv = headers.findIndex(h => h === "gmv");
-                        const iPkg = headers.findIndex(h => h === "packages" || h === "paquetes");
-                        if (iDate < 0 || iGmv < 0) throw new Error("No se encontraron columnas 'date' y 'gmv'");
-                        // Procesar solo las columnas necesarias
-                        const porDia = {};
-                        let totalRows = 0;
-                        for (let i = 1; i < raw.length; i++) {
-                          const row = raw[i];
-                          const dateVal = Number(row[iDate]);
-                          if (!dateVal) continue;
-                          const d = new Date((dateVal - 25569) * 86400000);
-                          if (isNaN(d.getTime())) continue;
-                          const key = d.toISOString().slice(0, 10);
-                          if (!porDia[key]) porDia[key] = { gmv: 0, servicios: 0, paquetes: 0 };
-                          porDia[key].gmv += Number(row[iGmv]) || 0;
-                          porDia[key].servicios++;
-                          if (iPkg >= 0) porDia[key].paquetes += Number(row[iPkg]) || 0;
-                          totalRows++;
-                        }
-                        const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
-                        let acum = 0;
-                        evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
-                        try { localStorage.setItem("pibox_cierre_evolucion", JSON.stringify(evolucion)); } catch {}
-                        setForm(prev => ({
-                          ...prev,
-                          proyeccion: { ...(prev.proyeccion || {}), archivoOps: file.name, diasEvolucion: evolucion.length },
-                        }));
-                        setMsg({ txt: `✅ ${evolucion.length} días y ${totalRows.toLocaleString()} servicios procesados. Haz clic en Guardar.`, ok: true });
-                        setTimeout(() => setMsg(null), 6000);
-                      } catch (err) {
-                        setMsg({ txt: `❌ Error: ${err.message}`, ok: false });
+                    setMsg({ txt: "⏳ Leyendo archivo...", ok: true });
+                    try {
+                      const raw = await parseExcelRaw(file);
+                      if (raw.length < 2) throw new Error("Archivo vacío");
+                      const headers = raw[0].map(h => String(h).toLowerCase().trim());
+                      const iDate = headers.findIndex(h => h === "date" || h === "fecha");
+                      const iGmv = headers.findIndex(h => h === "gmv");
+                      const iPkg = headers.findIndex(h => h === "packages" || h === "paquetes");
+                      if (iDate < 0 || iGmv < 0) throw new Error("No se encontraron columnas 'date' y 'gmv'");
+                      const porDia = {};
+                      let totalRows = 0;
+                      for (let i = 1; i < raw.length; i++) {
+                        const row = raw[i];
+                        const dateVal = Number(row[iDate]);
+                        if (!dateVal) continue;
+                        const d = new Date((dateVal - 25569) * 86400000);
+                        if (isNaN(d.getTime())) continue;
+                        const key = d.toISOString().slice(0, 10);
+                        if (!porDia[key]) porDia[key] = { gmv: 0, servicios: 0, paquetes: 0 };
+                        porDia[key].gmv += Number(row[iGmv]) || 0;
+                        porDia[key].servicios++;
+                        if (iPkg >= 0) porDia[key].paquetes += Number(row[iPkg]) || 0;
+                        totalRows++;
                       }
-                      setCargandoOps(false);
-                      e.target.value = "";
-                    }, 100);
+                      const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
+                      let acum = 0;
+                      evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
+                      try { localStorage.setItem("pibox_cierre_evolucion", JSON.stringify(evolucion)); } catch {}
+                      setForm(prev => ({
+                        ...prev,
+                        proyeccion: { ...(prev.proyeccion || {}), archivoOps: file.name, diasEvolucion: evolucion.length },
+                      }));
+                      setMsg({ txt: `✅ ${evolucion.length} días y ${totalRows.toLocaleString()} servicios procesados. Haz clic en Guardar.`, ok: true });
+                      setTimeout(() => setMsg(null), 6000);
+                    } catch (err) {
+                      setMsg({ txt: `❌ Error: ${err.message}`, ok: false });
+                    }
+                    setCargandoOps(false);
+                    e.target.value = "";
                   }} />
                 </label>
                 {proy.archivoOps && !cargandoOps && (
