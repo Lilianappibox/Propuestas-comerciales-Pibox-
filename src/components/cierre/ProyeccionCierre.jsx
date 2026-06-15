@@ -86,7 +86,20 @@ export default function ProyeccionCierre({ data }) {
   const { moneda, trm } = useMoneda();
   const M = (n) => fmtMoney(n, moneda, trm);
 
-  const proy = data.proyeccion;
+  const rawProy = data.proyeccion;
+
+  // Normalizar valores a números (pueden venir como strings desde Config)
+  const proy = rawProy ? {
+    metaMes: Number(rawProy.metaMes) || 0,
+    gmvActual: Number(rawProy.gmvActual) || 0,
+    gmvTadaPendiente: Number(rawProy.gmvTadaPendiente) || 0,
+    gmvStoragePendiente: Number(rawProy.gmvStoragePendiente) || 0,
+    utilidadPct: Number(rawProy.utilidadPct) || 0,
+    diasTranscurridos: Number(rawProy.diasTranscurridos) || 0,
+    diasTotalesMes: Number(rawProy.diasTotalesMes) || 30,
+    gmvMesPasado: Number(rawProy.gmvMesPasado) || 0,
+    kams: rawProy.kams || [],
+  } : null;
 
   const [tadaPendiente, setTadaPendiente] = useState(proy?.gmvTadaPendiente || 0);
   const [storagePendiente, setStoragePendiente] = useState(proy?.gmvStoragePendiente || 0);
@@ -122,7 +135,7 @@ export default function ProyeccionCierre({ data }) {
   }, [proy, tadaPendiente, storagePendiente]);
 
   // ── No projection data ─────────────────────────────────────────────────
-  if (!proy) {
+  if (!rawProy) {
     return (
       <section className="bg-white rounded-2xl shadow-md p-6">
         <h2 className="text-xl font-bold text-purple-800 mb-2">Proyeccion de Cierre</h2>
@@ -144,6 +157,8 @@ export default function ProyeccionCierre({ data }) {
   const metaLine = (proy.metaMes / maxVal) * 100;
 
   // ── KAM data: merge proyeccion KAMs con data.kams ──────────────────────
+  const diasT = proy.diasTranscurridos || 1;
+  const diasTot = proy.diasTotalesMes || 30;
   const proyKams = proy.kams || [];
   const kamsData = (data.kams || []).map((k) => {
     const pk = proyKams.find(p => p.nombre === k.nombre);
