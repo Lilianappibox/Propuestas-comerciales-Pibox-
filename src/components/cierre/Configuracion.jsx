@@ -477,11 +477,7 @@ export default function Configuracion({ data, onSave }) {
                     const file = e.target.files?.[0];
                     if (!file) return;
                     try {
-                      const XLSX = await import("../../utils/xlsxHelper").then(m => m.default);
-                      const buf = await file.arrayBuffer();
-                      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
-                      const ws = wb.Sheets[wb.SheetNames[0]];
-                      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+                      const rows = await parseExcelFile(file);
                       const porDia = {};
                       rows.forEach(r => {
                         const dateVal = Number(r.date || r.DATE || r.fecha || r.FECHA);
