@@ -28,7 +28,16 @@ function leer(isAdmin) {
   // Admin: lee de localStorage si tiene datos guardados, sino dataInicial
   try {
     const s = localStorage.getItem(SK);
-    if (s) return JSON.parse(s);
+    if (s) {
+      const data = JSON.parse(s);
+      // Limpiar evolucionDiaria corrupta si existe
+      if (data.proyeccion && data.proyeccion.evolucionDiaria) {
+        delete data.proyeccion.evolucionDiaria;
+        delete data.proyeccion.archivoOps;
+        localStorage.setItem(SK, JSON.stringify(data));
+      }
+      return data;
+    }
   } catch {}
   return JSON.parse(JSON.stringify(dataInicial));
 }

@@ -499,9 +499,11 @@ export default function Configuracion({ data, onSave }) {
                       const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
                       let acum = 0;
                       evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
+                      // Guardar evolución en key separada (evitar exceder localStorage con el form completo)
+                      try { localStorage.setItem("pibox_cierre_evolucion", JSON.stringify(evolucion)); } catch {}
                       setForm(prev => ({
                         ...prev,
-                        proyeccion: { ...(prev.proyeccion || {}), evolucionDiaria: evolucion, archivoOps: file.name },
+                        proyeccion: { ...(prev.proyeccion || {}), archivoOps: file.name, diasEvolucion: evolucion.length },
                       }));
                       setMsg({ txt: `✅ ${evolucion.length} días y ${rows.length.toLocaleString()} servicios procesados. Haz clic en Guardar.`, ok: true });
                       setTimeout(() => setMsg(null), 6000);
@@ -516,10 +518,12 @@ export default function Configuracion({ data, onSave }) {
                   <>
                     <span className="text-xs text-gray-500">Archivo: <b>{proy.archivoOps}</b> · {(proy.evolucionDiaria || []).length} días</span>
                     <button onClick={() => {
+                      try { localStorage.removeItem("pibox_cierre_evolucion"); } catch {}
                       setForm(prev => {
                         const p = { ...(prev.proyeccion || {}) };
-                        delete p.evolucionDiaria;
                         delete p.archivoOps;
+                        delete p.diasEvolucion;
+                        delete p.evolucionDiaria;
                         return { ...prev, proyeccion: p };
                       });
                       setMsg({ txt: "🗑️ Eliminado. Guarda para confirmar.", ok: true });

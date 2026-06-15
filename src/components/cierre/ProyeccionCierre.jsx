@@ -522,8 +522,18 @@ export default function ProyeccionCierre({ data }) {
       {/* ── Section 5: Evolución diaria ────────────────────────────────── */}
       <div>
         <h3 className="text-base font-semibold text-gray-700 mb-3">Evolución Diaria del GMV</h3>
-        {proy.evolucionDiaria && proy.evolucionDiaria.length > 0 ? (() => {
-          const evData = proy.evolucionDiaria.map(d => ({
+        {(() => {
+          let evDiaria = null;
+          try { const s = localStorage.getItem("pibox_cierre_evolucion"); if (s) evDiaria = JSON.parse(s); } catch {}
+          if (!evDiaria || !evDiaria.length) return (
+            <div className="flex items-center justify-center h-48 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+              <div className="text-center">
+                <p className="text-gray-400 text-sm">Gráfico de evolución diaria</p>
+                <p className="text-gray-300 text-xs mt-1">Sube el archivo de operaciones en ⚙️ Config → Proyección Cierre</p>
+              </div>
+            </div>
+          );
+          const evData = evDiaria.map(d => ({
             ...d,
             dia: d.fecha ? d.fecha.slice(5) : d.dia || "",
             meta80: proy.metaMes * 0.8,
@@ -599,14 +609,7 @@ export default function ProyeccionCierre({ data }) {
               </div>
             </div>
           );
-        })() : (
-          <div className="flex items-center justify-center h-48 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-            <div className="text-center">
-              <p className="text-gray-400 text-sm">Gráfico de evolución diaria</p>
-              <p className="text-gray-300 text-xs mt-1">Sube el archivo de operaciones del mes en ⚙️ Config → Proyección Cierre</p>
-            </div>
-          </div>
-        )}
+        })()}
       </div>
     </section>
   );
