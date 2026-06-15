@@ -637,7 +637,7 @@ function UploadEvolucion({ proy, setForm, setMsg, cargandoOps, setCargandoOps })
 
   const procesarArchivo = async (file) => {
     setCargandoOps(true);
-    setMsg({ txt: "⏳ Procesando archivo...", ok: true });
+    setMsg("⏳ Procesando archivo...");
     try {
       const raw = await parseExcelRaw(file);
 
@@ -684,10 +684,10 @@ function UploadEvolucion({ proy, setForm, setMsg, cargandoOps, setCargandoOps })
         },
       }));
 
-      setMsg({ txt: `✅ Listo: ${ev.length} días, ${n.toLocaleString()} servicios. Haz clic en Guardar.`, ok: true });
-      setTimeout(() => setMsg(null), 8000);
+      setMsg(`✅ Listo: ${ev.length} días, ${n.toLocaleString()} servicios. Haz clic en Guardar.`);
+      setTimeout(() => setMsg(""), 8000);
     } catch (err) {
-      setMsg({ txt: `❌ ${err.message}`, ok: false });
+      setMsg(`❌ ${err.message}`);
     }
     setCargandoOps(false);
   };
@@ -700,8 +700,8 @@ function UploadEvolucion({ proy, setForm, setMsg, cargandoOps, setCargandoOps })
       delete p.diasEvolucion;
       return { ...prev, proyeccion: p };
     });
-    setMsg({ txt: "🗑️ Eliminado. Guarda para confirmar.", ok: true });
-    setTimeout(() => setMsg(null), 3000);
+    setMsg("🗑️ Eliminado. Guarda para confirmar.");
+    setTimeout(() => setMsg(""), 3000);
   };
 
   return (
