@@ -151,6 +151,7 @@ export default function Configuracion({ data, onSave }) {
       </div>
 
       {/* ── Barra de acciones del tab activo ── */}
+      {tab !== "proyeccion" && (
       <div className="flex flex-wrap gap-2 items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-5">
         <div className="flex gap-2 flex-wrap items-center">
           <button
@@ -186,6 +187,17 @@ export default function Configuracion({ data, onSave }) {
           💾 Guardar {tabLabel}
         </button>
       </div>
+      )}
+
+      {/* Botón guardar para proyección */}
+      {tab === "proyeccion" && (
+        <div className="flex justify-end mb-5">
+          <button onClick={handleSave}
+            className="px-5 py-1.5 bg-pink-600 text-white rounded-lg text-xs font-bold hover:bg-pink-700 transition shadow">
+            💾 Guardar Proyección
+          </button>
+        </div>
+      )}
 
       {tab === "general" && (
         <div className="grid md:grid-cols-2 gap-4">
