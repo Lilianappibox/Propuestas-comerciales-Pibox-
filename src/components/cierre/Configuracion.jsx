@@ -103,6 +103,7 @@ export default function Configuracion({ data, onSave }) {
     { id: "líneas",            label: "Líneas"            },
     { id: "ciudades",          label: "Ciudades"          },
     { id: "tendencias",        label: "Tendencias"        },
+    { id: "proyeccion",        label: "Proyección Cierre" },
   ];
 
   const tabLabel = TABS.find((t) => t.id === tab)?.label ?? tab;
@@ -445,6 +446,28 @@ export default function Configuracion({ data, onSave }) {
           onChange={(rows) => setForm((p) => ({ ...p, tendencias: rows }))}
         />
       )}
+
+      {tab === "proyeccion" && (() => {
+        const proy = form.proyeccion || {};
+        const updateProy = (key, val) => {
+          setForm((p) => ({ ...p, proyeccion: { ...(p.proyeccion || {}), [key]: isNaN(val) ? val : Number(val) } }));
+        };
+        return (
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500 mb-2">Configura los datos de proyección del mes actual. Los campos de GMV pendiente (TaDa y Storage) también se pueden editar en tiempo real desde la pestaña de Proyección.</p>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Field label="Meta del Mes ($)" value={proy.metaMes || ""} onChange={(v) => updateProy("metaMes", v)} />
+              <Field label="GMV Actual en Sistema ($)" value={proy.gmvActual || ""} onChange={(v) => updateProy("gmvActual", v)} />
+              <Field label="GMV TaDa Pendiente ($)" value={proy.gmvTadaPendiente || ""} onChange={(v) => updateProy("gmvTadaPendiente", v)} />
+              <Field label="GMV Storage Pendiente ($)" value={proy.gmvStoragePendiente || ""} onChange={(v) => updateProy("gmvStoragePendiente", v)} />
+              <Field label="% Utilidad Proyectada" value={proy.utilidadPct || ""} onChange={(v) => updateProy("utilidadPct", v)} />
+              <Field label="Días Transcurridos" value={proy.diasTranscurridos || ""} onChange={(v) => updateProy("diasTranscurridos", v)} />
+              <Field label="Días Totales del Mes" value={proy.diasTotalesMes || ""} onChange={(v) => updateProy("diasTotalesMes", v)} />
+              <Field label="GMV Mes Pasado ($)" value={proy.gmvMesPasado || ""} onChange={(v) => updateProy("gmvMesPasado", v)} />
+            </div>
+          </div>
+        );
+      })()}
     </section>
   );
 }

@@ -12,6 +12,7 @@ import MapaCiudades from "./cierre/MapaCiudades";
 import Tendencias from "./cierre/Tendencias";
 import Insights from "./cierre/Insights";
 import Configuracion from "./cierre/Configuracion";
+import ProyeccionCierre from "./cierre/ProyeccionCierre";
 import ExportPDF from "./cierre/ExportPDF";
 import PiboxLogo from "./PiboxLogo";
 
@@ -52,6 +53,7 @@ const SECCIONES_ALL = [
   { id: "perdidos",     label: "Perdidos",      icon: "⚠️" },
   { id: "mapa",         label: "Mapa",          icon: "🗺️" },
   { id: "tendencias",   label: "Tendencias",    icon: "📈" },
+  { id: "proyeccion",   label: "Proyección",    icon: "🎯" },
   { id: "insights",     label: "Insights",      icon: "💡" },
   { id: "config",       label: "Config",        icon: "⚙️", adminOnly: true },
 ];
@@ -185,6 +187,7 @@ export default function CierreComercial({ currentUser }) {
               <ClientesPerdidos   data={data} />
               <MapaCiudades       data={data} />
               <Tendencias         data={data} />
+              <ProyeccionCierre   data={data} />
               <Insights           data={data} />
             </>
           ) : (
@@ -197,6 +200,7 @@ export default function CierreComercial({ currentUser }) {
               {seccion === "perdidos"     && <ClientesPerdidos   data={data} />}
               {seccion === "mapa"         && <MapaCiudades       data={data} />}
               {seccion === "tendencias"   && <Tendencias         data={data} />}
+              {seccion === "proyeccion"   && <ProyeccionCierre    data={data} />}
               {seccion === "insights"     && <Insights           data={data} />}
               {seccion === "config" && isAdmin && (
                 <Configuracion data={data} onSave={handleSave} />
