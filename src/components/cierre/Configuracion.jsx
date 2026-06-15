@@ -493,8 +493,11 @@ export default function Configuracion({ data, onSave }) {
                       const evolucion = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).map(([fecha, v]) => ({ fecha, ...v }));
                       let acum = 0;
                       evolucion.forEach(d => { acum += d.gmv; d.gmvAcumulado = acum; });
-                      updateProy("evolucionDiaria", evolucion);
-                      updateProy("archivoOps", file.name);
+                      // Actualizar todo en un solo setForm para evitar conflictos
+                      setForm(prev => ({
+                        ...prev,
+                        proyeccion: { ...(prev.proyeccion || {}), evolucionDiaria: evolucion, archivoOps: file.name },
+                      }));
                       setMsg({ txt: `✅ ${evolucion.length} días procesados desde "${file.name}"`, ok: true });
                       setTimeout(() => setMsg(null), 4000);
                     } catch (err) {
@@ -503,7 +506,19 @@ export default function Configuracion({ data, onSave }) {
                     e.target.value = "";
                   }} />
                 </label>
-                {proy.archivoOps && <span className="text-xs text-gray-500">Archivo: <b>{proy.archivoOps}</b> · {(proy.evolucionDiaria || []).length} días</span>}
+                {proy.archivoOps && (
+                  <>
+                    <span className="text-xs text-gray-500">Archivo: <b>{proy.archivoOps}</b> · {(proy.evolucionDiaria || []).length} días</span>
+                    <button onClick={() => {
+                      setForm(prev => ({
+                        ...prev,
+                        proyeccion: { ...(prev.proyeccion || {}), evolucionDiaria: null, archivoOps: null },
+                      }));
+                      setMsg({ txt: "🗑️ Datos de evolución eliminados. Guarda para confirmar.", ok: true });
+                      setTimeout(() => setMsg(null), 3000);
+                    }} className="text-xs text-red-500 hover:underline">🗑️ Eliminar</button>
+                  </>
+                )}
               </div>
               <p className="text-xs text-gray-400 mt-2">Sube el archivo de operaciones del mes (con columnas date, gmv, packages). Se calculará la evolución diaria automáticamente.</p>
             </div>
