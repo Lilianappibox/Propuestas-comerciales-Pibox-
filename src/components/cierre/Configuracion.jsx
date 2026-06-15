@@ -460,7 +460,7 @@ export default function Configuracion({ data, onSave }) {
               <Field label="GMV Actual en Sistema ($)" value={proy.gmvActual || ""} onChange={(v) => updateProy("gmvActual", v)} />
               <Field label="GMV TaDa Pendiente ($)" value={proy.gmvTadaPendiente || ""} onChange={(v) => updateProy("gmvTadaPendiente", v)} />
               <Field label="GMV Storage Pendiente ($)" value={proy.gmvStoragePendiente || ""} onChange={(v) => updateProy("gmvStoragePendiente", v)} />
-              <Field label="% Utilidad Proyectada" value={proy.utilidadPct || ""} onChange={(v) => updateProy("utilidadPct", v)} />
+              <Field label="Utilidad Proyectada ($)" value={proy.utilidadValor || ""} onChange={(v) => updateProy("utilidadValor", v)} />
               <Field label="Días Transcurridos" value={proy.diasTranscurridos || ""} onChange={(v) => updateProy("diasTranscurridos", v)} />
               <Field label="Días Totales del Mes" value={proy.diasTotalesMes || ""} onChange={(v) => updateProy("diasTotalesMes", v)} />
               <Field label="GMV Mes Pasado ($)" value={proy.gmvMesPasado || ""} onChange={(v) => updateProy("gmvMesPasado", v)} />

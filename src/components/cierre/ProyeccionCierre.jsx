@@ -95,6 +95,7 @@ export default function ProyeccionCierre({ data }) {
     gmvTadaPendiente: Number(rawProy.gmvTadaPendiente) || 0,
     gmvStoragePendiente: Number(rawProy.gmvStoragePendiente) || 0,
     utilidadPct: Number(rawProy.utilidadPct) || 0,
+    utilidadValor: Number(rawProy.utilidadValor) || 0,
     diasTranscurridos: Number(rawProy.diasTranscurridos) || 0,
     diasTotalesMes: Number(rawProy.diasTotalesMes) || 30,
     gmvMesPasado: Number(rawProy.gmvMesPasado) || 0,
@@ -111,7 +112,8 @@ export default function ProyeccionCierre({ data }) {
     const gmvTotal = proy.gmvActual + tadaPendiente + storagePendiente;
     const cumplPct = proy.metaMes > 0 ? (gmvTotal / proy.metaMes) * 100 : 0;
     const cumplActualPct = proy.metaMes > 0 ? (proy.gmvActual / proy.metaMes) * 100 : 0;
-    const utilidad = gmvTotal * (proy.utilidadPct / 100);
+    const utilidad = proy.utilidadValor > 0 ? proy.utilidadValor : gmvTotal * (proy.utilidadPct / 100);
+    const utilidadPctCalc = gmvTotal > 0 ? (utilidad / gmvTotal * 100) : 0;
     const gap = proy.metaMes - gmvTotal;
 
     const promDiario = proy.diasTranscurridos > 0 ? proy.gmvActual / proy.diasTranscurridos : 0;
@@ -128,7 +130,7 @@ export default function ProyeccionCierre({ data }) {
     else if (proyFinMes + tadaPendiente + storagePendiente >= proy.metaMes) semaforo = "amarillo";
 
     return {
-      gmvTotal, cumplPct, cumplActualPct, utilidad, gap,
+      gmvTotal, cumplPct, cumplActualPct, utilidad, utilidadPctCalc, gap,
       promDiario, proyFinMes, diasRestantes, ritmoNecesario,
       vsMesPasadoAbs, vsMesPasadoPct, semaforo,
     };
@@ -240,7 +242,7 @@ export default function ProyeccionCierre({ data }) {
         <KpiCard
           label="Utilidad Proyectada"
           value={M(calc.utilidad)}
-          sub={`${proy.utilidadPct}% sobre GMV`}
+          sub={`${calc.utilidadPctCalc.toFixed(1)}% sobre GMV`}
           accent="purple"
         />
         <KpiCard
