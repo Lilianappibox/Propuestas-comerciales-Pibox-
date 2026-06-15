@@ -14,7 +14,7 @@ import CierreComercial  from "./components/CierreComercial";
 import RiesgoComercial  from "./components/RiesgoComercial";
 import TarifarioInterno from "./components/TarifarioInterno";
 import InformeTada from "./components/InformeTada";
-import welcomeBg from "./assets/pibox-welcome.png";
+import homeBg from "./assets/pibox-home.png";
 import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
@@ -86,7 +86,7 @@ export default function App() {
     try { const s = localStorage.getItem(SK_SESSION); return s ? JSON.parse(s) : null; }
     catch { return null; }
   });
-  const [view, setView]             = useState(VIEW_PROPUESTAS);
+  const [view, setView]             = useState("welcome");
   const [subTab, setSubTab]         = useState(SUB_BUILDER);
   const [propuesta, setPropuesta]   = useState(loadPropuesta);
   const [tarifas, setTarifas]       = useState(loadTarifas);
@@ -127,13 +127,7 @@ export default function App() {
 
   const handleLogin = (user) => {
     setCurrentUser(user);
-    const p = getPermisos(user);
-    if (p.verPropuesta) setView(VIEW_PROPUESTAS);
-    else if (p.verCierreComercial) setView(VIEW_CIERRE);
-    else if (p.verRiesgoComercial) setView(VIEW_RIESGO);
-    else if (p.verInformeTada) setView(VIEW_TADA);
-    else if (p.gestionarUsuarios) setView(VIEW_USUARIOS);
-    else setView("welcome");
+    setView("welcome");
     setSubTab(SUB_BUILDER);
   };
   const handleLogout = () => { setCurrentUser(null); setView(VIEW_PROPUESTAS); };
@@ -593,7 +587,7 @@ export default function App() {
            PANTALLA DE BIENVENIDA
          ══════════════════════════════════════════════════════════════════════ */}
       {view === "welcome" && (
-        <div className="min-h-screen" style={{ background: `url(${welcomeBg}) center/cover no-repeat` }} />
+        <div className="min-h-screen flex items-center justify-center" style={{ background: `url(${homeBg}) center/cover no-repeat` }} />
       )}
       </div>
     </div>
