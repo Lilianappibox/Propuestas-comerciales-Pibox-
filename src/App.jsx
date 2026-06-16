@@ -235,11 +235,11 @@ export default function App() {
     setExportingWord(false);
   };
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   if (!currentUser) return <Login users={users} onLogin={handleLogin} />;
 
   const modulosActivos = MODULOS_CONFIG.filter((m) => modulos[m.id]).length;
-
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Vistas principales (orden solicitado) ──
   const mainViews = [
