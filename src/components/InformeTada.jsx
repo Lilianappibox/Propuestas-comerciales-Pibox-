@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import XLSX from "../utils/xlsxHelper";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -20,8 +20,58 @@ const SK_TRAF_IDX = "pibox_tada_traf_index";
 const SK_TRAF_MES = (k) => `pibox_tada_traf_${k}`;
 function loadTrafIndex() { try { return JSON.parse(localStorage.getItem(SK_TRAF_IDX) || "{}"); } catch { return {}; } }
 function saveTrafIndex(idx) { localStorage.setItem(SK_TRAF_IDX, JSON.stringify(idx)); }
-function loadTrafMes(key) { try { return JSON.parse(localStorage.getItem(SK_TRAF_MES(key)) || "null"); } catch { return null; } }
-function saveTrafMes(key, d) { localStorage.setItem(SK_TRAF_MES(key), JSON.stringify(d)); }
+function loadTrafMes(key) {
+  try {
+    const d = JSON.parse(localStorage.getItem(SK_TRAF_MES(key)) || "null");
+    if (d) delete d.rows; // rows now live in IndexedDB
+    return d;
+  } catch { return null; }
+}
+function saveTrafMes(key, d) {
+  const { rows, ...rest } = d;
+  localStorage.setItem(SK_TRAF_MES(key), JSON.stringify(rest));
+  if (rows) idbSaveRows(SK_TRAF_MES(key), rows);
+}
+async function saveTrafMesAsync(key, d) {
+  const { rows, ...rest } = d;
+  localStorage.setItem(SK_TRAF_MES(key), JSON.stringify(rest));
+  if (rows) await idbSaveRows(SK_TRAF_MES(key), rows);
+}
+
+/* ── IndexedDB helpers for raw rows ────────────────────────────────────── */
+const IDB_NAME = "pibox_tada_db";
+const IDB_STORE = "rows";
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbSaveRows(key, rows) {
+  try {
+    const db = await idbOpen();
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(rows, key);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  } catch (e) { console.warn("IDB save error:", e); }
+}
+async function idbLoadRows(key) {
+  try {
+    const db = await idbOpen();
+    const tx = db.transaction(IDB_STORE, "readonly");
+    const req = tx.objectStore(IDB_STORE).get(key);
+    return new Promise((res) => { req.onsuccess = () => res(req.result || null); req.onerror = () => res(null); });
+  } catch { return null; }
+}
+async function idbDeleteRows(key) {
+  try {
+    const db = await idbOpen();
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).delete(key);
+  } catch {}
+}
 
 /* ── Funciones para no-admin (leer del código) ─────────────────────────── */
 function loadTrafIndexReadonly() {
@@ -156,11 +206,17 @@ function processRows(rows) {
     if (isPunt) puntualidadSI++;
     if (piloto) pilotos.add(piloto);
 
-    // Hora de inicio de turno (decimal Excel → hora)
-    const inicioRaw = Number(r["INICIO DE TURNO"] || r["INICIO_TURNO"] || 0);
+    // Hora de inicio de turno (decimal Excel → hora, o HH:MM:SS string)
+    const inicioVal = r["INICIO DE TURNO"] || r["INICIO_TURNO"] || "";
+    const inicioRaw = Number(inicioVal);
+    let horaLabel = null;
     if (inicioRaw > 0 && inicioRaw <= 1) {
-      const horaNum = Math.floor(inicioRaw * 24);
-      const horaLabel = `${String(horaNum).padStart(2,"0")}:00`;
+      horaLabel = `${String(Math.floor(inicioRaw * 24)).padStart(2,"0")}:00`;
+    } else {
+      const hm = String(inicioVal).match(/^(\d{1,2}):/);
+      if (hm) horaLabel = `${hm[1].padStart(2,"0")}:00`;
+    }
+    if (horaLabel) {
       if (!horaMap[horaLabel]) horaMap[horaLabel] = { turnos: 0, si: 0, punt: 0 };
       horaMap[horaLabel].turnos++;
       if (isSI) horaMap[horaLabel].si++;
@@ -698,21 +754,29 @@ export default function InformeTada({ isAdmin }) {
   }, [trafMesSel, trafIndex]);
   const trafPrev = useMemo(() => trafPrevKey ? _loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
 
+  // Cargar rows desde IndexedDB cuando cambia el mes
+  const [trafRows, setTrafRows] = useState(null);
+  useEffect(() => {
+    setTrafRows(null);
+    if (!trafMesSel || !isAdmin) return;
+    idbLoadRows(SK_TRAF_MES(trafMesSel)).then(r => setTrafRows(r || null));
+  }, [trafMesSel, trafIndex]);
+
   // Filtrar por fechas si hay rows crudos y filtros activos
-  const trafHasRows = !!(trafActual?.rows?.length);
+  const trafHasRows = !!(trafRows?.length);
   const trafFechaActiva = trafHasRows && (trafFechaInicio || trafFechaFin);
   const data = useMemo(() => {
     if (!trafActual) return null;
     if (!trafFechaActiva) return trafActual.data || null;
-    const filtered = trafActual.rows.filter(r => {
-      if (!r._fecha) return true; // include rows without fecha
+    const filtered = trafRows.filter(r => {
+      if (!r._fecha) return true;
       if (trafFechaInicio && r._fecha < trafFechaInicio) return false;
       if (trafFechaFin && r._fecha > trafFechaFin) return false;
       return true;
     });
     if (filtered.length === 0) return null;
     return processRows(filtered);
-  }, [trafActual, trafFechaActiva, trafFechaInicio, trafFechaFin]);
+  }, [trafActual, trafRows, trafFechaActiva, trafFechaInicio, trafFechaFin]);
 
   const estadoData = useMemo(() => {
     if (!data) return [];
@@ -799,12 +863,13 @@ export default function InformeTada({ isAdmin }) {
       const wb  = XLSX.read(buf, { type: "array" });
       const { data: processed, rows: rawRows } = processExcel(wb);
       const key = `${MESES_LABEL[trafMesNum]} ${trafAnio}`;
-      saveTrafMes(key, { data: processed, rows: rawRows, archivo: file.name, fecha: new Date().toISOString() });
+      await saveTrafMesAsync(key, { data: processed, rows: rawRows, archivo: file.name, fecha: new Date().toISOString() });
       const idx = loadTrafIndex();
       idx[key] = { archivo: file.name, fecha: new Date().toISOString() };
       saveTrafIndex(idx);
       setTrafIndex(idx);
       setTrafMesSel(key);
+      if (rawRows) setTrafRows(rawRows);
     } catch (err) {
       setError(err.message || "Error al procesar el archivo.");
     } finally {
@@ -816,6 +881,7 @@ export default function InformeTada({ isAdmin }) {
   const handleTrafDeleteMes = (key) => {
     if (!confirm(`¿Eliminar ${key}?`)) return;
     localStorage.removeItem(SK_TRAF_MES(key));
+    idbDeleteRows(SK_TRAF_MES(key));
     const idx = loadTrafIndex();
     delete idx[key];
     saveTrafIndex(idx);
