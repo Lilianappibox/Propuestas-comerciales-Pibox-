@@ -40,12 +40,55 @@ function loadFactMesReadonly(key) {
 
 function pct(n, d) { return d ? ((n / d) * 100).toFixed(1) : "0.0"; }
 
+function parseFecha(raw) {
+  if (!raw) return null;
+  // Excel serial number (days since 1899-12-30)
+  if (typeof raw === "number" && raw > 30000 && raw < 60000) {
+    const d = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  }
+  // Already a Date object
+  if (raw instanceof Date && !isNaN(raw)) return raw.toISOString().slice(0, 10);
+  // String date formats: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmy) {
+    const [, a, b, y] = dmy;
+    // Assume DD/MM/YYYY
+    const dt = new Date(`${y}-${b.padStart(2,"0")}-${a.padStart(2,"0")}`);
+    if (!isNaN(dt)) return dt.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
 function processExcel(wb) {
   const sheet = wb.Sheets["DATA"];
   if (!sheet) throw new Error('No se encontró la hoja "DATA" en el archivo.');
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false, dateNF: "yyyy-mm-dd" });
   if (!rows.length) throw new Error("La hoja DATA está vacía.");
-  return processRows(rows);
+  // Also try with raw numbers for date parsing
+  const rowsRaw = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  // Extract FECHA from raw rows and attach to formatted rows
+  const FECHA_COLS = ["FECHA", "FECHA_TURNO", "FECHA TURNO", "FECHA DEL TURNO", "DATE", "Fecha"];
+  const fechaCol = FECHA_COLS.find(c => rowsRaw[0]?.[c] !== undefined && rowsRaw[0]?.[c] !== "");
+  const enrichedRows = rows.map((r, i) => {
+    const raw = rowsRaw[i];
+    let fecha = null;
+    if (fechaCol) {
+      fecha = parseFecha(raw?.[fechaCol]) || parseFecha(r[fechaCol]);
+    }
+    // Fallback: try all fecha-like columns
+    if (!fecha) {
+      for (const c of FECHA_COLS) {
+        fecha = parseFecha(raw?.[c]) || parseFecha(r[c]);
+        if (fecha) break;
+      }
+    }
+    return { ...r, _fecha: fecha };
+  });
+  const hasFechas = enrichedRows.some(r => r._fecha);
+  return { data: processRows(enrichedRows), rows: hasFechas ? enrichedRows : null };
 }
 
 function processRows(rows) {
@@ -607,6 +650,8 @@ export default function InformeTada({ isAdmin }) {
   const [trafMesNum, setTrafMesNum] = useState(new Date().getMonth() + 1);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
+  const [trafFechaInicio, setTrafFechaInicio] = useState("");
+  const [trafFechaFin, setTrafFechaFin] = useState("");
 
   // Facturación por mes
   const [factIndex, setFactIndex] = useState(_loadFactIndex);
@@ -626,7 +671,21 @@ export default function InformeTada({ isAdmin }) {
   }, [trafMesSel, trafIndex]);
   const trafPrev = useMemo(() => trafPrevKey ? _loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
 
-  const data = trafActual?.data || null;
+  // Filtrar por fechas si hay rows crudos y filtros activos
+  const trafHasRows = !!(trafActual?.rows?.length);
+  const trafFechaActiva = trafHasRows && (trafFechaInicio || trafFechaFin);
+  const data = useMemo(() => {
+    if (!trafActual) return null;
+    if (!trafFechaActiva) return trafActual.data || null;
+    const filtered = trafActual.rows.filter(r => {
+      if (!r._fecha) return true; // include rows without fecha
+      if (trafFechaInicio && r._fecha < trafFechaInicio) return false;
+      if (trafFechaFin && r._fecha > trafFechaFin) return false;
+      return true;
+    });
+    if (filtered.length === 0) return null;
+    return processRows(filtered);
+  }, [trafActual, trafFechaActiva, trafFechaInicio, trafFechaFin]);
 
   const estadoData = useMemo(() => {
     if (!data) return [];
@@ -711,9 +770,9 @@ export default function InformeTada({ isAdmin }) {
     try {
       const buf = await file.arrayBuffer();
       const wb  = XLSX.read(buf, { type: "array" });
-      const processed = processExcel(wb);
+      const { data: processed, rows: rawRows } = processExcel(wb);
       const key = `${MESES_LABEL[trafMesNum]} ${trafAnio}`;
-      saveTrafMes(key, { data: processed, archivo: file.name, fecha: new Date().toISOString() });
+      saveTrafMes(key, { data: processed, rows: rawRows, archivo: file.name, fecha: new Date().toISOString() });
       const idx = loadTrafIndex();
       idx[key] = { archivo: file.name, fecha: new Date().toISOString() };
       saveTrafIndex(idx);
@@ -1066,13 +1125,34 @@ export default function InformeTada({ isAdmin }) {
             {trafMeses.length > 0 && (
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
-                <select value={trafMesSel} onChange={e => setTrafMesSel(e.target.value)}
+                <select value={trafMesSel} onChange={e => { setTrafMesSel(e.target.value); setTrafFechaInicio(""); setTrafFechaFin(""); }}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
                   {trafMeses.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
             )}
-            {trafPrevKey && (
+            {/* Filtros de fecha */}
+            {trafHasRows && (
+              <>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">📆 Desde</label>
+                  <input type="date" value={trafFechaInicio} onChange={e => setTrafFechaInicio(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">📆 Hasta</label>
+                  <input type="date" value={trafFechaFin} onChange={e => setTrafFechaFin(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+                {(trafFechaInicio || trafFechaFin) && (
+                  <button onClick={() => { setTrafFechaInicio(""); setTrafFechaFin(""); }}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
+                    Limpiar filtro
+                  </button>
+                )}
+              </>
+            )}
+            {trafPrevKey && !trafFechaActiva && (
               <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>
                 📊 Comparando vs <b className="ml-1">{trafPrevKey}</b>
                 {data && trafPrev?.data && (() => {
@@ -1085,6 +1165,12 @@ export default function InformeTada({ isAdmin }) {
                 })()}
               </div>
             )}
+            {trafFechaActiva && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: "linear-gradient(135deg,#D97706 0%,#F59E0B 100%)" }}>
+                🔍 Filtro activo: {trafFechaInicio || "..."} → {trafFechaFin || "..."}
+                {data && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">{data.totalTurnos} turnos</span>}
+              </div>
+            )}
             {trafMeses.length === 0 && (
               <p className="text-sm text-gray-400">No hay meses cargados. Sube un reporte al final de la página.</p>
             )}
@@ -1094,7 +1180,7 @@ export default function InformeTada({ isAdmin }) {
         {/* ── No data placeholder ─────────────────────────────────────── */}
         {!data && trafMeses.length > 0 && (
           <div className="text-center py-10 text-gray-400">
-            <p>Selecciona un mes para ver el análisis.</p>
+            <p>{trafFechaActiva ? "No hay datos en el rango de fechas seleccionado." : "Selecciona un mes para ver el análisis."}</p>
           </div>
         )}
         {!data && trafMeses.length === 0 && (
