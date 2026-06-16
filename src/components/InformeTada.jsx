@@ -735,6 +735,7 @@ export default function InformeTada({ isAdmin }) {
   const [error, setError]         = useState(null);
   const [trafFechaInicio, setTrafFechaInicio] = useState("");
   const [trafFechaFin, setTrafFechaFin] = useState("");
+  const [trafPuntoSel, setTrafPuntoSel] = useState("");
 
   // Facturación por mes
   const [factIndex, setFactIndex] = useState(_loadFactIndex);
@@ -762,21 +763,31 @@ export default function InformeTada({ isAdmin }) {
     idbLoadRows(SK_TRAF_MES(trafMesSel)).then(r => setTrafRows(r || null));
   }, [trafMesSel, trafIndex]);
 
-  // Filtrar por fechas si hay rows crudos y filtros activos
+  // Filtrar por fechas/punto si hay rows crudos y filtros activos
   const trafHasRows = !!(trafRows?.length);
-  const trafFechaActiva = trafHasRows && (trafFechaInicio || trafFechaFin);
+  const trafFiltroActivo = trafHasRows && (trafFechaInicio || trafFechaFin || trafPuntoSel);
   const data = useMemo(() => {
     if (!trafActual) return null;
-    if (!trafFechaActiva) return trafActual.data || null;
+    if (!trafFiltroActivo) return trafActual.data || null;
     const filtered = trafRows.filter(r => {
-      if (!r._fecha) return true;
-      if (trafFechaInicio && r._fecha < trafFechaInicio) return false;
-      if (trafFechaFin && r._fecha > trafFechaFin) return false;
+      if (trafFechaInicio && r._fecha && r._fecha < trafFechaInicio) return false;
+      if (trafFechaFin && r._fecha && r._fecha > trafFechaFin) return false;
+      if (trafPuntoSel) {
+        const punto = String(r["PUNTO"] || "").trim();
+        if (punto !== trafPuntoSel) return false;
+      }
       return true;
     });
     if (filtered.length === 0) return null;
     return processRows(filtered);
-  }, [trafActual, trafRows, trafFechaActiva, trafFechaInicio, trafFechaFin]);
+  }, [trafActual, trafRows, trafFiltroActivo, trafFechaInicio, trafFechaFin, trafPuntoSel]);
+
+  // Lista de puntos disponibles (del data completo, no filtrado)
+  const trafPuntosDisponibles = useMemo(() => {
+    const d = trafActual?.data;
+    if (!d?.puntoMap) return [];
+    return Object.keys(d.puntoMap).sort();
+  }, [trafActual]);
 
   const estadoData = useMemo(() => {
     if (!data) return [];
@@ -1218,13 +1229,13 @@ export default function InformeTada({ isAdmin }) {
             {trafMeses.length > 0 && (
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
-                <select value={trafMesSel} onChange={e => { setTrafMesSel(e.target.value); setTrafFechaInicio(""); setTrafFechaFin(""); }}
+                <select value={trafMesSel} onChange={e => { setTrafMesSel(e.target.value); setTrafFechaInicio(""); setTrafFechaFin(""); setTrafPuntoSel(""); }}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
                   {trafMeses.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
             )}
-            {/* Filtros de fecha */}
+            {/* Filtros de fecha y punto */}
             {trafHasRows && (
               <>
                 <div>
@@ -1237,15 +1248,23 @@ export default function InformeTada({ isAdmin }) {
                   <input type="date" value={trafFechaFin} onChange={e => setTrafFechaFin(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
                 </div>
-                {(trafFechaInicio || trafFechaFin) && (
-                  <button onClick={() => { setTrafFechaInicio(""); setTrafFechaFin(""); }}
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">📍 Punto</label>
+                  <select value={trafPuntoSel} onChange={e => setTrafPuntoSel(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 max-w-[200px]">
+                    <option value="">Todos</option>
+                    {trafPuntosDisponibles.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                {(trafFechaInicio || trafFechaFin || trafPuntoSel) && (
+                  <button onClick={() => { setTrafFechaInicio(""); setTrafFechaFin(""); setTrafPuntoSel(""); }}
                     className="px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
-                    Limpiar filtro
+                    Limpiar filtros
                   </button>
                 )}
               </>
             )}
-            {trafPrevKey && !trafFechaActiva && (
+            {trafPrevKey && !trafFiltroActivo && (
               <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>
                 📊 Comparando vs <b className="ml-1">{trafPrevKey}</b>
                 {data && trafPrev?.data && (() => {
@@ -1258,10 +1277,12 @@ export default function InformeTada({ isAdmin }) {
                 })()}
               </div>
             )}
-            {trafFechaActiva && (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: "linear-gradient(135deg,#D97706 0%,#F59E0B 100%)" }}>
-                🔍 Filtro activo: {trafFechaInicio || "..."} → {trafFechaFin || "..."}
-                {data && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">{data.totalTurnos} turnos</span>}
+            {trafFiltroActivo && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold flex-wrap" style={{ background: "linear-gradient(135deg,#D97706 0%,#F59E0B 100%)" }}>
+                🔍 Filtro activo:
+                {(trafFechaInicio || trafFechaFin) && <span>{trafFechaInicio || "..."} → {trafFechaFin || "..."}</span>}
+                {trafPuntoSel && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">📍 {trafPuntoSel}</span>}
+                {data && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">{data.totalTurnos} turnos</span>}
               </div>
             )}
             {trafMeses.length === 0 && (
@@ -1273,7 +1294,7 @@ export default function InformeTada({ isAdmin }) {
         {/* ── No data placeholder ─────────────────────────────────────── */}
         {!data && trafMeses.length > 0 && (
           <div className="text-center py-10 text-gray-400">
-            <p>{trafFechaActiva ? "No hay datos en el rango de fechas seleccionado." : "Selecciona un mes para ver el análisis."}</p>
+            <p>{trafFiltroActivo ? "No hay datos con los filtros seleccionados." : "Selecciona un mes para ver el análisis."}</p>
           </div>
         )}
         {!data && trafMeses.length === 0 && (
