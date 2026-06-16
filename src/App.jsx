@@ -587,9 +587,7 @@ export default function App() {
            PANTALLA DE BIENVENIDA
          ══════════════════════════════════════════════════════════════════════ */}
       {view === "welcome" && (
-        <div className="min-h-screen flex items-center justify-center" style={{ background: `linear-gradient(135deg, #5B17A8 0%, #7C22D4 50%, #9333EA 100%)` }}>
-          <img src={homeBg} alt="Pibox" className="max-w-3xl w-full object-contain" />
-        </div>
+        <div className="min-h-screen" style={{ background: `url(${homeBg}) center/cover no-repeat` }} />
       )}
       </div>
     </div>
