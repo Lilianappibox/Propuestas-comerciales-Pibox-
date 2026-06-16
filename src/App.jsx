@@ -83,8 +83,19 @@ function loadModulos() {
 export default function App() {
   const [users, setUsers]             = useState(loadUsers);
   const [currentUser, setCurrentUser] = useState(() => {
-    try { const s = localStorage.getItem(SK_SESSION); return s ? JSON.parse(s) : null; }
-    catch { return null; }
+    try {
+      const s = localStorage.getItem(SK_SESSION);
+      if (!s) return null;
+      const saved = JSON.parse(s);
+      // Actualizar permisos desde DEFAULT_USERS del código
+      const fromCode = loadUsers().find(u => u.email.toLowerCase() === saved.email.toLowerCase());
+      if (fromCode) {
+        const merged = { ...saved, permisosCustom: { ...(saved.permisosCustom || {}), ...(fromCode.permisosCustom || {}) } };
+        localStorage.setItem(SK_SESSION, JSON.stringify(merged));
+        return merged;
+      }
+      return saved;
+    } catch { return null; }
   });
   const [view, setView]             = useState("welcome");
   const [subTab, setSubTab]         = useState(SUB_BUILDER);
