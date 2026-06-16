@@ -48,12 +48,14 @@ async function fetchTadaFromCloud() {
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || !data.trafIndex) return null;
-    // Restaurar en localStorage
-    saveTrafIndex(data.trafIndex);
-    saveFactIndex(data.factIndex || {});
+    // Restaurar en localStorage con try/catch individual
+    try { saveTrafIndex(data.trafIndex); } catch {}
+    try { saveFactIndex(data.factIndex || {}); } catch {}
     for (const [k, v] of Object.entries(data)) {
-      if (k.startsWith("traf_")) saveTrafMes(k.replace("traf_", ""), v);
-      if (k.startsWith("fact_")) saveFactMes(k.replace("fact_", ""), v);
+      try {
+        if (k.startsWith("traf_")) saveTrafMes(k.replace("traf_", ""), v);
+        if (k.startsWith("fact_")) saveFactMes(k.replace("fact_", ""), v);
+      } catch { /* localStorage lleno, ignorar */ }
     }
     return data;
   } catch { return null; }
@@ -619,16 +621,14 @@ export default function InformeTada({ isAdmin }) {
   useEffect(() => {
     if (!isAdmin && !synced) {
       fetchTadaFromCloud().then(data => {
-        if (data) {
-          setTrafIndex(loadTrafIndex());
-          setFactIndex(loadFactIndex());
-          const tm = Object.keys(data.trafIndex || {}).sort().reverse();
-          if (tm[0]) setTrafMesSel(tm[0]);
-          const fm = Object.keys(data.factIndex || {}).sort().reverse();
-          if (fm[0]) setFactMesSel(fm[0]);
-        }
+        try {
+          if (data) {
+            setTrafIndex(loadTrafIndex());
+            setFactIndex(loadFactIndex());
+          }
+        } catch {}
         setSynced(true);
-      });
+      }).catch(() => setSynced(true));
     }
   }, [isAdmin, synced]);
 
