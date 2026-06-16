@@ -71,7 +71,7 @@ export function getPermisos(user) {
 }
 
 export const USERS_STORAGE_KEY = "pibox_users";
-const CLOUD_URL = "https://jsonblob.com/api/jsonBlob/019ebfc6-f373-7a91-8f2e-2dcf3825a429";
+const CLOUD_URL = "https://jsonblob.com/api/jsonBlob/019ece00-2e0c-7418-95ca-af282305d9a4";
 
 // ── Sincronización con la nube ────────────────────────────────────────────
 export async function fetchCloudUsers() {
