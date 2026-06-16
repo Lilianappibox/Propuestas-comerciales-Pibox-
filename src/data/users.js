@@ -128,7 +128,7 @@ export const DEFAULT_USERS = [
     cargo: "Key Account Manager",
     celular: "3232278047",
     telefono: "",
-    permisosCustom: { verTarifario: true, editarTarifas: true, verCierreComercial: true },
+    permisosCustom: { verTarifario: true, editarTarifas: true, verCierreComercial: true, verRiesgoComercial: true },
   },
   {
     id: "4",
