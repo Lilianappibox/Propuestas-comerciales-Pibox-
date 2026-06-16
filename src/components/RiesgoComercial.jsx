@@ -1,5 +1,5 @@
-import { useState, lazy, Suspense } from "react";
-import { loadIndex, SK_MES } from "./riesgo/utils";
+import { useState, useEffect, lazy, Suspense } from "react";
+import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData } from "./riesgo/utils";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
@@ -18,6 +18,25 @@ const TABS = [
 export default function RiesgoComercial({ currentUser }) {
   const [tab, setTab]     = useState("metricas");
   const [, forceRender]   = useState(0);
+  const isAdmin = currentUser?.rol === "Administrativo";
+
+  // No-admin: cargar datos del código a localStorage para que los componentes los lean
+  useEffect(() => {
+    if (isAdmin) return;
+    const codeIndex = loadIndexReadonly();
+    if (Object.keys(codeIndex).length === 0) return;
+    // Solo cargar si localStorage está vacío
+    const localIndex = loadIndex();
+    if (Object.keys(localIndex).length > 0) return;
+    try {
+      saveIndex(codeIndex);
+      for (const key of Object.keys(codeIndex)) {
+        const mesData = loadMesDataReadonly(key);
+        if (mesData) saveMesData(key, mesData);
+      }
+    } catch {}
+    forceRender(n => n + 1);
+  }, [isAdmin]);
 
   const handleMesesChange = () => forceRender(n=>n+1);
 

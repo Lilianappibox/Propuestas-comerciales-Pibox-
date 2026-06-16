@@ -25,7 +25,23 @@ export const UMBRALES_DEFAULT = {
 export const mesKey = (anio, mes) => `${anio}-${String(mes).padStart(2,"0")}`;
 export const labelMes = (anio, mes) => `${MESES_ES[mes]} ${anio}`;
 
-// ── Índice de meses ───────────────────────────────────────────────────────────
+// ── Datos iniciales para no-admin ──────────────────────────────────────────
+let _riesgoInicial = null;
+function getRiesgoInicial() {
+  if (!_riesgoInicial) {
+    try { _riesgoInicial = require("../../data/riesgoInicial.json"); } catch { _riesgoInicial = { index: {}, meses: {} }; }
+  }
+  return _riesgoInicial;
+}
+
+export function loadIndexReadonly() {
+  return getRiesgoInicial().index || {};
+}
+export function loadMesDataReadonly(key) {
+  return getRiesgoInicial().meses?.[key] || null;
+}
+
+// ── Índice de meses (Admin — localStorage) ────────────────────────────────────
 export function loadIndex() {
   try { return JSON.parse(localStorage.getItem(SK_INDEX) || "{}"); }
   catch { return {}; }
