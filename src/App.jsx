@@ -137,6 +137,7 @@ export default function App() {
   const toast = (msg) => { setSavedMsg(msg); setTimeout(() => setSavedMsg(""), 3000); };
 
   const handleLogin = (user) => {
+    localStorage.setItem(SK_SESSION, JSON.stringify(user));
     setCurrentUser(user);
     setView("welcome");
     setSubTab(SUB_BUILDER);
