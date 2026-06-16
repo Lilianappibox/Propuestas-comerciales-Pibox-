@@ -24,22 +24,22 @@ function saveTrafMes(key, d) { localStorage.setItem(SK_TRAF_MES(key), JSON.strin
 /* ── Cloud sync para compartir datos entre navegadores ─────────────────── */
 const TADA_CLOUD_URL = "https://jsonblob.com/api/jsonBlob/019ecdaf-7cca-776e-ad10-a93bea9a317e";
 
-async function publishTadaToCloud() {
-  try {
-    const trafIdx = loadTrafIndex();
-    const factIdx = loadFactIndex();
-    const allData = { trafIndex: trafIdx, factIndex: factIdx };
-    // Guardar datos de cada mes
-    for (const key of Object.keys(trafIdx)) {
-      const d = loadTrafMes(key);
-      if (d) allData[`traf_${key}`] = d;
-    }
-    for (const key of Object.keys(factIdx)) {
-      const d = loadFactMes(key);
-      if (d) allData[`fact_${key}`] = d;
-    }
-    await fetch(TADA_CLOUD_URL, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(allData) });
-  } catch { /* silencioso */ }
+function publishTadaToCloud() {
+  // Fire and forget — nunca bloquea ni crashea
+  setTimeout(() => {
+    try {
+      const trafIdx = loadTrafIndex();
+      const factIdx = loadFactIndex();
+      const allData = { trafIndex: trafIdx, factIndex: factIdx };
+      for (const key of Object.keys(trafIdx)) {
+        try { const d = loadTrafMes(key); if (d) allData[`traf_${key}`] = d; } catch {}
+      }
+      for (const key of Object.keys(factIdx)) {
+        try { const d = loadFactMes(key); if (d) allData[`fact_${key}`] = d; } catch {}
+      }
+      fetch(TADA_CLOUD_URL, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(allData) }).catch(() => {});
+    } catch { /* silencioso */ }
+  }, 500);
 }
 
 async function fetchTadaFromCloud() {
@@ -746,18 +746,18 @@ export default function InformeTada({ isAdmin }) {
       const wb  = XLSX.read(buf, { type: "array" });
       const processed = processExcel(wb);
       const key = `${MESES_LABEL[trafMesNum]} ${trafAnio}`;
-      saveTrafMes(key, { data: processed, archivo: file.name, fecha: new Date().toISOString() });
+      try { saveTrafMes(key, { data: processed, archivo: file.name, fecha: new Date().toISOString() }); } catch {}
       const idx = loadTrafIndex();
       idx[key] = { archivo: file.name, fecha: new Date().toISOString() };
-      saveTrafIndex(idx);
+      try { saveTrafIndex(idx); } catch {}
       setTrafIndex(idx);
       setTrafMesSel(key);
-      publishTadaToCloud(); // Publicar para operativos
+      publishTadaToCloud();
     } catch (err) {
       setError(err.message || "Error al procesar el archivo.");
     } finally {
       setLoading(false);
-      e.target.value = "";
+      try { e.target.value = ""; } catch {}
     }
   };
 
