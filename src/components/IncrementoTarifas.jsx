@@ -279,11 +279,72 @@ export default function IncrementoTarifas({ isAdmin }) {
   };
 
   const handleCopyProposal = () => {
-    const data = JSON.parse(localStorage.getItem("pibox_incrementos_aprobados") || "[]");
-    navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
-      setToast("Datos copiados al portapapeles");
-      setTimeout(() => setToast(""), 3000);
+    // Generar Excel con la plantilla de tarifas Pibox
+    // Row 0: categorías, Row 1: headers, Row 2+: datos
+    const headers = [
+      "ID de Compañía","ID de Tarifa","ID de Tipo de Servicio","Ciudad o Zona","Tipo de Geocerca",
+      "Servicio Express","% Comisión","Válido Hasta","Moneda (ISO)",
+      "Tarifa Estándar","Tarifa Base","Tarifa Mínima","Tarifa por Minuto","Tarifa por Km",
+      "Tarifa Máxima","Recargo Nocturno","Recargo Domingo","Recargo Bono",
+      "Recargo Destino Diferente","Bono Gasolina","Recargo Lluvia","Tarifa Compensación",
+      "Km Negociados","Usar Base Km Negociados","Tarifa Base Km Negociados",
+      "Tarifa Paquetes","Tarifa Paquete","Tarifa Paquete Devuelto",
+      "Recargo Nocturno Paquete","Recargo Domingo Paquete","Recargo Bono Paquete",
+      "Recargo Destino Diferente Paquete","Mínimo de Paquetes","Cobrar No Entregados","Sumar Tarifas Estándar",
+      "Tarifa Por Hora","Tarifa Base Por Hora","Tarifa Por Hora (valor)","Tarifa Espera Por Hora",
+      "Mínimo de Horas","Recargo Nocturno Por Hora","Recargo Domingo Por Hora","Recargo Bono Por Hora",
+      "Tarifa Recargo Servicio","Tarifa Asistente","Recargo Destino Diferente (Servicio)",
+      "Tarifa Parada Extra","Valor Parada Extra","Mínimo de Paradas Extra",
+      "Recargo Nocturno Parada Extra","Recargo Domingo Parada Extra","Recargo Bono Parada Extra",
+      "Recargo Destino Diferente Parada Extra","Tarifa Asistente Parada Extra",
+      "Tarifa Parqueo","Valor Máximo Declarado","Valor Máximo Cobrado","Tarifa por Pasajero"
+    ];
+    const categorias = [
+      "Generalidades","","","","","","","","",
+      "Tarifas por distancia","","","","","","","","","","","","","","","",
+      "Tarifas Paquetes","","","","","","","","","",
+      "Tarifas por Horas","","","","","","","",
+      "Complementos carga","","","",
+      "Tarifa por rendimiento","","","","","","","","","",""
+    ];
+
+    const rows = [categorias, headers];
+    const validHasta = new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10);
+
+    selectedClients.forEach(c => {
+      const nw = computeNew(c);
+      const row = new Array(58).fill("");
+      row[0] = ""; // ID Compañía (se llena en la plataforma)
+      row[1] = ""; // ID Tarifa
+      row[2] = c.tipoServicio || "";
+      row[3] = c.ciudad || "";
+      row[4] = "City";
+      row[5] = 1;
+      row[6] = c.comission || "";
+      row[7] = validHasta;
+      row[8] = c.moneda || "COP";
+      row[9] = 1; // Tarifa Estándar habilitada
+      row[10] = selectedFields.has("baseFare") ? nw.baseFare : c.baseFare; // Tarifa Base
+      row[11] = selectedFields.has("minimumFare") ? nw.minimumFare : c.minimumFare; // Tarifa Mínima
+      row[13] = selectedFields.has("distanceFare") ? nw.distanceFare : c.distanceFare; // Tarifa por Km
+      row[22] = 3; // Km Negociados default
+      row[25] = c.packageFare > 0 ? 1 : 0; // Tarifa Paquetes habilitada
+      row[26] = selectedFields.has("packageFare") ? nw.packageFare : c.packageFare; // Tarifa Paquete
+      row[35] = c.hourFare > 0 ? 1 : 0; // Tarifa Por Hora habilitada
+      row[36] = selectedFields.has("hourBaseFare") ? nw.hourBaseFare : c.hourBaseFare; // Tarifa Base Por Hora
+      row[37] = selectedFields.has("hourFare") ? nw.hourFare : c.hourFare; // Tarifa Por Hora (valor)
+      row[46] = c.extraStopFare > 0 ? 1 : 0; // Tarifa Parada Extra habilitada
+      row[47] = selectedFields.has("extraStopFare") ? nw.extraStopFare : c.extraStopFare; // Valor Parada Extra
+      rows.push(row);
     });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Tarifas");
+    const nombre = selectedClients.length === 1 ? selectedClients[0].nombre.replace(/\s+/g, "_") : `${selectedClients.length}_clientes`;
+    XLSX.writeFile(wb, `plantilla_tarifas_pibox_${nombre}.xlsx`);
+    setToast(`✅ Plantilla descargada con ${selectedClients.length} cliente(s)`);
+    setTimeout(() => setToast(""), 4000);
   };
 
   // ---------- render helpers ----------
