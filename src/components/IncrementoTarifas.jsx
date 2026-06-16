@@ -59,42 +59,70 @@ function parseExcelClientes(file) {
         try {
           const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
-          // Auto-detect header row
-          const headerRow = raw.find((r) => {
-            const vals = Object.values(r).map((v) => String(v).toLowerCase());
-            return vals.some((v) => v.includes("name_company") || v.includes("nombre") || v.includes("company"));
-          });
-          if (!headerRow) {
-            // Try using row 1 as headers (like the original file)
-            const rows = raw.slice(1).filter((r) => {
-              const first = Object.values(r)[0];
-              return first && String(first).trim() && String(first) !== "name_company";
+          const raw = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 });
+          if (raw.length < 2) { resolve([]); return; }
+          // Buscar fila de headers por nombre de columna
+          const hRow = raw.findIndex(r => r.some(v => {
+            const s = String(v).toLowerCase().trim();
+            return s === "name_company" || s === "nombre" || s === "company";
+          }));
+          const hi = hRow >= 0 ? hRow : 0;
+          const headers = raw[hi].map(h => String(h).toLowerCase().trim());
+          // Mapeo flexible por nombre de columna
+          const col = (names) => {
+            for (const n of names) { const i = headers.indexOf(n); if (i >= 0) return i; }
+            return -1;
+          };
+          const iNombre = col(["name_company", "nombre", "company"]);
+          const iMoneda = col(["moneda", "currency"]);
+          const iTipo = col(["type_service", "tipo_servicio", "tiposervicio"]);
+          const iCiudad = col(["ciudad", "city"]);
+          const iBase = col(["base_fare", "basefare", "tarifa_base"]);
+          const iMin = col(["minimum_fare", "minimumfare", "tarifa_minima"]);
+          const iDist = col(["distance_fare", "distancefare", "tarifa_distancia"]);
+          const iExtra = col(["extra_stop_fare", "extrastopfare", "parada_adicional"]);
+          const iHour = col(["hour_fare", "hourfare", "tarifa_hora"]);
+          const iHourBase = col(["hour_base_fare", "hourbasefare", "tarifa_hora_base"]);
+          const iPkg = col(["package_fare", "packagefare", "tarifa_paquete"]);
+          const iComm = col(["comission", "comision", "commission"]);
+          const iUtil = col(["utilidad_corporativa", "utilidadcorp"]);
+          const iCredit = col(["credit", "credito"]);
+          const iTieneCred = col(["tiene crédito?", "tiene_credito", "tienecredito"]);
+          const iMFlex = col(["mercadoflex", "mercado_flex"]);
+          const iKam = col(["kam", "account_manager"]);
+          const iIdCompany = col(["id_company", "idcompany", "company_id"]);
+          const iTarifaId = col(["tarifa_id", "tarifaid", "id_tarifa"]);
+
+          if (iNombre < 0) { resolve([]); return; }
+
+          const clients = [];
+          for (let i = hi + 1; i < raw.length; i++) {
+            const r = raw[i];
+            const nombre = String(r[iNombre] || "").trim();
+            if (!nombre || nombre === "name_company") continue;
+            clients.push({
+              nombre,
+              moneda: iMoneda >= 0 ? String(r[iMoneda] || "").trim() : "COP",
+              tipoServicio: iTipo >= 0 ? String(r[iTipo] || "").trim() : "",
+              ciudad: iCiudad >= 0 ? String(r[iCiudad] || "").trim() : "",
+              baseFare: iBase >= 0 ? Number(r[iBase]) || 0 : 0,
+              minimumFare: iMin >= 0 ? Number(r[iMin]) || 0 : 0,
+              distanceFare: iDist >= 0 ? Number(r[iDist]) || 0 : 0,
+              extraStopFare: iExtra >= 0 ? Number(r[iExtra]) || 0 : 0,
+              hourFare: iHour >= 0 ? Number(r[iHour]) || 0 : 0,
+              hourBaseFare: iHourBase >= 0 ? Number(r[iHourBase]) || 0 : 0,
+              packageFare: iPkg >= 0 ? Number(r[iPkg]) || 0 : 0,
+              comission: iComm >= 0 ? Number(r[iComm]) || 0 : 0,
+              utilidadCorp: iUtil >= 0 ? Number(r[iUtil]) || 0 : 0,
+              credit: iCredit >= 0 ? Number(r[iCredit]) || 0 : 0,
+              tieneCredito: iTieneCred >= 0 ? String(r[iTieneCred] || "").trim() : "",
+              mercadoFlex: iMFlex >= 0 ? String(r[iMFlex] || "").trim() : "",
+              kam: iKam >= 0 ? String(r[iKam] || "").trim() : "",
+              idCompany: iIdCompany >= 0 ? String(r[iIdCompany] || "").trim() : "",
+              tarifaId: iTarifaId >= 0 ? String(r[iTarifaId] || "").trim() : "",
             });
-            const keys = Object.keys(raw[0] || {});
-            const clients = rows.map((r) => ({
-              nombre: String(r[keys[0]] || "").trim(),
-              moneda: String(r[keys[1]] || "").trim(),
-              tipoServicio: String(r[keys[2]] || "").trim(),
-              ciudad: String(r[keys[3]] || "").trim(),
-              baseFare: Number(r[keys[4]]) || 0,
-              minimumFare: Number(r[keys[5]]) || 0,
-              distanceFare: Number(r[keys[6]]) || 0,
-              extraStopFare: Number(r[keys[7]]) || 0,
-              hourFare: Number(r[keys[8]]) || 0,
-              hourBaseFare: Number(r[keys[9]]) || 0,
-              packageFare: Number(r[keys[10]]) || 0,
-              comission: Number(r[keys[11]]) || 0,
-              utilidadCorp: Number(r[keys[12]]) || 0,
-              credit: Number(r[keys[13]]) || 0,
-              tieneCredito: String(r[keys[14]] || "").trim(),
-              mercadoFlex: String(r[keys[15]] || "").trim(),
-              kam: String(r[keys[16]] || "").trim(),
-            })).filter((c) => c.nombre);
-            resolve(clients);
-            return;
           }
-          resolve([]);
+          resolve(clients);
         } catch (err) { reject(err); }
       };
       reader.onerror = reject;
@@ -314,8 +342,8 @@ export default function IncrementoTarifas({ isAdmin }) {
     selectedClients.forEach(c => {
       const nw = computeNew(c);
       const row = new Array(58).fill("");
-      row[0] = c.nombre || "";
-      row[1] = ""; // ID Tarifa
+      row[0] = c.idCompany || c.nombre || "";
+      row[1] = c.tarifaId || "";
       row[2] = c.tipoServicio || "";
       row[3] = c.ciudad || "";
       row[4] = "City";
@@ -397,17 +425,46 @@ export default function IncrementoTarifas({ isAdmin }) {
                       <th className="text-left p-2">Fecha</th>
                       <th className="text-right p-2">Registros</th>
                       <th className="text-left p-2">Origen</th>
+                      <th className="text-left p-2">Estado</th>
+                      <th className="p-2"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[...historial].reverse().map((h, i) => (
-                      <tr key={i} className={`border-t border-purple-100 ${i === 0 ? "bg-green-50 font-semibold" : ""}`}>
-                        <td className="p-2 text-purple-500">{i === 0 ? "Actual" : historial.length - i}</td>
-                        <td className="p-2">{h.fecha}</td>
-                        <td className="p-2 text-right">{h.registros.toLocaleString()}</td>
-                        <td className="p-2 text-gray-600">{h.origen}</td>
-                      </tr>
-                    ))}
+                    {[...historial].reverse().map((h, i) => {
+                      const isActual = i === 0;
+                      const isInactiva = h.inactiva;
+                      return (
+                        <tr key={i} className={`border-t border-purple-100 ${isActual ? "bg-green-50 font-semibold" : isInactiva ? "bg-gray-100 opacity-50" : ""}`}>
+                          <td className="p-2 text-purple-500">{isActual ? "Actual" : historial.length - i}</td>
+                          <td className="p-2">{h.fecha}</td>
+                          <td className="p-2 text-right">{h.registros.toLocaleString()}</td>
+                          <td className="p-2 text-gray-600">{h.origen}</td>
+                          <td className="p-2">
+                            {isActual ? <span className="text-green-600 font-bold">Activa</span>
+                              : isInactiva ? <span className="text-gray-400">Inactiva</span>
+                              : <span className="text-blue-500">Disponible</span>}
+                          </td>
+                          <td className="p-2">
+                            {!isActual && !isInactiva && (
+                              <button onClick={() => {
+                                const newHist = [...historial];
+                                newHist[historial.length - 1 - i].inactiva = true;
+                                setHistorial(newHist);
+                                saveHistorial(newHist);
+                              }} className="text-xs text-red-500 hover:underline">Inactivar</button>
+                            )}
+                            {!isActual && isInactiva && (
+                              <button onClick={() => {
+                                const newHist = [...historial];
+                                delete newHist[historial.length - 1 - i].inactiva;
+                                setHistorial(newHist);
+                                saveHistorial(newHist);
+                              }} className="text-xs text-green-500 hover:underline">Reactivar</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
