@@ -314,7 +314,7 @@ export default function IncrementoTarifas({ isAdmin }) {
     selectedClients.forEach(c => {
       const nw = computeNew(c);
       const row = new Array(58).fill("");
-      row[0] = ""; // ID Compañía (se llena en la plataforma)
+      row[0] = c.nombre || "";
       row[1] = ""; // ID Tarifa
       row[2] = c.tipoServicio || "";
       row[3] = c.ciudad || "";
