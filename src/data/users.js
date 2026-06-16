@@ -44,7 +44,7 @@ export const PERMISOS_BASE = {
 // Permisos que el Admin PUEDE activar/desactivar para KAM y Operativo
 export const PERMISOS_CONFIGURABLES = [
   { id: "verPropuesta",        label: "Ver Propuestas Comerciales", desc: "Puede acceder al módulo de propuestas" },
-  { id: "verTarifario",        label: "Ver tarifario",              desc: "Puede ver las tablas de tarifas" },
+  { id: "verTarifario",        label: "Ver Tarifario Pibox",        desc: "Puede acceder al Tarifario Pibox" },
   { id: "editarTarifas",       label: "Editar tarifas",             desc: "Puede modificar precios y ciudades" },
   { id: "editarPlantilla",     label: "Editar plantilla",           desc: "Puede editar los textos estándar y ver historial" },
   { id: "verCierreComercial",  label: "Ver Cierre Comercial",       desc: "Puede acceder al tablero de cierre mensual" },

@@ -609,7 +609,7 @@ export default function TarifarioInterno({ currentUser }) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Tarifario Interno</h2>
+          <h2 className="text-xl font-bold text-gray-800">Tarifario Pibox</h2>
           <p className="text-sm text-gray-500 mt-1">
             Tarifario interno de negociaci&oacute;n. Utilidad corporativa base: 3%
           </p>

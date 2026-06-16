@@ -245,7 +245,7 @@ export default function App() {
   // ── Vistas principales (orden solicitado) ──
   const mainViews = [
     { id: VIEW_PROPUESTAS, label: "Propuestas Comerciales", icon: "📋", visible: !!permisos.verPropuesta },
-    { id: VIEW_TARIFARIO,  label: "Tarifario Interno",      icon: "💰", visible: !!permisos.verTarifario },
+    { id: VIEW_TARIFARIO,  label: "Tarifario Pibox",         icon: "💰", visible: !!permisos.verTarifario },
     { id: VIEW_CIERRE,     label: "Cierre Comercial",       icon: "📊", visible: !!permisos.verCierreComercial },
     { id: VIEW_RIESGO,     label: "Riesgo Comercial",       icon: "🚨", visible: !!permisos.verRiesgoComercial },
     { id: VIEW_TADA,       label: "Informe TaDa",           icon: "🍺", visible: !!permisos.verInformeTada },
