@@ -13,6 +13,8 @@ const SEM_ROJO     = "#DC2626";
 const SEM_AMARILLO = "#D97706";
 const PIE_COLORS   = [SEM_VERDE, SEM_ROJO];
 const BAR_COLORS   = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7", "#6366F1", "#EC4899", "#8B5CF6", "#F59E0B", "#10B981"];
+import tadaInicial from "../data/tadaInicial.json";
+
 /* ── Tráfico storage (por mes) ──────────────────────────────────────────── */
 const SK_TRAF_IDX = "pibox_tada_traf_index";
 const SK_TRAF_MES = (k) => `pibox_tada_traf_${k}`;
@@ -20,6 +22,20 @@ function loadTrafIndex() { try { return JSON.parse(localStorage.getItem(SK_TRAF_
 function saveTrafIndex(idx) { localStorage.setItem(SK_TRAF_IDX, JSON.stringify(idx)); }
 function loadTrafMes(key) { try { return JSON.parse(localStorage.getItem(SK_TRAF_MES(key)) || "null"); } catch { return null; } }
 function saveTrafMes(key, d) { localStorage.setItem(SK_TRAF_MES(key), JSON.stringify(d)); }
+
+/* ── Funciones para no-admin (leer del código) ─────────────────────────── */
+function loadTrafIndexReadonly() {
+  return tadaInicial.trafIndex || {};
+}
+function loadTrafMesReadonly(key) {
+  return tadaInicial.meses?.[`traf_${key}`] || null;
+}
+function loadFactIndexReadonly() {
+  return tadaInicial.factIndex || {};
+}
+function loadFactMesReadonly(key) {
+  return tadaInicial.meses?.[`fact_${key}`] || null;
+}
 
 
 function pct(n, d) { return d ? ((n / d) * 100).toFixed(1) : "0.0"; }
@@ -577,8 +593,14 @@ export default function InformeTada({ isAdmin }) {
   const [tab, setTab] = useState("trafico");
   const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
+  // Funciones de lectura según rol
+  const _loadTrafIndex = isAdmin ? loadTrafIndex : loadTrafIndexReadonly;
+  const _loadTrafMes = isAdmin ? loadTrafMes : loadTrafMesReadonly;
+  const _loadFactIndex = isAdmin ? loadFactIndex : loadFactIndexReadonly;
+  const _loadFactMes = isAdmin ? loadFactMes : loadFactMesReadonly;
+
   // Tráfico por mes
-  const [trafIndex, setTrafIndex] = useState(loadTrafIndex);
+  const [trafIndex, setTrafIndex] = useState(_loadTrafIndex);
   const trafMeses = Object.keys(trafIndex).sort().reverse();
   const [trafMesSel, setTrafMesSel] = useState(trafMeses[0] || "");
   const [trafAnio, setTrafAnio] = useState(2026);
@@ -587,7 +609,7 @@ export default function InformeTada({ isAdmin }) {
   const [error, setError]         = useState(null);
 
   // Facturación por mes
-  const [factIndex, setFactIndex] = useState(loadFactIndex);
+  const [factIndex, setFactIndex] = useState(_loadFactIndex);
   const factMeses = Object.keys(factIndex).sort().reverse();
   const [factMesSel, setFactMesSel] = useState(factMeses[0] || "");
   const [factAnio, setFactAnio] = useState(2026);
@@ -596,13 +618,13 @@ export default function InformeTada({ isAdmin }) {
   const [factError, setFactError] = useState(null);
 
   /* ── derived data (tráfico) ────────────────────────────────────────────── */
-  const trafActual = useMemo(() => trafMesSel ? loadTrafMes(trafMesSel) : null, [trafMesSel, trafIndex]);
+  const trafActual = useMemo(() => trafMesSel ? _loadTrafMes(trafMesSel) : null, [trafMesSel, trafIndex]);
   const trafPrevKey = useMemo(() => {
     const sorted = Object.keys(trafIndex).sort();
     const idx = sorted.indexOf(trafMesSel);
     return idx > 0 ? sorted[idx - 1] : null;
   }, [trafMesSel, trafIndex]);
-  const trafPrev = useMemo(() => trafPrevKey ? loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
+  const trafPrev = useMemo(() => trafPrevKey ? _loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
 
   const data = trafActual?.data || null;
 
@@ -755,13 +777,13 @@ export default function InformeTada({ isAdmin }) {
   };
 
   // Datos del mes seleccionado y anterior
-  const factActual = useMemo(() => factMesSel ? loadFactMes(factMesSel) : null, [factMesSel, factIndex]);
+  const factActual = useMemo(() => factMesSel ? _loadFactMes(factMesSel) : null, [factMesSel, factIndex]);
   const factMesPrevKey = useMemo(() => {
     const sorted = Object.keys(factIndex).sort();
     const idx = sorted.indexOf(factMesSel);
     return idx > 0 ? sorted[idx - 1] : null;
   }, [factMesSel, factIndex]);
-  const factPrev = useMemo(() => factMesPrevKey ? loadFactMes(factMesPrevKey) : null, [factMesPrevKey, factIndex]);
+  const factPrev = useMemo(() => factMesPrevKey ? _loadFactMes(factMesPrevKey) : null, [factMesPrevKey, factIndex]);
 
   const varFact = (actual, prev) => prev > 0 ? ((actual - prev) / prev) : null;
 
@@ -799,6 +821,24 @@ export default function InformeTada({ isAdmin }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Informe TaDa (Bavaria)</p>
               <p className="text-xs text-gray-500">Tráfico de pilotos y facturación</p>
             </div>
+            {isAdmin && (
+              <button onClick={() => {
+                const allData = { trafIndex: loadTrafIndex(), factIndex: loadFactIndex(), meses: {} };
+                for (const key of Object.keys(allData.trafIndex)) {
+                  const d = loadTrafMes(key);
+                  if (d) allData.meses[`traf_${key}`] = d;
+                }
+                for (const key of Object.keys(allData.factIndex)) {
+                  const d = loadFactMes(key);
+                  if (d) allData.meses[`fact_${key}`] = d;
+                }
+                const blob = new Blob([JSON.stringify(allData)], { type: "application/json" });
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+                a.download = "tada-export.json"; a.click();
+              }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition">
+                📤 Exportar para el equipo
+              </button>
+            )}
           </div>
           <div className="flex gap-1 overflow-x-auto">
             {TABS_TADA.map(t => (
@@ -911,7 +951,7 @@ export default function InformeTada({ isAdmin }) {
                 {factMeses.length > 1 && chartCard("📈 Evolución GMV mensual", (
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={[...factMeses].reverse().map(m => {
-                      const d = loadFactMes(m);
+                      const d = _loadFactMes(m);
                       return { mes: m, gmv: d?.totalGmv || 0, paquetes: d?.totalPaq || 0 };
                     })}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
@@ -1015,7 +1055,7 @@ export default function InformeTada({ isAdmin }) {
       )}
 
       {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
-      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={loadTrafMes} loadFactMes={loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} />}
+      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} />}
 
       {/* ── TAB: TRÁFICO ─────────────────────────────────────────────── */}
       {tab === "trafico" && (
