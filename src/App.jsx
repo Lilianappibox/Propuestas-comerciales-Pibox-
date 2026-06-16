@@ -141,7 +141,11 @@ export default function App() {
     setView("welcome");
     setSubTab(SUB_BUILDER);
   };
-  const handleLogout = () => { setCurrentUser(null); setView(VIEW_PROPUESTAS); };
+  const handleLogout = () => {
+    localStorage.removeItem(SK_SESSION);
+    setCurrentUser(null);
+    setView("welcome");
+  };
 
   const handleSaveUsers = (updated) => {
     setUsers(updated); saveUsers(updated);
