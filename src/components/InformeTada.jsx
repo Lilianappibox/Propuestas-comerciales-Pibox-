@@ -87,7 +87,35 @@ function processExcel(wb) {
     return { ...r, _fecha: fecha };
   });
   const hasFechas = enrichedRows.some(r => r._fecha);
-  return { data: processRows(enrichedRows), rows: hasFechas ? enrichedRows : null };
+  // Slim rows: only keep columns needed by processRows to save localStorage space
+  const slimRows = hasFechas ? enrichedRows.map(r => {
+    const s = { _fecha: r._fecha };
+    // Map all known column variants
+    const coloc = r["COLOCACION"] || r["COLOCACIÓN"] || "";
+    const punt = r["PUNTUALIDAD"] || "";
+    const estado = r["ESTADO"] || "";
+    const ciudad = r["CIUDAD"] || "";
+    const punto = r["PUNTO"] || "";
+    const semana = r["SEMANA"] || "";
+    const dia = r["DÍA"] || r["DIA"] || "";
+    const mes = r["MES"] || "";
+    const piloto = r["ID PILOTO"] || "";
+    const pilotoNombre = r["NOMBRE DE PILOTO"] || r["NOMBRE PILOTO"] || "";
+    const inicio = r["INICIO DE TURNO"] || r["INICIO_TURNO"] || "";
+    if (coloc) s["COLOCACION"] = coloc;
+    if (punt) s["PUNTUALIDAD"] = punt;
+    if (estado) s["ESTADO"] = estado;
+    if (ciudad) s["CIUDAD"] = ciudad;
+    if (punto) s["PUNTO"] = punto;
+    if (semana) s["SEMANA"] = semana;
+    if (dia) s["DIA"] = dia;
+    if (mes) s["MES"] = mes;
+    if (piloto) s["ID PILOTO"] = piloto;
+    if (pilotoNombre) s["NOMBRE PILOTO"] = pilotoNombre;
+    if (inicio) s["INICIO_TURNO"] = inicio;
+    return s;
+  }) : null;
+  return { data: processRows(enrichedRows), rows: slimRows };
 }
 
 function processRows(rows) {
