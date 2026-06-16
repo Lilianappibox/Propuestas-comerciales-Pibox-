@@ -15,7 +15,6 @@ const TABS = [
   { id: "onboarding", label: "🚀 Onboarding 2.0" },
   { id: "calculadora", label: "🧮 Calculadora" },
   { id: "incremento", label: "📈 Incremento Tarifas" },
-  { id: "tada", label: "🍺 Informe TaDa" },
 ];
 
 const fmt = (v) => {
