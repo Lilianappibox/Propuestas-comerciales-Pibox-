@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from "react";
+import { loadIndex, SK_MES } from "./riesgo/utils";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
@@ -32,6 +33,23 @@ export default function RiesgoComercial({ currentUser }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Riesgo Comercial 360°</p>
               <p className="text-xs text-gray-500">Monitoreo automático de clientes · Detección de fuga y deterioro</p>
             </div>
+            {currentUser?.rol === "Administrativo" && (
+              <button onClick={() => {
+                const idx = loadIndex();
+                const allData = { index: idx, meses: {} };
+                for (const key of Object.keys(idx)) {
+                  try {
+                    const d = localStorage.getItem(SK_MES(key));
+                    if (d) allData.meses[key] = JSON.parse(d);
+                  } catch {}
+                }
+                const blob = new Blob([JSON.stringify(allData)], { type: "application/json" });
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+                a.download = "riesgo-export.json"; a.click();
+              }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition shrink-0">
+                📤 Exportar para el equipo
+              </button>
+            )}
           </div>
 
           {/* Sub-tabs */}
