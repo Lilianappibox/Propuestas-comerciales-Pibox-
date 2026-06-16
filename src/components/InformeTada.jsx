@@ -65,23 +65,22 @@ function parseFecha(raw) {
 function processExcel(wb) {
   const sheet = wb.Sheets["DATA"];
   if (!sheet) throw new Error('No se encontró la hoja "DATA" en el archivo.');
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false, dateNF: "yyyy-mm-dd" });
-  if (!rows.length) throw new Error("La hoja DATA está vacía.");
-  // Also try with raw numbers for date parsing
   const rowsRaw = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  // Extract FECHA from raw rows and attach to formatted rows
+  if (!rowsRaw.length) throw new Error("La hoja DATA está vacía.");
+  // Also read with date formatting for FECHA parsing
+  const rowsFmt = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false, dateNF: "yyyy-mm-dd" });
+  // Extract FECHA and attach to raw rows (preserving numeric values for INICIO DE TURNO etc.)
   const FECHA_COLS = ["FECHA", "FECHA_TURNO", "FECHA TURNO", "FECHA DEL TURNO", "DATE", "Fecha"];
   const fechaCol = FECHA_COLS.find(c => rowsRaw[0]?.[c] !== undefined && rowsRaw[0]?.[c] !== "");
-  const enrichedRows = rows.map((r, i) => {
-    const raw = rowsRaw[i];
+  const enrichedRows = rowsRaw.map((r, i) => {
+    const fmt = rowsFmt[i];
     let fecha = null;
     if (fechaCol) {
-      fecha = parseFecha(raw?.[fechaCol]) || parseFecha(r[fechaCol]);
+      fecha = parseFecha(r[fechaCol]) || parseFecha(fmt?.[fechaCol]);
     }
-    // Fallback: try all fecha-like columns
     if (!fecha) {
       for (const c of FECHA_COLS) {
-        fecha = parseFecha(raw?.[c]) || parseFecha(r[c]);
+        fecha = parseFecha(r[c]) || parseFecha(fmt?.[c]);
         if (fecha) break;
       }
     }
