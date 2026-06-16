@@ -116,7 +116,7 @@ export const DEFAULT_USERS = [
     cargo: "Key Account Manager",
     celular: "3154051883",
     telefono: "",
-    permisosCustom: { verTarifario: true, editarTarifas: true, verCierreComercial: true },
+    permisosCustom: { verTarifario: true, editarTarifas: true, verCierreComercial: true, verRiesgoComercial: true },
   },
   {
     id: "3",
@@ -152,7 +152,7 @@ export const DEFAULT_USERS = [
     cargo: "",
     celular: "",
     telefono: "",
-    permisosCustom: { verInformeTada: true },
+    permisosCustom: { verInformeTada: true, verRiesgoComercial: true },
   },
   {
     id: "6",
@@ -164,7 +164,7 @@ export const DEFAULT_USERS = [
     cargo: "",
     celular: "",
     telefono: "",
-    permisosCustom: { verInformeTada: true },
+    permisosCustom: { verInformeTada: true, verRiesgoComercial: true },
   },
   {
     id: "7",
@@ -176,7 +176,7 @@ export const DEFAULT_USERS = [
     cargo: "",
     celular: "",
     telefono: "",
-    permisosCustom: { verInformeTada: true },
+    permisosCustom: { verInformeTada: true, verRiesgoComercial: true },
   },
 ];
 
