@@ -37,6 +37,7 @@ const VIEW_USUARIOS   = "usuarios";
 const VIEW_CIERRE     = "cierre";
 const VIEW_RIESGO     = "riesgo";
 const VIEW_TADA       = "tada";
+const VIEW_TARIFARIO  = "tarifario-interno";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]:     "bg-fuchsia-100 text-fuchsia-700",
@@ -244,6 +245,7 @@ export default function App() {
   // ── Vistas principales (orden solicitado) ──
   const mainViews = [
     { id: VIEW_PROPUESTAS, label: "Propuestas Comerciales", icon: "📋", visible: !!permisos.verPropuesta },
+    { id: VIEW_TARIFARIO,  label: "Tarifario Interno",      icon: "💰", visible: !!permisos.verTarifario },
     { id: VIEW_CIERRE,     label: "Cierre Comercial",       icon: "📊", visible: !!permisos.verCierreComercial },
     { id: VIEW_RIESGO,     label: "Riesgo Comercial",       icon: "🚨", visible: !!permisos.verRiesgoComercial },
     { id: VIEW_TADA,       label: "Informe TaDa",           icon: "🍺", visible: !!permisos.verInformeTada },
@@ -257,7 +259,6 @@ export default function App() {
     { id: SUB_SAVED,     label: "📁 Mis Propuestas", icon: "📁" },
     { id: SUB_TARIFARIO, label: "💰 Tarifario",      icon: "💰", visible: permisos.verTarifario },
     { id: SUB_PLANTILLA, label: "📝 Plantilla",      icon: "📝", visible: permisos.editarPlantilla },
-    { id: SUB_TARIF_INT, label: "📊 Tarifario Interno", icon: "📊" },
     { id: SUB_SYNC,      label: "🔄 Sincronización", icon: "🔄", visible: permisos.gestionarUsuarios },
   ].filter((t) => t.visible !== false);
 
@@ -553,11 +554,6 @@ export default function App() {
             )}
 
             {/* ── SINCRONIZACIÓN ── */}
-            {/* ── TARIFARIO INTERNO ── */}
-            {subTab === SUB_TARIF_INT && (
-              <TarifarioInterno currentUser={currentUser} />
-            )}
-
             {subTab === SUB_SYNC && permisos.gestionarUsuarios && (
               <SyncData />
             )}
@@ -595,6 +591,13 @@ export default function App() {
         <main className="max-w-7xl mx-auto px-4 py-6">
           <InformeTada isAdmin={currentUser?.rol === "Administrativo"} />
         </main>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: TARIFARIO INTERNO
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_TARIFARIO && (
+        <TarifarioInterno currentUser={currentUser} />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
