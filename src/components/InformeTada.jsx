@@ -232,12 +232,14 @@ function processRows(rows) {
     }
 
     // Tracking por piloto — ID como key principal
+    const esCancelacion = estado.toUpperCase().includes("CANCEL") || estado.toUpperCase().includes("PILOTO CANCELA");
     const pilotoKey = piloto || pilotoNombre;
     if (pilotoKey) {
-      if (!pilotoMap[pilotoKey]) pilotoMap[pilotoKey] = { nombre: pilotoNombre, id: piloto, turnos: 0, cumple: 0, noCumple: 0, ciudad: ciudad };
+      if (!pilotoMap[pilotoKey]) pilotoMap[pilotoKey] = { nombre: pilotoNombre, id: piloto, turnos: 0, cumple: 0, noCumple: 0, cancela: 0, ciudad: ciudad };
       pilotoMap[pilotoKey].turnos++;
       if (isPunt) pilotoMap[pilotoKey].cumple++;
       if (isNoPunt) pilotoMap[pilotoKey].noCumple++;
+      if (esCancelacion) pilotoMap[pilotoKey].cancela++;
       // Tomar el nombre más reciente que no esté vacío
       if (pilotoNombre && pilotoNombre.length > (pilotoMap[pilotoKey].nombre || "").length) pilotoMap[pilotoKey].nombre = pilotoNombre;
       if (ciudad) pilotoMap[pilotoKey].ciudad = ciudad;
@@ -293,6 +295,13 @@ function processRows(rows) {
     .sort((a, b) => b.noCumple - a.noCumple)
     .slice(0, 10);
 
+  // Top pilotos que más cancelan
+  const pilotosCanceladores = Object.values(pilotoMap)
+    .filter(p => p.cancela > 0)
+    .map(p => ({ ...p, pctCancela: (p.cancela / p.turnos * 100) }))
+    .sort((a, b) => b.cancela - a.cancela)
+    .slice(0, 10);
+
   return {
     totalTurnos: rows.length,
     colocacionesSI,
@@ -307,6 +316,7 @@ function processRows(rows) {
     diaMap,
     mesMap,
     pilotosImpuntuales,
+    pilotosCanceladores,
     porHora: Object.entries(horaMap).map(([h, v]) => ({ hora: h, ...v, pctColoc: v.turnos > 0 ? (v.si/v.turnos*100) : 0 })).sort((a,b) => a.hora.localeCompare(b.hora)),
     porHoraDia: Object.values(horaDiaMap),
   };
@@ -1612,6 +1622,45 @@ export default function InformeTada({ isAdmin }) {
                             <div className="h-full bg-red-500 rounded-full" style={{ width: `${p.pctNoCumple}%` }} />
                           </div>
                           <span className="text-xs font-bold text-red-600 whitespace-nowrap">{p.pctNoCumple.toFixed(0)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Top 10 pilotos que más cancelan */}
+        {data?.pilotosCanceladores?.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <h3 className="text-sm font-bold text-gray-700 mb-3">🚫 Top 10 Pilotos que más cancelan — {trafMesSel}</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-orange-600 text-white">
+                    {["#", "Piloto", "ID", "Ciudad", "Turnos", "Cancelaciones", "No Cancela", "% Cancelación"].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.pilotosCanceladores.map((p, i) => (
+                    <tr key={p.id || p.nombre} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-orange-50/30"} hover:bg-orange-50`}>
+                      <td className="px-3 py-2 text-orange-400 font-bold">{i + 1}</td>
+                      <td className="px-3 py-2 font-semibold text-gray-800">{p.nombre || "Sin nombre"}</td>
+                      <td className="px-3 py-2 text-gray-400 text-xs font-mono truncate max-w-[120px]">{p.id}</td>
+                      <td className="px-3 py-2 text-gray-500">{p.ciudad}</td>
+                      <td className="px-3 py-2 text-center">{p.turnos}</td>
+                      <td className="px-3 py-2 text-center font-bold text-orange-600">{p.cancela}</td>
+                      <td className="px-3 py-2 text-center text-green-600">{p.turnos - p.cancela}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-orange-500 rounded-full" style={{ width: `${p.pctCancela}%` }} />
+                          </div>
+                          <span className="text-xs font-bold text-orange-600 whitespace-nowrap">{p.pctCancela.toFixed(0)}%</span>
                         </div>
                       </td>
                     </tr>
