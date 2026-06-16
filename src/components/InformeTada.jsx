@@ -21,45 +21,6 @@ function saveTrafIndex(idx) { localStorage.setItem(SK_TRAF_IDX, JSON.stringify(i
 function loadTrafMes(key) { try { return JSON.parse(localStorage.getItem(SK_TRAF_MES(key)) || "null"); } catch { return null; } }
 function saveTrafMes(key, d) { localStorage.setItem(SK_TRAF_MES(key), JSON.stringify(d)); }
 
-/* ── Cloud sync para compartir datos entre navegadores ─────────────────── */
-const TADA_CLOUD_URL = "https://jsonblob.com/api/jsonBlob/019ecdaf-7cca-776e-ad10-a93bea9a317e";
-
-function publishTadaToCloud() {
-  // Fire and forget — nunca bloquea ni crashea
-  setTimeout(() => {
-    try {
-      const trafIdx = loadTrafIndex();
-      const factIdx = loadFactIndex();
-      const allData = { trafIndex: trafIdx, factIndex: factIdx };
-      for (const key of Object.keys(trafIdx)) {
-        try { const d = loadTrafMes(key); if (d) allData[`traf_${key}`] = d; } catch {}
-      }
-      for (const key of Object.keys(factIdx)) {
-        try { const d = loadFactMes(key); if (d) allData[`fact_${key}`] = d; } catch {}
-      }
-      fetch(TADA_CLOUD_URL, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(allData) }).catch(() => {});
-    } catch { /* silencioso */ }
-  }, 500);
-}
-
-async function fetchTadaFromCloud() {
-  try {
-    const res = await fetch(TADA_CLOUD_URL);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || !data.trafIndex) return null;
-    // Restaurar en localStorage con try/catch individual
-    try { saveTrafIndex(data.trafIndex); } catch {}
-    try { saveFactIndex(data.factIndex || {}); } catch {}
-    for (const [k, v] of Object.entries(data)) {
-      try {
-        if (k.startsWith("traf_")) saveTrafMes(k.replace("traf_", ""), v);
-        if (k.startsWith("fact_")) saveFactMes(k.replace("fact_", ""), v);
-      } catch { /* localStorage lleno, ignorar */ }
-    }
-    return data;
-  } catch { return null; }
-}
 
 function pct(n, d) { return d ? ((n / d) * 100).toFixed(1) : "0.0"; }
 
@@ -614,23 +575,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
 export default function InformeTada({ isAdmin }) {
   const [tab, setTab] = useState("trafico");
-  const [synced, setSynced] = useState(false);
   const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-
-  // Sincronizar desde la nube para operativos (al cargar)
-  useEffect(() => {
-    if (!isAdmin && !synced) {
-      fetchTadaFromCloud().then(data => {
-        try {
-          if (data) {
-            setTrafIndex(loadTrafIndex());
-            setFactIndex(loadFactIndex());
-          }
-        } catch {}
-        setSynced(true);
-      }).catch(() => setSynced(true));
-    }
-  }, [isAdmin, synced]);
 
   // Tráfico por mes
   const [trafIndex, setTrafIndex] = useState(loadTrafIndex);
@@ -746,18 +691,17 @@ export default function InformeTada({ isAdmin }) {
       const wb  = XLSX.read(buf, { type: "array" });
       const processed = processExcel(wb);
       const key = `${MESES_LABEL[trafMesNum]} ${trafAnio}`;
-      try { saveTrafMes(key, { data: processed, archivo: file.name, fecha: new Date().toISOString() }); } catch {}
+      saveTrafMes(key, { data: processed, archivo: file.name, fecha: new Date().toISOString() });
       const idx = loadTrafIndex();
       idx[key] = { archivo: file.name, fecha: new Date().toISOString() };
-      try { saveTrafIndex(idx); } catch {}
+      saveTrafIndex(idx);
       setTrafIndex(idx);
       setTrafMesSel(key);
-      publishTadaToCloud();
     } catch (err) {
       setError(err.message || "Error al procesar el archivo.");
     } finally {
       setLoading(false);
-      try { e.target.value = ""; } catch {}
+      e.target.value = "";
     }
   };
 
@@ -770,7 +714,6 @@ export default function InformeTada({ isAdmin }) {
     setTrafIndex(idx);
     const remaining = Object.keys(idx).sort().reverse();
     setTrafMesSel(remaining[0] || "");
-    publishTadaToCloud();
   };
 
   /* ── Facturación upload ────────────────────────────────────────────── */
@@ -792,7 +735,6 @@ export default function InformeTada({ isAdmin }) {
       saveFactIndex(idx);
       setFactIndex(idx);
       setFactMesSel(key);
-      publishTadaToCloud(); // Publicar para operativos
     } catch (err) {
       setFactError(err.message);
     } finally {
@@ -808,7 +750,6 @@ export default function InformeTada({ isAdmin }) {
     delete idx[key];
     saveFactIndex(idx);
     setFactIndex(idx);
-    publishTadaToCloud();
     const remaining = Object.keys(idx).sort().reverse();
     setFactMesSel(remaining[0] || "");
   };
