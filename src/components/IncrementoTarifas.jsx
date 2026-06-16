@@ -310,6 +310,7 @@ export default function IncrementoTarifas({ isAdmin }) {
     // Generar Excel con la plantilla de tarifas Pibox
     // Row 0: categorías, Row 1: headers, Row 2+: datos
     const headers = [
+      "Nombre de la compañía",
       "ID de Compañía","ID de Tarifa","ID de Tipo de Servicio","Ciudad o Zona","Tipo de Geocerca",
       "Servicio Express","% Comisión","Válido Hasta","Moneda (ISO)",
       "Tarifa Estándar","Tarifa Base","Tarifa Mínima","Tarifa por Minuto","Tarifa por Km",
@@ -328,6 +329,7 @@ export default function IncrementoTarifas({ isAdmin }) {
       "Tarifa Parqueo","Valor Máximo Declarado","Valor Máximo Cobrado","Tarifa por Pasajero"
     ];
     const categorias = [
+      "",
       "Generalidades","","","","","","","","",
       "Tarifas por distancia","","","","","","","","","","","","","","","",
       "Tarifas Paquetes","","","","","","","","","",
@@ -341,28 +343,29 @@ export default function IncrementoTarifas({ isAdmin }) {
 
     selectedClients.forEach(c => {
       const nw = computeNew(c);
-      const row = new Array(58).fill("");
-      row[0] = c.idCompany || c.nombre || "";
-      row[1] = c.tarifaId || "";
-      row[2] = c.tipoServicio || "";
-      row[3] = c.ciudad || "";
-      row[4] = "City";
-      row[5] = 1;
-      row[6] = c.comission || "";
-      row[7] = validHasta;
-      row[8] = c.moneda || "COP";
-      row[9] = 1; // Tarifa Estándar habilitada
-      row[10] = selectedFields.has("baseFare") ? nw.baseFare : c.baseFare; // Tarifa Base
-      row[11] = selectedFields.has("minimumFare") ? nw.minimumFare : c.minimumFare; // Tarifa Mínima
-      row[13] = selectedFields.has("distanceFare") ? nw.distanceFare : c.distanceFare; // Tarifa por Km
-      row[22] = 3; // Km Negociados default
-      row[25] = c.packageFare > 0 ? 1 : 0; // Tarifa Paquetes habilitada
-      row[26] = selectedFields.has("packageFare") ? nw.packageFare : c.packageFare; // Tarifa Paquete
-      row[35] = c.hourFare > 0 ? 1 : 0; // Tarifa Por Hora habilitada
-      row[36] = selectedFields.has("hourBaseFare") ? nw.hourBaseFare : c.hourBaseFare; // Tarifa Base Por Hora
-      row[37] = selectedFields.has("hourFare") ? nw.hourFare : c.hourFare; // Tarifa Por Hora (valor)
-      row[46] = c.extraStopFare > 0 ? 1 : 0; // Tarifa Parada Extra habilitada
-      row[47] = selectedFields.has("extraStopFare") ? nw.extraStopFare : c.extraStopFare; // Valor Parada Extra
+      const row = new Array(59).fill("");
+      row[0] = c.nombre || "";                                                    // Nombre de la compañía
+      row[1] = c.idCompany || "";                                                 // ID de Compañía
+      row[2] = c.tarifaId || "";                                                  // ID de Tarifa
+      row[3] = c.tipoServicio || "";                                              // ID de Tipo de Servicio
+      row[4] = c.ciudad || "";                                                    // Ciudad o Zona
+      row[5] = "City";                                                            // Tipo de Geocerca
+      row[6] = 1;                                                                 // Servicio Express
+      row[7] = c.comission || "";                                                 // % Comisión
+      row[8] = validHasta;                                                        // Válido Hasta
+      row[9] = c.moneda || "COP";                                                // Moneda
+      row[10] = 1;                                                                // Tarifa Estándar habilitada
+      row[11] = selectedFields.has("baseFare") ? nw.baseFare : c.baseFare;        // Tarifa Base
+      row[12] = selectedFields.has("minimumFare") ? nw.minimumFare : c.minimumFare; // Tarifa Mínima
+      row[14] = selectedFields.has("distanceFare") ? nw.distanceFare : c.distanceFare; // Tarifa por Km
+      row[23] = 3;                                                                // Km Negociados
+      row[26] = c.packageFare > 0 ? 1 : 0;                                       // Tarifa Paquetes habilitada
+      row[27] = selectedFields.has("packageFare") ? nw.packageFare : c.packageFare; // Tarifa Paquete
+      row[36] = c.hourFare > 0 ? 1 : 0;                                          // Tarifa Por Hora habilitada
+      row[37] = selectedFields.has("hourBaseFare") ? nw.hourBaseFare : c.hourBaseFare; // Tarifa Base Por Hora
+      row[38] = selectedFields.has("hourFare") ? nw.hourFare : c.hourFare;        // Tarifa Por Hora (valor)
+      row[47] = c.extraStopFare > 0 ? 1 : 0;                                     // Tarifa Parada Extra habilitada
+      row[48] = selectedFields.has("extraStopFare") ? nw.extraStopFare : c.extraStopFare; // Valor Parada Extra
       rows.push(row);
     });
 
