@@ -481,65 +481,158 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
   const traf = loadTrafMes(mesSel)?.data;
   const fact = loadFactMes(mesSel);
-  const trafP = (() => { const s = Object.keys(trafIndex).sort(); const i = s.indexOf(mesSel); return i > 0 ? loadTrafMes(s[i-1])?.data : null; })();
-  const factP = (() => { const s = Object.keys(factIndex).sort(); const i = s.indexOf(mesSel); return i > 0 ? loadFactMes(s[i-1]) : null; })();
+  // Mes calendario anterior para comparación
+  const insPrevMesKey = (() => {
+    const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const parts = mesSel.split(" ");
+    if (parts.length !== 2) return null;
+    const mi = ML.indexOf(parts[0]), yr = parseInt(parts[1]);
+    if (mi <= 0 || isNaN(yr)) return null;
+    return `${ML[mi === 1 ? 12 : mi - 1]} ${mi === 1 ? yr - 1 : yr}`;
+  })();
+  const trafP = insPrevMesKey ? loadTrafMes(insPrevMesKey)?.data : null;
+  const factP = insPrevMesKey ? loadFactMes(insPrevMesKey) : null;
 
   const alerts = [], wins = [], detallePuntos = [], detalleCiudades = [];
 
   if (traf) {
-    const pctColoc = traf.total > 0 ? (traf.colocacionesSI / traf.total * 100) : 0;
-    const pctPunt = traf.total > 0 ? (traf.puntualidadSI / traf.total * 100) : 0;
-    if (pctColoc < umb.colocAlerta) alerts.push({ cat: "Tráfico", icon: "🔴", text: `Colocación baja: ${pctColoc.toFixed(1)}% — objetivo mínimo ${umb.colocAlerta}%` });
-    else if (pctColoc >= umb.colocExcelente) wins.push({ cat: "Tráfico", icon: "🟢", text: `Colocación excelente: ${pctColoc.toFixed(1)}%` });
-    if (pctPunt < umb.puntAlerta) alerts.push({ cat: "Tráfico", icon: "🔴", text: `Puntualidad crítica: ${pctPunt.toFixed(1)}% — mínimo ${umb.puntAlerta}%` });
-    else if (pctPunt >= umb.puntExcelente) wins.push({ cat: "Tráfico", icon: "🟢", text: `Puntualidad destacada: ${pctPunt.toFixed(1)}%` });
-    if (trafP) {
-      const v = trafP.total > 0 ? ((traf.total - trafP.total) / trafP.total * 100) : 0;
-      if (v < umb.varTurnosAlerta) alerts.push({ cat: "Tráfico", icon: "📉", text: `Turnos cayeron ${Math.abs(v).toFixed(1)}% vs mes anterior` });
-      else if (v > umb.varTurnosWin) wins.push({ cat: "Tráfico", icon: "📈", text: `Turnos crecieron ${v.toFixed(1)}%` });
+    const T = traf.totalTurnos;
+    const pctColoc = T > 0 ? (traf.colocacionesSI / T * 100) : 0;
+    const pctNoColoc = T > 0 ? (traf.colocacionesNO / T * 100) : 0;
+    const pctPunt = T > 0 ? (traf.puntualidadSI / T * 100) : 0;
+    const pctCancel = T > 0 ? (traf.cancelaciones / T * 100) : 0;
+
+    // 1. Colocación general
+    if (pctColoc < umb.colocAlerta) alerts.push({ cat: "Colocación", icon: "🔴", text: `Colocación ${pctColoc.toFixed(1)}% (${traf.colocacionesSI.toLocaleString()} de ${T.toLocaleString()} turnos) — por debajo del objetivo ${umb.colocAlerta}%. Se pierden ${traf.colocacionesNO.toLocaleString()} oportunidades de colocación.` });
+    else if (pctColoc >= umb.colocExcelente) wins.push({ cat: "Colocación", icon: "🟢", text: `Colocación excelente: ${pctColoc.toFixed(1)}% — ${traf.colocacionesSI.toLocaleString()} turnos colocados de ${T.toLocaleString()}.` });
+    else wins.push({ cat: "Colocación", icon: "🟡", text: `Colocación en rango aceptable: ${pctColoc.toFixed(1)}% (${traf.colocacionesSI.toLocaleString()} de ${T.toLocaleString()}).` });
+
+    // 2. Puntualidad general
+    if (pctPunt < umb.puntAlerta) alerts.push({ cat: "Puntualidad", icon: "⏱️", text: `Puntualidad crítica: ${pctPunt.toFixed(1)}% — ${(T - traf.puntualidadSI).toLocaleString()} turnos con llegada tardía. Esto impacta la experiencia del cliente y la confiabilidad del servicio.` });
+    else if (pctPunt >= umb.puntExcelente) wins.push({ cat: "Puntualidad", icon: "⏱️", text: `Puntualidad destacada: ${pctPunt.toFixed(1)}% — los pilotos están llegando a tiempo consistentemente.` });
+    else alerts.push({ cat: "Puntualidad", icon: "⏱️", text: `Puntualidad moderada: ${pctPunt.toFixed(1)}% — hay margen de mejora. ${(T - traf.puntualidadSI).toLocaleString()} turnos con incumplimiento.` });
+
+    // 3. Cancelaciones
+    if (pctCancel > 15) alerts.push({ cat: "Cancelaciones", icon: "🚫", text: `Tasa de cancelación alta: ${pctCancel.toFixed(1)}% (${traf.cancelaciones.toLocaleString()} turnos). Investigar causas principales y pilotos reincidentes.` });
+    else if (pctCancel > 8) alerts.push({ cat: "Cancelaciones", icon: "🚫", text: `Cancelaciones en ${pctCancel.toFixed(1)}% (${traf.cancelaciones.toLocaleString()} turnos). Mantener monitoreo para evitar que escale.` });
+    else if (pctCancel <= 5 && T > 0) wins.push({ cat: "Cancelaciones", icon: "🚫", text: `Cancelaciones controladas: solo ${pctCancel.toFixed(1)}% (${traf.cancelaciones.toLocaleString()} de ${T.toLocaleString()}).` });
+
+    // 4. Variación vs mes anterior
+    if (trafP && trafP.totalTurnos > 0) {
+      const vTurnos = ((T - trafP.totalTurnos) / trafP.totalTurnos * 100);
+      const vColoc = trafP.colocacionesSI > 0 ? ((traf.colocacionesSI - trafP.colocacionesSI) / trafP.colocacionesSI * 100) : 0;
+      const pctPuntP = trafP.totalTurnos > 0 ? (trafP.puntualidadSI / trafP.totalTurnos * 100) : 0;
+      const diffPunt = pctPunt - pctPuntP;
+      if (vTurnos < umb.varTurnosAlerta) alerts.push({ cat: "Tendencia", icon: "📉", text: `Turnos cayeron ${Math.abs(vTurnos).toFixed(1)}% vs ${insPrevMesKey} (${trafP.totalTurnos.toLocaleString()} → ${T.toLocaleString()}). Revisar si es por menor demanda o falta de pilotos.` });
+      else if (vTurnos > umb.varTurnosWin) wins.push({ cat: "Tendencia", icon: "📈", text: `Turnos crecieron ${vTurnos.toFixed(1)}% vs ${insPrevMesKey} (${trafP.totalTurnos.toLocaleString()} → ${T.toLocaleString()}).` });
+      if (diffPunt < -5) alerts.push({ cat: "Tendencia", icon: "📉", text: `Puntualidad cayó ${Math.abs(diffPunt).toFixed(1)} puntos vs ${insPrevMesKey} (${pctPuntP.toFixed(1)}% → ${pctPunt.toFixed(1)}%).` });
+      else if (diffPunt > 5) wins.push({ cat: "Tendencia", icon: "📈", text: `Puntualidad mejoró ${diffPunt.toFixed(1)} puntos vs ${insPrevMesKey} (${pctPuntP.toFixed(1)}% → ${pctPunt.toFixed(1)}%).` });
     }
-    // Detalle ciudades tráfico
+
+    // 5. Pilotos activos
+    if (trafP && trafP.pilotosActivos > 0) {
+      const vPilotos = ((traf.pilotosActivos - trafP.pilotosActivos) / trafP.pilotosActivos * 100);
+      const turnosPorPiloto = traf.pilotosActivos > 0 ? (T / traf.pilotosActivos) : 0;
+      if (vPilotos < -10) alerts.push({ cat: "Pilotos", icon: "👤", text: `Base de pilotos se redujo ${Math.abs(vPilotos).toFixed(0)}% (${trafP.pilotosActivos} → ${traf.pilotosActivos}). Promedio ${turnosPorPiloto.toFixed(1)} turnos/piloto.` });
+      else if (vPilotos > 10) wins.push({ cat: "Pilotos", icon: "👤", text: `Base de pilotos creció ${vPilotos.toFixed(0)}% (${trafP.pilotosActivos} → ${traf.pilotosActivos}). Promedio ${turnosPorPiloto.toFixed(1)} turnos/piloto.` });
+      else {
+        const info = traf.pilotosActivos === trafP.pilotosActivos ? "se mantuvo estable" : (vPilotos > 0 ? `creció ${vPilotos.toFixed(0)}%` : `bajó ${Math.abs(vPilotos).toFixed(0)}%`);
+        wins.push({ cat: "Pilotos", icon: "👤", text: `Base de pilotos ${info}: ${traf.pilotosActivos} activos. Promedio ${turnosPorPiloto.toFixed(1)} turnos/piloto.` });
+      }
+    } else if (traf.pilotosActivos > 0) {
+      const turnosPorPiloto = T / traf.pilotosActivos;
+      wins.push({ cat: "Pilotos", icon: "👤", text: `${traf.pilotosActivos} pilotos activos con promedio de ${turnosPorPiloto.toFixed(1)} turnos/piloto.` });
+    }
+
+    // 6. Pilotos impuntuales reincidentes
+    if (traf.pilotosImpuntuales?.length > 0) {
+      const top3 = traf.pilotosImpuntuales.slice(0, 3);
+      const totalNoCumple = top3.reduce((s, p) => s + p.noCumple, 0);
+      alerts.push({ cat: "Pilotos", icon: "⏱️", text: `Top 3 pilotos impuntuales acumulan ${totalNoCumple} incumplimientos: ${top3.map(p => `${p.nombre || p.id} (${p.noCumple})`).join(", ")}. Requieren seguimiento individual.` });
+    }
+
+    // 7. Pilotos canceladores reincidentes
+    if (traf.pilotosCanceladores?.length > 0) {
+      const topCancel = traf.pilotosCanceladores.slice(0, 3);
+      const totalCancel = topCancel.reduce((s, p) => s + p.cancela, 0);
+      alerts.push({ cat: "Pilotos", icon: "🚫", text: `Top 3 pilotos que más cancelan acumulan ${totalCancel} cancelaciones: ${topCancel.map(p => `${p.nombre || p.id} (${p.cancela})`).join(", ")}.` });
+    }
+
+    // 8. Concentración por ciudad
     if (traf.ciudadMap) {
+      const ciudades = Object.entries(traf.ciudadMap).sort((a, b) => b[1].turnos - a[1].turnos);
+      if (ciudades.length > 0) {
+        const topCiudad = ciudades[0];
+        const pctTop = T > 0 ? (topCiudad[1].turnos / T * 100) : 0;
+        if (pctTop > 50) alerts.push({ cat: "Operación", icon: "📊", text: `Alta concentración: ${topCiudad[0]} representa ${pctTop.toFixed(0)}% de los turnos (${topCiudad[1].turnos.toLocaleString()}). Diversificar operación reduciría riesgo.` });
+        else wins.push({ cat: "Operación", icon: "📊", text: `Operación diversificada en ${ciudades.length} ciudades. Ciudad principal: ${topCiudad[0]} con ${pctTop.toFixed(0)}% de los turnos.` });
+      }
+
+      // Ciudades con problemas y ciudades destacadas
       Object.entries(traf.ciudadMap).forEach(([c, v]) => {
         const pct = v.turnos > 0 ? (v.si / v.turnos * 100) : 0;
         const pctP = v.turnos > 0 ? (v.punt / v.turnos * 100) : 0;
         if (v.turnos >= umb.minTurnosCiudad) {
           const color = pct < umb.ciudadColocAlerta ? "rojo" : pct >= umb.colocExcelente ? "verde" : "amarillo";
           detalleCiudades.push({ ciudad: c, turnos: v.turnos, coloc: pct, punt: pctP, color });
-          if (pct < umb.ciudadColocAlerta) alerts.push({ cat: "Ciudad", icon: "📍", text: `${c}: colocación ${pct.toFixed(1)}% (${v.turnos} turnos)` });
-          else if (pct >= umb.colocExcelente) wins.push({ cat: "Ciudad", icon: "📍", text: `${c}: colocación ${pct.toFixed(1)}%` });
+          if (pct < umb.ciudadColocAlerta) alerts.push({ cat: "Ciudad", icon: "📍", text: `${c}: colocación ${pct.toFixed(1)}% con ${v.turnos} turnos — requiere plan de acción.` });
+          else if (pct >= umb.colocExcelente) wins.push({ cat: "Ciudad", icon: "📍", text: `${c}: colocación ${pct.toFixed(1)}% — modelo a replicar.` });
         }
       });
     }
-    // Detalle puntos tráfico
+
+    // 9. Puntos con bajo rendimiento
     if (traf.puntoMap) {
+      const puntosProblema = [];
       Object.entries(traf.puntoMap).forEach(([p, v]) => {
         const pct = v.turnos > 0 ? (v.si / v.turnos * 100) : 0;
         if (v.turnos >= umb.minTurnosPunto) {
           const color = pct < umb.puntoColocAlerta ? "rojo" : pct >= umb.colocExcelente ? "verde" : "amarillo";
           detallePuntos.push({ punto: p, ciudad: v.ciudad || "", turnos: v.turnos, coloc: pct, color });
+          if (pct < umb.puntoColocAlerta) puntosProblema.push({ punto: p, ciudad: v.ciudad, pct, turnos: v.turnos });
         }
       });
+      if (puntosProblema.length > 0) {
+        const top3Puntos = puntosProblema.sort((a, b) => a.pct - b.pct).slice(0, 3);
+        alerts.push({ cat: "Puntos", icon: "🏪", text: `${puntosProblema.length} puntos con colocación crítica (<${umb.puntoColocAlerta}%). Peores: ${top3Puntos.map(p => `${p.punto} (${p.pct.toFixed(0)}%)`).join(", ")}.` });
+      }
+      const puntosExcelentes = detallePuntos.filter(p => p.color === "verde").length;
+      if (puntosExcelentes > 0) wins.push({ cat: "Puntos", icon: "🏪", text: `${puntosExcelentes} puntos con colocación excelente (>${umb.colocExcelente}%).` });
+    }
+
+    // 10. Distribución semanal — detectar semanas irregulares
+    if (traf.semanaMap) {
+      const semanas = Object.entries(traf.semanaMap);
+      if (semanas.length >= 2) {
+        const turnosSem = semanas.map(([, v]) => v.turnos);
+        const avgSem = turnosSem.reduce((a, b) => a + b, 0) / turnosSem.length;
+        const semBaja = semanas.find(([, v]) => v.turnos < avgSem * 0.6);
+        const semAlta = semanas.find(([, v]) => v.turnos > avgSem * 1.4);
+        if (semBaja) alerts.push({ cat: "Operación", icon: "📅", text: `Semana ${semBaja[0]} tuvo solo ${semBaja[1].turnos} turnos (promedio semanal: ${avgSem.toFixed(0)}). Revisar si fue por festivo, falta de demanda o problema operativo.` });
+        if (semAlta) wins.push({ cat: "Operación", icon: "📅", text: `Semana ${semAlta[0]} fue la más productiva con ${semAlta[1].turnos} turnos (promedio: ${avgSem.toFixed(0)}).` });
+      }
     }
   }
+
+  // Facturación insights
   if (fact) {
     if (factP && factP.totalGmv > 0) {
       const v = ((fact.totalGmv - factP.totalGmv) / factP.totalGmv * 100);
-      if (v < umb.gmvTotalAlerta) alerts.push({ cat: "Facturación", icon: "🚨", text: `GMV total cayó ${Math.abs(v).toFixed(1)}%: ${fmtMoney(fact.totalGmv)} vs ${fmtMoney(factP.totalGmv)}` });
-      else if (v > umb.gmvTotalWin) wins.push({ cat: "Facturación", icon: "🚀", text: `GMV creció ${v.toFixed(1)}%: ${fmtMoney(fact.totalGmv)}` });
+      if (v < umb.gmvTotalAlerta) alerts.push({ cat: "Facturación", icon: "🚨", text: `GMV total cayó ${Math.abs(v).toFixed(1)}%: ${fmtMoney(fact.totalGmv)} vs ${fmtMoney(factP.totalGmv)}. Analizar si es por volumen, precio o mix de ciudades.` });
+      else if (v > umb.gmvTotalWin) wins.push({ cat: "Facturación", icon: "🚀", text: `GMV creció ${v.toFixed(1)}%: ${fmtMoney(factP.totalGmv)} → ${fmtMoney(fact.totalGmv)}.` });
     }
     if (factP && factP.totalPaq > 0) {
       const v = ((fact.totalPaq - factP.totalPaq) / factP.totalPaq * 100);
-      if (v < umb.paqAlerta) alerts.push({ cat: "Facturación", icon: "📦", text: `Paquetes cayeron ${Math.abs(v).toFixed(1)}%` });
-      else if (v > umb.paqWin) wins.push({ cat: "Facturación", icon: "📦", text: `Paquetes crecieron ${v.toFixed(1)}%` });
+      if (v < umb.paqAlerta) alerts.push({ cat: "Facturación", icon: "📦", text: `Paquetes cayeron ${Math.abs(v).toFixed(1)}% (${factP.totalPaq.toLocaleString()} → ${fact.totalPaq.toLocaleString()}).` });
+      else if (v > umb.paqWin) wins.push({ cat: "Facturación", icon: "📦", text: `Paquetes crecieron ${v.toFixed(1)}% (${fact.totalPaq.toLocaleString()}).` });
     }
     if (fact.ciudadMap && factP?.ciudadMap) {
       Object.entries(fact.ciudadMap).forEach(([c, v]) => {
         const prev = factP.ciudadMap[c];
         if (prev?.gmv > 0) {
           const vg = ((v.gmv - prev.gmv) / prev.gmv * 100);
-          if (vg < umb.gmvCiudadAlerta) alerts.push({ cat: "Fact. Ciudad", icon: "💸", text: `${c}: GMV cayó ${Math.abs(vg).toFixed(1)}% (${fmtMoney(v.gmv)} vs ${fmtMoney(prev.gmv)})` });
-          else if (vg > umb.gmvCiudadWin) wins.push({ cat: "Fact. Ciudad", icon: "💰", text: `${c}: GMV creció ${vg.toFixed(1)}%` });
+          if (vg < umb.gmvCiudadAlerta) alerts.push({ cat: "Fact. Ciudad", icon: "💸", text: `${c}: GMV cayó ${Math.abs(vg).toFixed(1)}% (${fmtMoney(prev.gmv)} → ${fmtMoney(v.gmv)}).` });
+          else if (vg > umb.gmvCiudadWin) wins.push({ cat: "Fact. Ciudad", icon: "💰", text: `${c}: GMV creció ${vg.toFixed(1)}%: ${fmtMoney(v.gmv)}.` });
         }
       });
     }
@@ -548,7 +641,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
         const prev = factP.puntoMap[p];
         if (prev?.gmv > umb.minGmvPunto) {
           const vg = ((v.gmv - prev.gmv) / prev.gmv * 100);
-          if (vg < umb.gmvPuntoAlerta) alerts.push({ cat: "Fact. Punto", icon: "🏪", text: `${p} (${v.ciudad}): GMV cayó ${Math.abs(vg).toFixed(0)}% — ${fmtMoney(prev.gmv)} → ${fmtMoney(v.gmv)}` });
+          if (vg < umb.gmvPuntoAlerta) alerts.push({ cat: "Fact. Punto", icon: "🏪", text: `${p} (${v.ciudad}): GMV cayó ${Math.abs(vg).toFixed(0)}% — ${fmtMoney(prev.gmv)} → ${fmtMoney(v.gmv)}.` });
         }
       });
     }
