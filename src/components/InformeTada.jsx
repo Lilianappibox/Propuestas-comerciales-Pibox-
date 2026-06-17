@@ -1096,25 +1096,65 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 async function exportPDF(ref, filename, orientation = "portrait") {
   if (!ref?.current) return;
   try {
-    // Fix oklch colors not supported by html2canvas
     const el = ref.current;
-    const allEls = [el, ...el.querySelectorAll("*")];
-    const origStyles = [];
-    for (const node of allEls) {
-      const cs = getComputedStyle(node);
-      const fixes = {};
-      for (const prop of ["color", "background-color", "border-color", "border-top-color", "border-bottom-color", "border-left-color", "border-right-color"]) {
-        const val = cs.getPropertyValue(prop);
+    // Rewrite all oklch in stylesheets to rgb before html2canvas
+    const overrideSheet = document.createElement("style");
+    overrideSheet.id = "pdf-oklch-fix";
+    // Collect all CSS rules with oklch and convert them
+    const cssOverrides = [];
+    for (const sheet of document.styleSheets) {
+      try {
+        for (const rule of sheet.cssRules) {
+          if (rule.cssText && rule.cssText.includes("oklch")) {
+            // Replace oklch(...) with a fallback
+            const fixed = rule.cssText.replace(/oklch\([^)]+\)/g, (match) => {
+              const ctx = document.createElement("canvas").getContext("2d");
+              ctx.fillStyle = match;
+              // If browser understood it, ctx.fillStyle will be hex/rgb
+              return ctx.fillStyle !== "#000000" ? ctx.fillStyle : "#888888";
+            });
+            if (fixed !== rule.cssText) cssOverrides.push(fixed);
+          }
+        }
+      } catch { /* cross-origin sheets */ }
+    }
+    // Also override CSS custom properties on :root
+    const rootStyles = getComputedStyle(document.documentElement);
+    const rootOverrides = [];
+    for (let i = 0; i < rootStyles.length; i++) {
+      const prop = rootStyles[i];
+      if (prop.startsWith("--")) {
+        const val = rootStyles.getPropertyValue(prop);
         if (val && val.includes("oklch")) {
-          fixes[prop] = node.style.getPropertyValue(prop);
-          // Convert via canvas
           const ctx = document.createElement("canvas").getContext("2d");
-          ctx.fillStyle = val;
-          node.style.setProperty(prop, ctx.fillStyle);
+          ctx.fillStyle = val.trim();
+          rootOverrides.push(`${prop}: ${ctx.fillStyle !== "#000000" ? ctx.fillStyle : "#888888"}`);
         }
       }
-      if (Object.keys(fixes).length) origStyles.push({ node, fixes });
     }
+    if (rootOverrides.length) cssOverrides.push(`:root { ${rootOverrides.join("; ")} }`);
+    overrideSheet.textContent = cssOverrides.join("\n");
+    document.head.appendChild(overrideSheet);
+
+    // Also inline-fix all elements with oklch computed colors
+    const allEls = [el, ...el.querySelectorAll("*")];
+    const origInline = [];
+    const colorProps = ["color", "background-color", "border-color", "border-top-color", "border-bottom-color", "border-left-color", "border-right-color", "outline-color", "text-decoration-color", "fill", "stroke"];
+    for (const node of allEls) {
+      const cs = getComputedStyle(node);
+      const saved = {};
+      for (const prop of colorProps) {
+        const val = cs.getPropertyValue(prop);
+        if (val && val.includes("oklch")) {
+          saved[prop] = node.style.getPropertyValue(prop);
+          const ctx = document.createElement("canvas").getContext("2d");
+          ctx.fillStyle = val;
+          node.style.setProperty(prop, ctx.fillStyle !== "#000000" ? ctx.fillStyle : "#888888", "important");
+        }
+      }
+      if (Object.keys(saved).length) origInline.push({ node, saved });
+    }
+
     const html2pdf = (await import("html2pdf.js")).default;
     await html2pdf().set({
       margin: [6, 6, 6, 6],
@@ -1124,9 +1164,11 @@ async function exportPDF(ref, filename, orientation = "portrait") {
       jsPDF: { unit: "mm", format: "a4", orientation },
       pagebreak: { mode: ["css"], avoid: ["tr", ".rounded-2xl"] },
     }).from(el).save();
-    // Restore original styles
-    for (const { node, fixes } of origStyles) {
-      for (const [prop, val] of Object.entries(fixes)) {
+
+    // Cleanup
+    overrideSheet.remove();
+    for (const { node, saved } of origInline) {
+      for (const [prop, val] of Object.entries(saved)) {
         if (val) node.style.setProperty(prop, val);
         else node.style.removeProperty(prop);
       }
