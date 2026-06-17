@@ -1100,8 +1100,21 @@ function printSection(ref, title) {
   // Copy all stylesheets
   const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')].map(s => s.outerHTML).join("\n");
   win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>${styles}
-    <style>@media print { body { margin: 0; } @page { size: A4 landscape; margin: 8mm; } }</style>
-    </head><body class="bg-white"><div class="max-w-7xl mx-auto px-4 py-6 space-y-6">${content.innerHTML}</div></body></html>`);
+    <style>
+      @page { size: A4 landscape; margin: 8mm; }
+      body { margin: 0; background: white; }
+      .max-w-7xl { max-width: 100% !important; }
+      .grid { display: block !important; }
+      .grid > * { margin-bottom: 16px; }
+      .lg\\:grid-cols-2 { display: block !important; }
+      .recharts-wrapper, .recharts-surface { width: 100% !important; max-width: 100% !important; }
+      svg { max-width: 100%; height: auto; }
+      .overflow-x-auto { overflow: visible !important; }
+      table { width: 100% !important; font-size: 10px; }
+      .rounded-2xl, .rounded-xl { break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; }
+      .shadow-md { box-shadow: none !important; border: 1px solid #e5e7eb; }
+    </style>
+    </head><body><div class="max-w-7xl mx-auto px-4 py-4 space-y-4">${content.innerHTML}</div></body></html>`);
   win.document.close();
   setTimeout(() => { win.print(); win.close(); }, 500);
 }
