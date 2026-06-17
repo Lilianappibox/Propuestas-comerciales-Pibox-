@@ -1089,7 +1089,30 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
 function printSection(ref, title) {
   if (!ref?.current) return;
+  // Snapshot all Recharts SVGs as static images before cloning
+  const svgContainers = ref.current.querySelectorAll(".recharts-wrapper");
+  const snapshots = [];
+  for (const wrapper of svgContainers) {
+    const svg = wrapper.querySelector("svg");
+    if (!svg) continue;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const img = document.createElement("img");
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
+    img.style.cssText = `width:${svg.getAttribute("width") || wrapper.offsetWidth}px;height:${svg.getAttribute("height") || wrapper.offsetHeight}px;max-width:100%;`;
+    snapshots.push({ wrapper, img });
+  }
+  // Temporarily replace SVG wrappers with images
+  for (const { wrapper, img } of snapshots) {
+    wrapper._origHTML = wrapper.innerHTML;
+    wrapper.innerHTML = "";
+    wrapper.appendChild(img);
+  }
   const content = ref.current.cloneNode(true);
+  // Restore originals
+  for (const { wrapper } of snapshots) {
+    wrapper.innerHTML = wrapper._origHTML;
+    delete wrapper._origHTML;
+  }
   // Remove download buttons from the clone
   for (const btn of content.querySelectorAll("button")) btn.remove();
   for (const lbl of content.querySelectorAll("label")) {
