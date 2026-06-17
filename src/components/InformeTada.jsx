@@ -425,7 +425,7 @@ const UMB_DEFAULT = {
   minTurnosCiudad: 10, minTurnosPunto: 5, minGmvPunto: 50000,
 };
 
-function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin }) {
+function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin, importedData }) {
   const [showConfig, setShowConfig] = useState(false);
   const [umb, setUmb] = useState(() => { try { return { ...UMB_DEFAULT, ...JSON.parse(localStorage.getItem(SK_TADA_UMB) || "{}") }; } catch { return UMB_DEFAULT; } });
   const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
@@ -453,18 +453,22 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     if (isAdmin) {
       idbLoadRows(SK_TRAF_MES(mesSel)).then(r => setInsRows(r || null));
     } else {
-      setInsRows(tadaInicial.meses?.[`traf_${mesSel}`]?.rows || null);
+      const imp = importedData?.meses?.[`traf_${mesSel}`];
+      const fb = tadaInicial.meses?.[`traf_${mesSel}`];
+      setInsRows(imp?.rows || fb?.rows || null);
     }
-  }, [mesSel, trafIndex]);
+  }, [mesSel, trafIndex, importedData]);
   useEffect(() => {
     setInsPrevRows(null);
     if (!insPrevKey) return;
     if (isAdmin) {
       idbLoadRows(SK_TRAF_MES(insPrevKey)).then(r => setInsPrevRows(r || null));
     } else {
-      setInsPrevRows(tadaInicial.meses?.[`traf_${insPrevKey}`]?.rows || null);
+      const imp = importedData?.meses?.[`traf_${insPrevKey}`];
+      const fb = tadaInicial.meses?.[`traf_${insPrevKey}`];
+      setInsPrevRows(imp?.rows || fb?.rows || null);
     }
-  }, [insPrevKey, trafIndex]);
+  }, [insPrevKey, trafIndex, importedData]);
 
   const saveUmb = (u) => { setUmb(u); localStorage.setItem(SK_TADA_UMB, JSON.stringify(u)); };
   const UmbField = ({ label, k, suffix = "%" }) => (
@@ -487,8 +491,10 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     </div>
   );
 
-  const traf = loadTrafMes(mesSel)?.data;
-  const fact = loadFactMes(mesSel);
+  const _loadT = (k) => importedData?.meses?.[`traf_${k}`] || loadTrafMes(k);
+  const _loadF = (k) => importedData?.meses?.[`fact_${k}`] || loadFactMes(k);
+  const traf = _loadT(mesSel)?.data;
+  const fact = _loadF(mesSel);
   // Mes calendario anterior para comparación
   const insPrevMesKey = (() => {
     const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -498,8 +504,8 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     if (mi <= 0 || isNaN(yr)) return null;
     return `${ML[mi === 1 ? 12 : mi - 1]} ${mi === 1 ? yr - 1 : yr}`;
   })();
-  const trafP = insPrevMesKey ? loadTrafMes(insPrevMesKey)?.data : null;
-  const factP = insPrevMesKey ? loadFactMes(insPrevMesKey) : null;
+  const trafP = insPrevMesKey ? _loadT(insPrevMesKey)?.data : null;
+  const factP = insPrevMesKey ? _loadF(insPrevMesKey) : null;
 
   const alerts = [], wins = [], detallePuntos = [], detalleCiudades = [];
 
@@ -1084,6 +1090,9 @@ export default function InformeTada({ isAdmin }) {
   const _loadFactIndex = isAdmin ? loadFactIndex : loadFactIndexReadonly;
   const _loadFactMes = isAdmin ? loadFactMes : loadFactMesReadonly;
 
+  // Datos importados por usuario no-admin
+  const [importedData, setImportedData] = useState(null);
+
   // Tráfico por mes
   const [trafIndex, setTrafIndex] = useState(_loadTrafIndex);
   const trafMeses = Object.keys(trafIndex).sort().reverse();
@@ -1106,7 +1115,11 @@ export default function InformeTada({ isAdmin }) {
   const [factError, setFactError] = useState(null);
 
   /* ── derived data (tráfico) ────────────────────────────────────────────── */
-  const trafActual = useMemo(() => trafMesSel ? _loadTrafMes(trafMesSel) : null, [trafMesSel, trafIndex]);
+  const trafActual = useMemo(() => {
+    if (!trafMesSel) return null;
+    if (importedData?.meses?.[`traf_${trafMesSel}`]) return importedData.meses[`traf_${trafMesSel}`];
+    return _loadTrafMes(trafMesSel);
+  }, [trafMesSel, trafIndex, importedData]);
   const trafPrevKey = useMemo(() => {
     if (!trafMesSel) return null;
     const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -1119,9 +1132,13 @@ export default function InformeTada({ isAdmin }) {
     const prevYr = mi === 1 ? yr - 1 : yr;
     return `${ML[prevMi]} ${prevYr}`;
   }, [trafMesSel]);
-  const trafPrev = useMemo(() => trafPrevKey ? _loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
+  const trafPrev = useMemo(() => {
+    if (!trafPrevKey) return null;
+    if (importedData?.meses?.[`traf_${trafPrevKey}`]) return importedData.meses[`traf_${trafPrevKey}`];
+    return _loadTrafMes(trafPrevKey);
+  }, [trafPrevKey, trafIndex, importedData]);
 
-  // Cargar rows (IndexedDB para admin, tadaInicial para readonly)
+  // Cargar rows (IndexedDB para admin, importedData o tadaInicial para readonly)
   const [trafRows, setTrafRows] = useState(null);
   const [trafPrevRows, setTrafPrevRows] = useState(null);
   useEffect(() => {
@@ -1130,20 +1147,22 @@ export default function InformeTada({ isAdmin }) {
     if (isAdmin) {
       idbLoadRows(SK_TRAF_MES(trafMesSel)).then(r => setTrafRows(r || null));
     } else {
-      const stored = tadaInicial.meses?.[`traf_${trafMesSel}`];
-      setTrafRows(stored?.rows || null);
+      const imported = importedData?.meses?.[`traf_${trafMesSel}`];
+      const fallback = tadaInicial.meses?.[`traf_${trafMesSel}`];
+      setTrafRows(imported?.rows || fallback?.rows || null);
     }
-  }, [trafMesSel, trafIndex]);
+  }, [trafMesSel, trafIndex, importedData]);
   useEffect(() => {
     setTrafPrevRows(null);
     if (!trafPrevKey) return;
     if (isAdmin) {
       idbLoadRows(SK_TRAF_MES(trafPrevKey)).then(r => setTrafPrevRows(r || null));
     } else {
-      const stored = tadaInicial.meses?.[`traf_${trafPrevKey}`];
-      setTrafPrevRows(stored?.rows || null);
+      const imported = importedData?.meses?.[`traf_${trafPrevKey}`];
+      const fallback = tadaInicial.meses?.[`traf_${trafPrevKey}`];
+      setTrafPrevRows(imported?.rows || fallback?.rows || null);
     }
-  }, [trafPrevKey, trafIndex]);
+  }, [trafPrevKey, trafIndex, importedData]);
 
   // Filtrar por fechas/punto si hay rows crudos y filtros activos
   const trafHasRows = !!(trafRows?.length);
@@ -1371,13 +1390,21 @@ export default function InformeTada({ isAdmin }) {
   };
 
   // Datos del mes seleccionado y anterior
-  const factActual = useMemo(() => factMesSel ? _loadFactMes(factMesSel) : null, [factMesSel, factIndex]);
+  const factActual = useMemo(() => {
+    if (!factMesSel) return null;
+    if (importedData?.meses?.[`fact_${factMesSel}`]) return importedData.meses[`fact_${factMesSel}`];
+    return _loadFactMes(factMesSel);
+  }, [factMesSel, factIndex, importedData]);
   const factMesPrevKey = useMemo(() => {
     const sorted = Object.keys(factIndex).sort();
     const idx = sorted.indexOf(factMesSel);
     return idx > 0 ? sorted[idx - 1] : null;
   }, [factMesSel, factIndex]);
-  const factPrev = useMemo(() => factMesPrevKey ? _loadFactMes(factMesPrevKey) : null, [factMesPrevKey, factIndex]);
+  const factPrev = useMemo(() => {
+    if (!factMesPrevKey) return null;
+    if (importedData?.meses?.[`fact_${factMesPrevKey}`]) return importedData.meses[`fact_${factMesPrevKey}`];
+    return _loadFactMes(factMesPrevKey);
+  }, [factMesPrevKey, factIndex, importedData]);
 
   const varFact = (actual, prev) => prev > 0 ? ((actual - prev) / prev) : null;
 
@@ -1416,11 +1443,14 @@ export default function InformeTada({ isAdmin }) {
               <p className="text-xs text-gray-500">Tráfico de pilotos y facturación</p>
             </div>
             {isAdmin && (
-              <button onClick={() => {
+              <button onClick={async () => {
                 const allData = { trafIndex: loadTrafIndex(), factIndex: loadFactIndex(), meses: {} };
                 for (const key of Object.keys(allData.trafIndex)) {
                   const d = loadTrafMes(key);
-                  if (d) allData.meses[`traf_${key}`] = d;
+                  if (d) {
+                    const rows = await idbLoadRows(SK_TRAF_MES(key));
+                    allData.meses[`traf_${key}`] = rows ? { ...d, rows } : d;
+                  }
                 }
                 for (const key of Object.keys(allData.factIndex)) {
                   const d = loadFactMes(key);
@@ -1432,6 +1462,32 @@ export default function InformeTada({ isAdmin }) {
               }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition">
                 📤 Exportar para el equipo
               </button>
+            )}
+            {!isAdmin && (
+              <label className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition cursor-pointer">
+                📥 Importar datos
+                <input type="file" accept=".json" className="hidden" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    try {
+                      const imported = JSON.parse(ev.target.result);
+                      if (!imported.trafIndex || !imported.meses) { alert("Archivo inválido"); return; }
+                      setImportedData(imported);
+                      setTrafIndex(imported.trafIndex || {});
+                      setFactIndex(imported.factIndex || {});
+                      const trafKeys = Object.keys(imported.trafIndex || {}).sort().reverse();
+                      if (trafKeys[0]) setTrafMesSel(trafKeys[0]);
+                      const factKeys = Object.keys(imported.factIndex || {}).sort().reverse();
+                      if (factKeys[0]) setFactMesSel(factKeys[0]);
+                      alert("Datos importados correctamente");
+                    } catch { alert("Error al leer el archivo JSON"); }
+                  };
+                  reader.readAsText(file);
+                  e.target.value = "";
+                }} />
+              </label>
             )}
           </div>
           <div className="flex gap-1 overflow-x-auto">
@@ -1649,7 +1705,7 @@ export default function InformeTada({ isAdmin }) {
       )}
 
       {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
-      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} />}
+      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} importedData={importedData} />}
 
       {/* ── TAB: TRÁFICO ─────────────────────────────────────────────── */}
       {tab === "trafico" && (
