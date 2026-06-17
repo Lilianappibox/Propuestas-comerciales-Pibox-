@@ -1953,14 +1953,22 @@ export default function InformeTada({ isAdmin }) {
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <h3 className="text-sm font-bold text-gray-700">⏱️ Top 10 Pilotos más impuntuales — {trafMesSel}</h3>
               <button onClick={() => {
-                const rows = [["#","Piloto","ID","Ciudad","Turnos","No Cumple","Cumple","% Incumplimiento"].join(",")];
-                data.pilotosImpuntuales.forEach((p, i) => {
-                  rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.noCumple,p.cumple,`${p.pctNoCumple.toFixed(1)}%`].join(","));
+                // Recalcular desde rows para obtener lista COMPLETA
+                const fullData = trafRows?.length ? processRows(trafFiltroActivo ? trafRows.filter(r => {
+                  if (trafFechaInicio && r._fecha && r._fecha < trafFechaInicio) return false;
+                  if (trafFechaFin && r._fecha && r._fecha > trafFechaFin) return false;
+                  if (trafPuntoSel && String(r["PUNTO"]||"").trim() !== trafPuntoSel) return false;
+                  return true;
+                }) : trafRows) : data;
+                const lista = fullData.pilotosImpuntuales || [];
+                const csvRows = [["#","Piloto","ID","Ciudad","Turnos","No Cumple","Cumple","% Incumplimiento"].join(",")];
+                lista.forEach((p, i) => {
+                  csvRows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.noCumple,p.cumple,`${p.pctNoCumple.toFixed(1)}%`].join(","));
                 });
-                const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                const blob = new Blob(["\uFEFF"+csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
                 const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Impuntuales_${trafMesSel}.csv`; a.click();
               }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition" style={{ background: "linear-gradient(135deg,#DC2626,#EF4444)" }}>
-                📥 Descargar todos ({data.pilotosImpuntuales.length})
+                📥 Descargar todos
               </button>
             </div>
             <div className="overflow-x-auto">
@@ -2007,14 +2015,21 @@ export default function InformeTada({ isAdmin }) {
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <h3 className="text-sm font-bold text-gray-700">🚫 Top 10 Pilotos que más cancelan — {trafMesSel}</h3>
               <button onClick={() => {
-                const rows = [["#","Piloto","ID","Ciudad","Turnos","Cancelaciones","No Cancela","% Cancelación"].join(",")];
-                data.pilotosCanceladores.forEach((p, i) => {
-                  rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.cancela,p.turnos-p.cancela,`${p.pctCancela.toFixed(1)}%`].join(","));
+                const fullData = trafRows?.length ? processRows(trafFiltroActivo ? trafRows.filter(r => {
+                  if (trafFechaInicio && r._fecha && r._fecha < trafFechaInicio) return false;
+                  if (trafFechaFin && r._fecha && r._fecha > trafFechaFin) return false;
+                  if (trafPuntoSel && String(r["PUNTO"]||"").trim() !== trafPuntoSel) return false;
+                  return true;
+                }) : trafRows) : data;
+                const lista = fullData.pilotosCanceladores || [];
+                const csvRows = [["#","Piloto","ID","Ciudad","Turnos","Cancelaciones","No Cancela","% Cancelación"].join(",")];
+                lista.forEach((p, i) => {
+                  csvRows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.cancela,p.turnos-p.cancela,`${p.pctCancela.toFixed(1)}%`].join(","));
                 });
-                const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                const blob = new Blob(["\uFEFF"+csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
                 const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Canceladores_${trafMesSel}.csv`; a.click();
               }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition" style={{ background: "linear-gradient(135deg,#D97706,#F59E0B)" }}>
-                📥 Descargar todos ({data.pilotosCanceladores.length})
+                📥 Descargar todos
               </button>
             </div>
             <div className="overflow-x-auto">
