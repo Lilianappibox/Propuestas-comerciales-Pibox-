@@ -765,13 +765,19 @@ export default function InformeTada({ isAdmin }) {
   }, [trafMesSel, trafIndex]);
   const trafPrev = useMemo(() => trafPrevKey ? _loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
 
-  // Cargar rows desde IndexedDB cuando cambia el mes
+  // Cargar rows desde IndexedDB cuando cambia el mes (actual + anterior)
   const [trafRows, setTrafRows] = useState(null);
+  const [trafPrevRows, setTrafPrevRows] = useState(null);
   useEffect(() => {
     setTrafRows(null);
     if (!trafMesSel || !isAdmin) return;
     idbLoadRows(SK_TRAF_MES(trafMesSel)).then(r => setTrafRows(r || null));
   }, [trafMesSel, trafIndex]);
+  useEffect(() => {
+    setTrafPrevRows(null);
+    if (!trafPrevKey || !isAdmin) return;
+    idbLoadRows(SK_TRAF_MES(trafPrevKey)).then(r => setTrafPrevRows(r || null));
+  }, [trafPrevKey, trafIndex]);
 
   // Filtrar por fechas/punto si hay rows crudos y filtros activos
   const trafHasRows = !!(trafRows?.length);
@@ -798,6 +804,55 @@ export default function InformeTada({ isAdmin }) {
     if (!d?.puntoMap) return [];
     return Object.keys(d.puntoMap).sort();
   }, [trafActual]);
+
+  // Pilotos nuevos: programados este mes pero no el anterior
+  const pilotosNuevos = useMemo(() => {
+    if (!trafRows?.length || !trafPrevRows?.length) return [];
+    // Set de IDs del mes anterior
+    const prevIds = new Set();
+    for (const r of trafPrevRows) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      if (id) prevIds.add(id);
+    }
+    // Filtrar rows del mes actual (respetando filtros de fecha/punto si activos)
+    const rowsActuales = trafFiltroActivo ? trafRows.filter(r => {
+      if (trafFechaInicio && r._fecha && r._fecha < trafFechaInicio) return false;
+      if (trafFechaFin && r._fecha && r._fecha > trafFechaFin) return false;
+      if (trafPuntoSel && String(r["PUNTO"] || "").trim() !== trafPuntoSel) return false;
+      return true;
+    }) : trafRows;
+    // Agrupar pilotos nuevos
+    const map = {};
+    for (const r of rowsActuales) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      if (!id || prevIds.has(id)) continue;
+      const nombre = String(r["NOMBRE DE PILOTO"] || r["NOMBRE PILOTO"] || "").trim();
+      const ciudad = String(r["CIUDAD"] || "").trim();
+      const estado = String(r["ESTADO"] || "").trim();
+      const punto = String(r["PUNTO"] || "").trim();
+      const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
+      if (!map[id]) map[id] = { id, nombre, ciudad, turnos: 0, puntSI: 0, puntTotal: 0, estados: {}, puntos: new Set() };
+      map[id].turnos++;
+      if (estado) map[id].estados[estado] = (map[id].estados[estado] || 0) + 1;
+      if (punto) map[id].puntos.add(punto);
+      if (punt === "SI CUMPLE" || punt === "NO CUMPLE") {
+        map[id].puntTotal++;
+        if (punt === "SI CUMPLE") map[id].puntSI++;
+      }
+      if (nombre && nombre.length > (map[id].nombre || "").length) map[id].nombre = nombre;
+      if (ciudad) map[id].ciudad = ciudad;
+    }
+    return Object.values(map)
+      .map(p => ({ ...p, puntos: [...p.puntos], pctPunt: p.puntTotal > 0 ? (p.puntSI / p.puntTotal * 100) : null }))
+      .sort((a, b) => b.turnos - a.turnos);
+  }, [trafRows, trafPrevRows, trafFiltroActivo, trafFechaInicio, trafFechaFin, trafPuntoSel]);
+
+  // Columnas de estado únicas de pilotos nuevos
+  const estadosNuevos = useMemo(() => {
+    const s = new Set();
+    for (const p of pilotosNuevos) Object.keys(p.estados).forEach(e => s.add(e));
+    return [...s].sort();
+  }, [pilotosNuevos]);
 
   const estadoData = useMemo(() => {
     if (!data) return [];
@@ -1668,6 +1723,71 @@ export default function InformeTada({ isAdmin }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* Pilotos nuevos del mes */}
+        {pilotosNuevos.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <h3 className="text-sm font-bold text-gray-700 mb-1">🆕 Pilotos nuevos — {trafMesSel}</h3>
+            <p className="text-xs text-gray-400 mb-3">Pilotos programados este mes que no aparecieron en {trafPrevKey}. Total: <b className="text-purple-600">{pilotosNuevos.length}</b></p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-purple-700 text-white">
+                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">#</th>
+                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Piloto</th>
+                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">ID</th>
+                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Ciudad</th>
+                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">Turnos</th>
+                    {estadosNuevos.map(e => (
+                      <th key={e} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{e}</th>
+                    ))}
+                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">% Puntualidad</th>
+                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Puntos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pilotosNuevos.map((p, i) => (
+                    <tr key={p.id} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
+                      <td className="px-3 py-2 text-purple-400 font-bold">{i + 1}</td>
+                      <td className="px-3 py-2 font-semibold text-gray-800">{p.nombre || "Sin nombre"}</td>
+                      <td className="px-3 py-2 text-gray-400 text-xs font-mono truncate max-w-[120px]" title={p.id}>{p.id}</td>
+                      <td className="px-3 py-2 text-gray-500">{p.ciudad}</td>
+                      <td className="px-3 py-2 text-center font-bold">{p.turnos}</td>
+                      {estadosNuevos.map(e => (
+                        <td key={e} className="px-3 py-2 text-center">
+                          {p.estados[e] ? (
+                            <span className={`font-bold ${e.toUpperCase().includes("CANCEL") ? "text-orange-600" : e === "Confirmado" ? "text-green-600" : "text-gray-700"}`}>
+                              {p.estados[e]}
+                            </span>
+                          ) : <span className="text-gray-200">—</span>}
+                        </td>
+                      ))}
+                      <td className="px-3 py-2 text-center">
+                        {p.pctPunt !== null ? (
+                          <span className={`font-bold ${p.pctPunt >= 90 ? "text-green-600" : p.pctPunt >= 70 ? "text-yellow-600" : "text-red-600"}`}>
+                            {p.pctPunt.toFixed(0)}%
+                          </span>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 max-w-[200px]">
+                        <div className="flex flex-wrap gap-1">
+                          {p.puntos.map(pt => (
+                            <span key={pt} className="inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-medium">{pt}</span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {trafHasRows && !trafPrevRows && trafPrevKey && (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center text-purple-600 text-sm">
+            Para ver pilotos nuevos, sube también el reporte de <b>{trafPrevKey}</b>.
           </div>
         )}
 
