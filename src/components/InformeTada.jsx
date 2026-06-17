@@ -449,13 +449,21 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   }, [mesSel]);
   useEffect(() => {
     setInsRows(null);
-    if (!mesSel || !isAdmin) return;
-    idbLoadRows(SK_TRAF_MES(mesSel)).then(r => setInsRows(r || null));
+    if (!mesSel) return;
+    if (isAdmin) {
+      idbLoadRows(SK_TRAF_MES(mesSel)).then(r => setInsRows(r || null));
+    } else {
+      setInsRows(tadaInicial.meses?.[`traf_${mesSel}`]?.rows || null);
+    }
   }, [mesSel, trafIndex]);
   useEffect(() => {
     setInsPrevRows(null);
-    if (!insPrevKey || !isAdmin) return;
-    idbLoadRows(SK_TRAF_MES(insPrevKey)).then(r => setInsPrevRows(r || null));
+    if (!insPrevKey) return;
+    if (isAdmin) {
+      idbLoadRows(SK_TRAF_MES(insPrevKey)).then(r => setInsPrevRows(r || null));
+    } else {
+      setInsPrevRows(tadaInicial.meses?.[`traf_${insPrevKey}`]?.rows || null);
+    }
   }, [insPrevKey, trafIndex]);
 
   const saveUmb = (u) => { setUmb(u); localStorage.setItem(SK_TADA_UMB, JSON.stringify(u)); };
@@ -1113,18 +1121,28 @@ export default function InformeTada({ isAdmin }) {
   }, [trafMesSel]);
   const trafPrev = useMemo(() => trafPrevKey ? _loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
 
-  // Cargar rows desde IndexedDB cuando cambia el mes (actual + anterior)
+  // Cargar rows (IndexedDB para admin, tadaInicial para readonly)
   const [trafRows, setTrafRows] = useState(null);
   const [trafPrevRows, setTrafPrevRows] = useState(null);
   useEffect(() => {
     setTrafRows(null);
-    if (!trafMesSel || !isAdmin) return;
-    idbLoadRows(SK_TRAF_MES(trafMesSel)).then(r => setTrafRows(r || null));
+    if (!trafMesSel) return;
+    if (isAdmin) {
+      idbLoadRows(SK_TRAF_MES(trafMesSel)).then(r => setTrafRows(r || null));
+    } else {
+      const stored = tadaInicial.meses?.[`traf_${trafMesSel}`];
+      setTrafRows(stored?.rows || null);
+    }
   }, [trafMesSel, trafIndex]);
   useEffect(() => {
     setTrafPrevRows(null);
-    if (!trafPrevKey || !isAdmin) return;
-    idbLoadRows(SK_TRAF_MES(trafPrevKey)).then(r => setTrafPrevRows(r || null));
+    if (!trafPrevKey) return;
+    if (isAdmin) {
+      idbLoadRows(SK_TRAF_MES(trafPrevKey)).then(r => setTrafPrevRows(r || null));
+    } else {
+      const stored = tadaInicial.meses?.[`traf_${trafPrevKey}`];
+      setTrafPrevRows(stored?.rows || null);
+    }
   }, [trafPrevKey, trafIndex]);
 
   // Filtrar por fechas/punto si hay rows crudos y filtros activos
