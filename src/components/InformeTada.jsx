@@ -878,51 +878,6 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
         </div>
       )}
 
-      {/* Top 10 pilotos más impuntuales */}
-      {traf && !traf.pilotosImpuntuales && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
-          <p className="text-xs text-amber-700">⚠️ Los datos de pilotos no están disponibles para este mes. <b>Re-sube el archivo de tráfico</b> en la pestaña "Tráfico Pilotos" para generar el ranking.</p>
-        </div>
-      )}
-      {traf?.pilotosImpuntuales?.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <h3 className="text-sm font-bold text-gray-700 mb-3">⏱️ Top 10 Pilotos más impuntuales — {mesSel}</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-red-600 text-white">
-                  {["#", "Piloto", "ID", "Ciudad", "Turnos", "No Cumple", "Cumple", "% Incumplimiento"].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {traf.pilotosImpuntuales.map((p, i) => (
-                  <tr key={p.id || p.nombre} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-red-50/30"} hover:bg-red-50`}>
-                    <td className="px-3 py-2 text-red-400 font-bold">{i + 1}</td>
-                    <td className="px-3 py-2 font-semibold text-gray-800">{p.nombre || "Sin nombre"}</td>
-                    <td className="px-3 py-2 text-gray-400 text-xs font-mono truncate max-w-[120px]">{p.id}</td>
-                    <td className="px-3 py-2 text-gray-500">{p.ciudad}</td>
-                    <td className="px-3 py-2 text-center">{p.turnos}</td>
-                    <td className="px-3 py-2 text-center font-bold text-red-600">{p.noCumple}</td>
-                    <td className="px-3 py-2 text-center text-green-600">{p.cumple}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-red-500 rounded-full" style={{ width: `${p.pctNoCumple}%` }} />
-                        </div>
-                        <span className="text-xs font-bold text-red-600 whitespace-nowrap">{p.pctNoCumple.toFixed(0)}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">Pilotos con mínimo 3 turnos y al menos 1 incumplimiento de puntualidad.</p>
-        </div>
-      )}
-
       {/* Recomendaciones */}
       {alerts.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
