@@ -950,17 +950,18 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
           {/* Distribución por rango de turnos */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <h3 className="text-sm font-bold text-gray-700 mb-3">📊 Distribución de Pilotos Nuevos por Actividad</h3>
-            <div className="grid grid-cols-5 gap-2">
-              {Object.entries(analisisNuevos.rangos).map(([rango, count]) => {
+            <div className="grid grid-cols-5 gap-3">
+              {Object.entries(analisisNuevos.rangos).map(([rango, count], idx) => {
                 const pct = analisisNuevos.totalNuevos > 0 ? (count / analisisNuevos.totalNuevos * 100) : 0;
+                const colors = ["#7C22D4", "#A855F7", "#C026D3", "#6366F1", "#EC4899"];
                 return (
-                  <div key={rango} className="text-center">
-                    <div className="mx-auto w-full bg-gray-100 rounded-lg overflow-hidden mb-1" style={{ height: 80 }}>
-                      <div className="w-full bg-purple-500 rounded-lg transition-all" style={{ height: `${Math.max(pct, 5)}%`, marginTop: `${100 - Math.max(pct, 5)}%` }} />
+                  <div key={rango} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                    <p className="text-2xl font-bold" style={{ color: colors[idx] }}>{count}</p>
+                    <p className="text-xs font-semibold text-gray-600 mt-1">{rango}</p>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div className="h-2 rounded-full transition-all" style={{ width: `${Math.max(pct, 4)}%`, background: colors[idx] }} />
                     </div>
-                    <p className="text-lg font-bold text-purple-700">{count}</p>
-                    <p className="text-[10px] text-gray-500">{rango}</p>
-                    <p className="text-[10px] text-gray-400">{pct.toFixed(0)}%</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{pct.toFixed(0)}% del total</p>
                   </div>
                 );
               })}
