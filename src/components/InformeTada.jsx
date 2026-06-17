@@ -2030,7 +2030,37 @@ export default function InformeTada({ isAdmin }) {
         {/* Pilotos nuevos del mes */}
         {pilotosNuevos.length > 0 && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-            <h3 className="text-sm font-bold text-gray-700 mb-1">🆕 Pilotos nuevos — {trafMesSel}</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h3 className="text-sm font-bold text-gray-700">🆕 Pilotos nuevos — {trafMesSel}</h3>
+              <button onClick={() => {
+                const hdr = ["#","Piloto","ID","Ciudad","Turnos",...estadosNuevos,"% Efectividad","% Puntualidad","Puntos"];
+                const csvRows = [hdr.join(",")];
+                pilotosNuevos.forEach((p, i) => {
+                  const confirmados = p.estados["Confirmado"] || 0;
+                  const efect = p.turnos > 0 ? (confirmados / p.turnos * 100).toFixed(1) : "0";
+                  const punt = p.pctPunt !== null ? p.pctPunt.toFixed(1) : "";
+                  const row = [
+                    i+1,
+                    `"${(p.nombre||"").replace(/"/g,'""')}"`,
+                    p.id,
+                    p.ciudad,
+                    p.turnos,
+                    ...estadosNuevos.map(e => p.estados[e] || 0),
+                    `${efect}%`,
+                    punt ? `${punt}%` : "",
+                    `"${p.puntos.join(", ")}"`,
+                  ];
+                  csvRows.push(row.join(","));
+                });
+                const blob = new Blob(["\uFEFF"+csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url; a.download = `Pilotos_Nuevos_${trafMesSel}.csv`; a.click(); URL.revokeObjectURL(url);
+              }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition"
+                style={{ background: BRAND_GRADIENT }}>
+                📥 Descargar CSV
+              </button>
+            </div>
             <p className="text-xs text-gray-400 mb-3">Pilotos programados este mes que no aparecieron en {trafPrevKey}. Total: <b className="text-purple-600">{pilotosNuevos.length}</b></p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -2044,6 +2074,7 @@ export default function InformeTada({ isAdmin }) {
                     {estadosNuevos.map(e => (
                       <th key={e} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{e}</th>
                     ))}
+                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">% Efectividad</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">% Puntualidad</th>
                     <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Puntos</th>
                   </tr>
@@ -2065,6 +2096,13 @@ export default function InformeTada({ isAdmin }) {
                           ) : <span className="text-gray-200">—</span>}
                         </td>
                       ))}
+                      <td className="px-3 py-2 text-center">
+                        {(() => {
+                          const confirmados = p.estados["Confirmado"] || 0;
+                          const efect = p.turnos > 0 ? (confirmados / p.turnos * 100) : 0;
+                          return <span className={`font-bold ${efect >= 90 ? "text-green-600" : efect >= 70 ? "text-yellow-600" : "text-red-600"}`}>{efect.toFixed(0)}%</span>;
+                        })()}
+                      </td>
                       <td className="px-3 py-2 text-center">
                         {p.pctPunt !== null ? (
                           <span className={`font-bold ${p.pctPunt >= 90 ? "text-green-600" : p.pctPunt >= 70 ? "text-yellow-600" : "text-red-600"}`}>
