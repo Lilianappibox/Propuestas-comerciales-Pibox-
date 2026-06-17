@@ -1095,15 +1095,19 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
 async function exportPDF(ref, filename, orientation = "portrait") {
   if (!ref?.current) return;
-  const html2pdf = (await import("html2pdf.js")).default;
-  await html2pdf().set({
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: "jpeg", quality: 0.95 },
-    html2canvas: { scale: 2, useCORS: true, logging: false },
-    jsPDF: { unit: "mm", format: "a4", orientation },
-    pagebreak: { mode: ["css", "legacy"] },
-  }).from(ref.current).save();
+  try {
+    const html2pdf = (await import("html2pdf.js")).default;
+    await html2pdf().set({
+      margin: [6, 6, 6, 6],
+      filename,
+      image: { type: "jpeg", quality: 0.85 },
+      html2canvas: { scale: 1.5, useCORS: true, logging: false, scrollY: 0, windowWidth: ref.current.scrollWidth },
+      jsPDF: { unit: "mm", format: "a4", orientation },
+      pagebreak: { mode: ["css"], avoid: ["tr", ".rounded-2xl"] },
+    }).from(ref.current).save();
+  } catch (e) {
+    alert("Error al generar PDF: " + e.message);
+  }
 }
 
 export default function InformeTada({ isAdmin }) {
