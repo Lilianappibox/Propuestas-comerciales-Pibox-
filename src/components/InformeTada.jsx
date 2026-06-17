@@ -433,6 +433,25 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
   const [mesSel, setMesSel] = useState(insightsMeses[0] || "");
 
+  // Cargar rows de mes actual y anterior para análisis de pilotos nuevos
+  const [insRows, setInsRows] = useState(null);
+  const [insPrevRows, setInsPrevRows] = useState(null);
+  const insPrevKey = useMemo(() => {
+    const s = Object.keys(trafIndex).sort();
+    const i = s.indexOf(mesSel);
+    return i > 0 ? s[i - 1] : null;
+  }, [mesSel, trafIndex]);
+  useEffect(() => {
+    setInsRows(null);
+    if (!mesSel || !isAdmin) return;
+    idbLoadRows(SK_TRAF_MES(mesSel)).then(r => setInsRows(r || null));
+  }, [mesSel, trafIndex]);
+  useEffect(() => {
+    setInsPrevRows(null);
+    if (!insPrevKey || !isAdmin) return;
+    idbLoadRows(SK_TRAF_MES(insPrevKey)).then(r => setInsPrevRows(r || null));
+  }, [insPrevKey, trafIndex]);
+
   const saveUmb = (u) => { setUmb(u); localStorage.setItem(SK_TADA_UMB, JSON.stringify(u)); };
   const UmbField = ({ label, k, suffix = "%" }) => (
     <div>
@@ -532,6 +551,104 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   detallePuntos.sort((a, b) => a.coloc - b.coloc);
   detalleCiudades.sort((a, b) => a.coloc - b.coloc);
   const SEM = { rojo: "#DC2626", amarillo: "#D97706", verde: "#16A34A" };
+
+  // ── Análisis de pilotos nuevos ──
+  const analisisNuevos = useMemo(() => {
+    if (!insRows?.length || !insPrevRows?.length) return null;
+    const prevIds = new Set();
+    for (const r of insPrevRows) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      if (id) prevIds.add(id);
+    }
+    // Todos los IDs del mes actual
+    const allCurrentIds = new Set();
+    for (const r of insRows) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      if (id) allCurrentIds.add(id);
+    }
+    // Pilotos que estaban el mes anterior pero no están este mes (perdidos/rotación)
+    const pilotosPerdidos = new Set();
+    for (const id of prevIds) { if (!allCurrentIds.has(id)) pilotosPerdidos.add(id); }
+
+    // Agrupar data de pilotos nuevos
+    const map = {};
+    const porCiudad = {};
+    let totalTurnosNuevos = 0, totalPuntSI = 0, totalPuntEval = 0, totalCancela = 0;
+    for (const r of insRows) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      if (!id || prevIds.has(id)) continue;
+      const nombre = String(r["NOMBRE DE PILOTO"] || r["NOMBRE PILOTO"] || "").trim();
+      const ciudad = String(r["CIUDAD"] || "").trim();
+      const estado = String(r["ESTADO"] || "").trim();
+      const punto = String(r["PUNTO"] || "").trim();
+      const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
+      const esCancela = estado.toUpperCase().includes("CANCEL") || estado.toUpperCase().includes("PILOTO CANCELA");
+      if (!map[id]) map[id] = { id, nombre, ciudad, turnos: 0, puntSI: 0, puntTotal: 0, cancela: 0, estados: {}, puntos: new Set() };
+      map[id].turnos++;
+      totalTurnosNuevos++;
+      if (estado) map[id].estados[estado] = (map[id].estados[estado] || 0) + 1;
+      if (punto) map[id].puntos.add(punto);
+      if (punt === "SI CUMPLE" || punt === "NO CUMPLE") { map[id].puntTotal++; totalPuntEval++; }
+      if (punt === "SI CUMPLE") { map[id].puntSI++; totalPuntSI++; }
+      if (esCancela) { map[id].cancela++; totalCancela++; }
+      if (nombre && nombre.length > (map[id].nombre || "").length) map[id].nombre = nombre;
+      if (ciudad) map[id].ciudad = ciudad;
+      // Por ciudad
+      if (ciudad) {
+        if (!porCiudad[ciudad]) porCiudad[ciudad] = { nuevos: new Set(), turnos: 0, puntSI: 0, puntTotal: 0, cancela: 0, confirmados: 0 };
+        porCiudad[ciudad].nuevos.add(id);
+        porCiudad[ciudad].turnos++;
+        if (punt === "SI CUMPLE") porCiudad[ciudad].puntSI++;
+        if (punt === "SI CUMPLE" || punt === "NO CUMPLE") porCiudad[ciudad].puntTotal++;
+        if (esCancela) porCiudad[ciudad].cancela++;
+        if (estado === "Confirmado") porCiudad[ciudad].confirmados++;
+      }
+    }
+    const nuevos = Object.values(map);
+    const totalNuevos = nuevos.length;
+    if (totalNuevos === 0) return null;
+    // Promedios
+    const avgTurnos = totalTurnosNuevos / totalNuevos;
+    const pctPuntGlobal = totalPuntEval > 0 ? (totalPuntSI / totalPuntEval * 100) : 0;
+    const pctCancelaGlobal = totalTurnosNuevos > 0 ? (totalCancela / totalTurnosNuevos * 100) : 0;
+    // Tasa de retención: pilotos del mes anterior que siguen este mes
+    const retenidos = [...prevIds].filter(id => allCurrentIds.has(id)).length;
+    const tasaRetencion = prevIds.size > 0 ? (retenidos / prevIds.size * 100) : 0;
+    // Distribución por rango de turnos
+    const rangos = { "1 turno": 0, "2-3 turnos": 0, "4-7 turnos": 0, "8-15 turnos": 0, "16+ turnos": 0 };
+    for (const p of nuevos) {
+      if (p.turnos === 1) rangos["1 turno"]++;
+      else if (p.turnos <= 3) rangos["2-3 turnos"]++;
+      else if (p.turnos <= 7) rangos["4-7 turnos"]++;
+      else if (p.turnos <= 15) rangos["8-15 turnos"]++;
+      else rangos["16+ turnos"]++;
+    }
+    // Ciudad data
+    const ciudadData = Object.entries(porCiudad)
+      .map(([ciudad, v]) => ({
+        ciudad,
+        nuevos: v.nuevos.size,
+        turnos: v.turnos,
+        avgTurnos: v.turnos / v.nuevos.size,
+        pctPunt: v.puntTotal > 0 ? (v.puntSI / v.puntTotal * 100) : null,
+        pctCancela: v.turnos > 0 ? (v.cancela / v.turnos * 100) : 0,
+        pctConfirmado: v.turnos > 0 ? (v.confirmados / v.turnos * 100) : 0,
+      }))
+      .sort((a, b) => b.nuevos - a.nuevos);
+    // Top pilotos nuevos con más cancelaciones
+    const topCanceladores = nuevos.filter(p => p.cancela > 0)
+      .map(p => ({ ...p, pctCancela: p.turnos > 0 ? (p.cancela / p.turnos * 100) : 0 }))
+      .sort((a, b) => b.cancela - a.cancela).slice(0, 5);
+    // Top pilotos nuevos más activos
+    const topActivos = [...nuevos].sort((a, b) => b.turnos - a.turnos).slice(0, 5)
+      .map(p => ({ ...p, pctPunt: p.puntTotal > 0 ? (p.puntSI / p.puntTotal * 100) : null }));
+
+    return {
+      totalNuevos, totalTurnosNuevos, avgTurnos, pctPuntGlobal, pctCancelaGlobal,
+      pilotosPerdidos: pilotosPerdidos.size, tasaRetencion, prevTotal: prevIds.size,
+      rangos, ciudadData, topCanceladores, topActivos,
+    };
+  }, [insRows, insPrevRows]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -719,6 +836,175 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
             {alerts.some(a => a.icon === "📉") && <li>• <b>Turnos:</b> Analizar si la reducción es por falta de demanda o falta de pilotos.</li>}
             {alerts.some(a => a.icon === "🚨") && <li>• <b>Urgente:</b> Reunión con el equipo para plan de acción ante caída general.</li>}
           </ul>
+        </div>
+      )}
+
+      {/* ── Análisis Pilotos Nuevos ──────────────────────────────────── */}
+      {analisisNuevos && (
+        <>
+          <div className="bg-gradient-to-r from-purple-700 to-fuchsia-600 rounded-2xl shadow-md p-5 text-white">
+            <h3 className="text-sm font-bold mb-1">🆕 Análisis de Pilotos Nuevos — {mesSel}</h3>
+            <p className="text-xs opacity-80 mb-4">Pilotos programados este mes que no aparecieron en {insPrevKey}.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {[
+                { label: "Pilotos nuevos", value: analisisNuevos.totalNuevos, icon: "👤" },
+                { label: "Turnos asignados", value: analisisNuevos.totalTurnosNuevos, icon: "📋" },
+                { label: "Promedio turnos/piloto", value: analisisNuevos.avgTurnos.toFixed(1), icon: "📊" },
+                { label: "Puntualidad", value: `${analisisNuevos.pctPuntGlobal.toFixed(1)}%`, icon: "⏱️" },
+                { label: "Tasa cancelación", value: `${analisisNuevos.pctCancelaGlobal.toFixed(1)}%`, icon: "🚫" },
+                { label: "Retención mes ant.", value: `${analisisNuevos.tasaRetencion.toFixed(1)}%`, icon: "🔄" },
+              ].map((kpi, i) => (
+                <div key={i} className="bg-white/15 backdrop-blur rounded-xl p-3 text-center">
+                  <p className="text-lg mb-0.5">{kpi.icon}</p>
+                  <p className="text-xl font-bold">{kpi.value}</p>
+                  <p className="text-[10px] opacity-80">{kpi.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Rotación */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <h3 className="text-sm font-bold text-gray-700 mb-3">🔄 Rotación de Pilotos — {mesSel} vs {insPrevKey}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div className="bg-purple-50 rounded-xl p-3 text-center">
+                <p className="text-2xl font-bold text-purple-700">{analisisNuevos.prevTotal}</p>
+                <p className="text-xs text-gray-500">Pilotos mes anterior</p>
+              </div>
+              <div className="bg-green-50 rounded-xl p-3 text-center">
+                <p className="text-2xl font-bold text-green-600">{analisisNuevos.prevTotal - analisisNuevos.pilotosPerdidos}</p>
+                <p className="text-xs text-gray-500">Retenidos</p>
+              </div>
+              <div className="bg-red-50 rounded-xl p-3 text-center">
+                <p className="text-2xl font-bold text-red-600">{analisisNuevos.pilotosPerdidos}</p>
+                <p className="text-xs text-gray-500">Perdidos (no volvieron)</p>
+              </div>
+              <div className="bg-blue-50 rounded-xl p-3 text-center">
+                <p className="text-2xl font-bold text-blue-600">{analisisNuevos.totalNuevos}</p>
+                <p className="text-xs text-gray-500">Nuevos ingresaron</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden flex">
+                <div className="h-full bg-green-500 transition-all" style={{ width: `${analisisNuevos.tasaRetencion}%` }} title={`Retención: ${analisisNuevos.tasaRetencion.toFixed(1)}%`} />
+                <div className="h-full bg-red-400 transition-all" style={{ width: `${100 - analisisNuevos.tasaRetencion}%` }} title={`Pérdida: ${(100 - analisisNuevos.tasaRetencion).toFixed(1)}%`} />
+              </div>
+              <span className="font-bold text-green-600">{analisisNuevos.tasaRetencion.toFixed(0)}% retención</span>
+            </div>
+          </div>
+
+          {/* Distribución por rango de turnos */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <h3 className="text-sm font-bold text-gray-700 mb-3">📊 Distribución de Pilotos Nuevos por Actividad</h3>
+            <div className="grid grid-cols-5 gap-2">
+              {Object.entries(analisisNuevos.rangos).map(([rango, count]) => {
+                const pct = analisisNuevos.totalNuevos > 0 ? (count / analisisNuevos.totalNuevos * 100) : 0;
+                return (
+                  <div key={rango} className="text-center">
+                    <div className="mx-auto w-full bg-gray-100 rounded-lg overflow-hidden mb-1" style={{ height: 80 }}>
+                      <div className="w-full bg-purple-500 rounded-lg transition-all" style={{ height: `${Math.max(pct, 5)}%`, marginTop: `${100 - Math.max(pct, 5)}%` }} />
+                    </div>
+                    <p className="text-lg font-bold text-purple-700">{count}</p>
+                    <p className="text-[10px] text-gray-500">{rango}</p>
+                    <p className="text-[10px] text-gray-400">{pct.toFixed(0)}%</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Por ciudad */}
+          {analisisNuevos.ciudadData.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">📍 Pilotos Nuevos por Ciudad</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-purple-700 text-white">
+                      {["Ciudad", "Nuevos", "Turnos", "Prom. Turnos/Piloto", "% Confirmado", "% Cancelación", "% Puntualidad"].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analisisNuevos.ciudadData.map((c, i) => (
+                      <tr key={c.ciudad} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
+                        <td className="px-3 py-2 font-semibold text-gray-800">{c.ciudad}</td>
+                        <td className="px-3 py-2 text-center font-bold text-purple-600">{c.nuevos}</td>
+                        <td className="px-3 py-2 text-center">{c.turnos}</td>
+                        <td className="px-3 py-2 text-center">{c.avgTurnos.toFixed(1)}</td>
+                        <td className="px-3 py-2 text-center font-bold text-green-600">{c.pctConfirmado.toFixed(0)}%</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`font-bold ${c.pctCancela > 20 ? "text-red-600" : c.pctCancela > 10 ? "text-orange-600" : "text-green-600"}`}>
+                            {c.pctCancela.toFixed(0)}%
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {c.pctPunt !== null ? (
+                            <span className={`font-bold ${c.pctPunt >= 90 ? "text-green-600" : c.pctPunt >= 70 ? "text-yellow-600" : "text-red-600"}`}>
+                              {c.pctPunt.toFixed(0)}%
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Top 5 pilotos nuevos más activos + Top 5 que más cancelan */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {analisisNuevos.topActivos.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-3">🏆 Top 5 Pilotos Nuevos Más Activos</h3>
+                <div className="space-y-2">
+                  {analisisNuevos.topActivos.map((p, i) => (
+                    <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
+                      <span className="text-lg font-bold text-purple-400 w-6">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 truncate">{p.nombre || p.id}</p>
+                        <p className="text-[10px] text-gray-400">{p.ciudad}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-purple-700">{p.turnos} turnos</p>
+                        <p className="text-[10px] text-gray-500">
+                          Punt: {p.pctPunt !== null ? <span className={p.pctPunt >= 90 ? "text-green-600 font-bold" : p.pctPunt >= 70 ? "text-yellow-600 font-bold" : "text-red-600 font-bold"}>{p.pctPunt.toFixed(0)}%</span> : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analisisNuevos.topCanceladores.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-3">🚫 Top 5 Pilotos Nuevos que Más Cancelan</h3>
+                <div className="space-y-2">
+                  {analisisNuevos.topCanceladores.map((p, i) => (
+                    <div key={p.id} className="flex items-center gap-3 bg-red-50/50 rounded-lg px-3 py-2">
+                      <span className="text-lg font-bold text-red-400 w-6">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 truncate">{p.nombre || p.id}</p>
+                        <p className="text-[10px] text-gray-400">{p.ciudad}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-orange-600">{p.cancela}/{p.turnos}</p>
+                        <p className="text-[10px] font-bold text-red-600">{p.pctCancela.toFixed(0)}% cancel.</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {isAdmin && insRows && !insPrevRows && insPrevKey && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center text-purple-600 text-sm">
+          Para ver el análisis de pilotos nuevos, sube también el reporte de <b>{insPrevKey}</b> en la pestaña Tráfico Pilotos.
         </div>
       )}
     </div>
