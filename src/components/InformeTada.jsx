@@ -749,18 +749,20 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
         pctConfirmado: v.turnos > 0 ? (v.confirmados / v.turnos * 100) : 0,
       }))
       .sort((a, b) => b.nuevos - a.nuevos);
-    // Top pilotos nuevos con más cancelaciones
-    const topCanceladores = nuevos.filter(p => p.cancela > 0)
+    // Pilotos nuevos que cancelan (todos, ordenados)
+    const allCanceladores = nuevos.filter(p => p.cancela > 0)
       .map(p => ({ ...p, pctCancela: p.turnos > 0 ? (p.cancela / p.turnos * 100) : 0 }))
-      .sort((a, b) => b.cancela - a.cancela).slice(0, 5);
-    // Top pilotos nuevos más activos
-    const topActivos = [...nuevos].sort((a, b) => b.turnos - a.turnos).slice(0, 5)
+      .sort((a, b) => b.cancela - a.cancela);
+    const topCanceladores = allCanceladores.slice(0, 5);
+    // Pilotos nuevos más activos (todos, ordenados)
+    const allActivos = [...nuevos].sort((a, b) => b.turnos - a.turnos)
       .map(p => ({ ...p, pctPunt: p.puntTotal > 0 ? (p.puntSI / p.puntTotal * 100) : null }));
+    const topActivos = allActivos.slice(0, 5);
 
     return {
       totalNuevos, totalTurnosNuevos, avgTurnos, pctPuntGlobal, pctCancelaGlobal,
       pilotosPerdidos: pilotosPerdidos.size, tasaRetencion, prevTotal: prevIds.size,
-      rangos, ciudadData, topCanceladores, topActivos,
+      rangos, ciudadData, topCanceladores, topActivos, allActivos, allCanceladores,
     };
   }, [insRows, insPrevRows]);
 
@@ -1034,7 +1036,20 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {analisisNuevos.topActivos.length > 0 && (
               <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                <h3 className="text-sm font-bold text-gray-700 mb-3">🏆 Top 5 Pilotos Nuevos Más Activos</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-gray-700">🏆 Top 5 Pilotos Nuevos Más Activos</h3>
+                  <button onClick={() => {
+                    const rows = [["#","Piloto","ID","Ciudad","Turnos","Confirmados","Cancelaciones","% Puntualidad","Puntos"].join(",")];
+                    analisisNuevos.allActivos.forEach((p, i) => {
+                      const conf = p.estados?.["Confirmado"] || 0;
+                      rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,conf,p.cancela||0,p.pctPunt!==null?`${p.pctPunt.toFixed(1)}%`:"",`"${(p.puntos||[]).join(", ")}"`].join(","));
+                    });
+                    const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Nuevos_Activos_${mesSel}.csv`; a.click();
+                  }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition">
+                    📥 Descargar todos ({analisisNuevos.allActivos.length})
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {analisisNuevos.topActivos.map((p, i) => (
                     <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
@@ -1057,7 +1072,19 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
             {analisisNuevos.topCanceladores.length > 0 && (
               <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                <h3 className="text-sm font-bold text-gray-700 mb-3">🚫 Top 5 Pilotos Nuevos que Más Cancelan</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-gray-700">🚫 Top 5 Pilotos Nuevos que Más Cancelan</h3>
+                  <button onClick={() => {
+                    const rows = [["#","Piloto","ID","Ciudad","Turnos","Cancelaciones","No Cancela","% Cancelación","Puntos"].join(",")];
+                    analisisNuevos.allCanceladores.forEach((p, i) => {
+                      rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.cancela,p.turnos-p.cancela,`${p.pctCancela.toFixed(1)}%`,`"${(p.puntos||[]).join(", ")}"`].join(","));
+                    });
+                    const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Nuevos_Canceladores_${mesSel}.csv`; a.click();
+                  }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
+                    📥 Descargar todos ({analisisNuevos.allCanceladores.length})
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {analisisNuevos.topCanceladores.map((p, i) => (
                     <div key={p.id} className="flex items-center gap-3 bg-red-50/50 rounded-lg px-3 py-2">
