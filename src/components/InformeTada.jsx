@@ -718,7 +718,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
         if (estado === "Confirmado") porCiudad[ciudad].confirmados++;
       }
     }
-    const nuevos = Object.values(map);
+    const nuevos = Object.values(map).map(p => ({ ...p, puntos: [...p.puntos] }));
     const totalNuevos = nuevos.length;
     if (totalNuevos === 0) return null;
     // Promedios
