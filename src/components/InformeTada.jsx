@@ -288,19 +288,17 @@ function processRows(rows) {
 
   const cancelaciones = (estadoMap["Cancelado"] || 0) + (estadoMap["CANCELADO"] || 0);
 
-  // Top pilotos impuntuales
+  // Pilotos impuntuales (todos, sin limitar)
   const pilotosImpuntuales = Object.values(pilotoMap)
     .filter(p => p.turnos >= 3 && p.noCumple > 0)
     .map(p => ({ ...p, pctNoCumple: (p.noCumple / p.turnos * 100) }))
-    .sort((a, b) => b.noCumple - a.noCumple)
-    .slice(0, 10);
+    .sort((a, b) => b.noCumple - a.noCumple);
 
-  // Top pilotos que más cancelan
+  // Pilotos que más cancelan (todos, sin limitar)
   const pilotosCanceladores = Object.values(pilotoMap)
     .filter(p => p.cancela > 0)
     .map(p => ({ ...p, pctCancela: (p.cancela / p.turnos * 100) }))
-    .sort((a, b) => b.cancela - a.cancela)
-    .slice(0, 10);
+    .sort((a, b) => b.cancela - a.cancela);
 
   return {
     totalTurnos: rows.length,
@@ -1952,7 +1950,19 @@ export default function InformeTada({ isAdmin }) {
         {/* Top 10 pilotos impuntuales */}
         {data?.pilotosImpuntuales?.length > 0 && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-            <h3 className="text-sm font-bold text-gray-700 mb-3">⏱️ Top 10 Pilotos más impuntuales — {trafMesSel}</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="text-sm font-bold text-gray-700">⏱️ Top 10 Pilotos más impuntuales — {trafMesSel}</h3>
+              <button onClick={() => {
+                const rows = [["#","Piloto","ID","Ciudad","Turnos","No Cumple","Cumple","% Incumplimiento"].join(",")];
+                data.pilotosImpuntuales.forEach((p, i) => {
+                  rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.noCumple,p.cumple,`${p.pctNoCumple.toFixed(1)}%`].join(","));
+                });
+                const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Impuntuales_${trafMesSel}.csv`; a.click();
+              }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition" style={{ background: "linear-gradient(135deg,#DC2626,#EF4444)" }}>
+                📥 Descargar todos ({data.pilotosImpuntuales.length})
+              </button>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1963,7 +1973,7 @@ export default function InformeTada({ isAdmin }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.pilotosImpuntuales.map((p, i) => (
+                  {data.pilotosImpuntuales.slice(0, 10).map((p, i) => (
                     <tr key={p.id || p.nombre} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-red-50/30"} hover:bg-red-50`}>
                       <td className="px-3 py-2 text-red-400 font-bold">{i + 1}</td>
                       <td className="px-3 py-2 font-semibold text-gray-800">{p.nombre || "Sin nombre"}</td>
@@ -1985,13 +1995,28 @@ export default function InformeTada({ isAdmin }) {
                 </tbody>
               </table>
             </div>
+            {data.pilotosImpuntuales.length > 10 && (
+              <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 10 de {data.pilotosImpuntuales.length} pilotos. Descarga el CSV para ver todos.</p>
+            )}
           </div>
         )}
 
         {/* Top 10 pilotos que más cancelan */}
         {data?.pilotosCanceladores?.length > 0 && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-            <h3 className="text-sm font-bold text-gray-700 mb-3">🚫 Top 10 Pilotos que más cancelan — {trafMesSel}</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="text-sm font-bold text-gray-700">🚫 Top 10 Pilotos que más cancelan — {trafMesSel}</h3>
+              <button onClick={() => {
+                const rows = [["#","Piloto","ID","Ciudad","Turnos","Cancelaciones","No Cancela","% Cancelación"].join(",")];
+                data.pilotosCanceladores.forEach((p, i) => {
+                  rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.cancela,p.turnos-p.cancela,`${p.pctCancela.toFixed(1)}%`].join(","));
+                });
+                const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Canceladores_${trafMesSel}.csv`; a.click();
+              }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition" style={{ background: "linear-gradient(135deg,#D97706,#F59E0B)" }}>
+                📥 Descargar todos ({data.pilotosCanceladores.length})
+              </button>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -2002,7 +2027,7 @@ export default function InformeTada({ isAdmin }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.pilotosCanceladores.map((p, i) => (
+                  {data.pilotosCanceladores.slice(0, 10).map((p, i) => (
                     <tr key={p.id || p.nombre} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-orange-50/30"} hover:bg-orange-50`}>
                       <td className="px-3 py-2 text-orange-400 font-bold">{i + 1}</td>
                       <td className="px-3 py-2 font-semibold text-gray-800">{p.nombre || "Sin nombre"}</td>
@@ -2024,6 +2049,9 @@ export default function InformeTada({ isAdmin }) {
                 </tbody>
               </table>
             </div>
+            {data.pilotosCanceladores.length > 10 && (
+              <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 10 de {data.pilotosCanceladores.length} pilotos. Descarga el CSV para ver todos.</p>
+            )}
           </div>
         )}
 
