@@ -1093,86 +1093,70 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   );
 }
 
+function oklchToRgb(oklchStr) {
+  const div = document.createElement("div");
+  div.style.color = oklchStr;
+  div.style.display = "none";
+  document.body.appendChild(div);
+  const rgb = getComputedStyle(div).color;
+  div.remove();
+  return rgb || "#888888";
+}
+
+function purgeOklch(doc) {
+  // 1. Replace oklch in all style elements
+  for (const style of doc.querySelectorAll("style")) {
+    if (style.textContent.includes("oklch")) {
+      style.textContent = style.textContent.replace(/oklch\([^)]+\)/g, (m) => oklchToRgb(m));
+    }
+  }
+  // 2. Replace oklch in all inline styles
+  for (const el of doc.querySelectorAll("[style]")) {
+    if (el.getAttribute("style").includes("oklch")) {
+      el.setAttribute("style", el.getAttribute("style").replace(/oklch\([^)]+\)/g, (m) => oklchToRgb(m)));
+    }
+  }
+  // 3. Fix CSS custom properties on :root
+  const rootEl = doc.documentElement;
+  const rootCS = getComputedStyle(rootEl);
+  for (let i = 0; i < rootCS.length; i++) {
+    const prop = rootCS[i];
+    if (prop.startsWith("--")) {
+      const val = rootCS.getPropertyValue(prop);
+      if (val && val.includes("oklch")) {
+        rootEl.style.setProperty(prop, oklchToRgb(val.trim()));
+      }
+    }
+  }
+  // 4. Inline all computed color properties on every element
+  const colorProps = ["color","background-color","border-color","border-top-color","border-bottom-color","border-left-color","border-right-color","outline-color","fill","stroke"];
+  for (const node of doc.querySelectorAll("*")) {
+    const cs = getComputedStyle(node);
+    for (const prop of colorProps) {
+      const val = cs.getPropertyValue(prop);
+      if (val && val.includes("oklch")) {
+        node.style.setProperty(prop, oklchToRgb(val), "important");
+      }
+    }
+  }
+}
+
 async function exportPDF(ref, filename, orientation = "portrait") {
   if (!ref?.current) return;
   try {
-    const el = ref.current;
-    // Rewrite all oklch in stylesheets to rgb before html2canvas
-    const overrideSheet = document.createElement("style");
-    overrideSheet.id = "pdf-oklch-fix";
-    // Collect all CSS rules with oklch and convert them
-    const cssOverrides = [];
-    for (const sheet of document.styleSheets) {
-      try {
-        for (const rule of sheet.cssRules) {
-          if (rule.cssText && rule.cssText.includes("oklch")) {
-            // Replace oklch(...) with a fallback
-            const fixed = rule.cssText.replace(/oklch\([^)]+\)/g, (match) => {
-              const ctx = document.createElement("canvas").getContext("2d");
-              ctx.fillStyle = match;
-              // If browser understood it, ctx.fillStyle will be hex/rgb
-              return ctx.fillStyle !== "#000000" ? ctx.fillStyle : "#888888";
-            });
-            if (fixed !== rule.cssText) cssOverrides.push(fixed);
-          }
-        }
-      } catch { /* cross-origin sheets */ }
-    }
-    // Also override CSS custom properties on :root
-    const rootStyles = getComputedStyle(document.documentElement);
-    const rootOverrides = [];
-    for (let i = 0; i < rootStyles.length; i++) {
-      const prop = rootStyles[i];
-      if (prop.startsWith("--")) {
-        const val = rootStyles.getPropertyValue(prop);
-        if (val && val.includes("oklch")) {
-          const ctx = document.createElement("canvas").getContext("2d");
-          ctx.fillStyle = val.trim();
-          rootOverrides.push(`${prop}: ${ctx.fillStyle !== "#000000" ? ctx.fillStyle : "#888888"}`);
-        }
-      }
-    }
-    if (rootOverrides.length) cssOverrides.push(`:root { ${rootOverrides.join("; ")} }`);
-    overrideSheet.textContent = cssOverrides.join("\n");
-    document.head.appendChild(overrideSheet);
-
-    // Also inline-fix all elements with oklch computed colors
-    const allEls = [el, ...el.querySelectorAll("*")];
-    const origInline = [];
-    const colorProps = ["color", "background-color", "border-color", "border-top-color", "border-bottom-color", "border-left-color", "border-right-color", "outline-color", "text-decoration-color", "fill", "stroke"];
-    for (const node of allEls) {
-      const cs = getComputedStyle(node);
-      const saved = {};
-      for (const prop of colorProps) {
-        const val = cs.getPropertyValue(prop);
-        if (val && val.includes("oklch")) {
-          saved[prop] = node.style.getPropertyValue(prop);
-          const ctx = document.createElement("canvas").getContext("2d");
-          ctx.fillStyle = val;
-          node.style.setProperty(prop, ctx.fillStyle !== "#000000" ? ctx.fillStyle : "#888888", "important");
-        }
-      }
-      if (Object.keys(saved).length) origInline.push({ node, saved });
-    }
-
     const html2pdf = (await import("html2pdf.js")).default;
     await html2pdf().set({
       margin: [6, 6, 6, 6],
       filename,
       image: { type: "jpeg", quality: 0.85 },
-      html2canvas: { scale: 1.5, useCORS: true, logging: false, scrollY: 0, windowWidth: el.scrollWidth },
+      html2canvas: {
+        scale: 1.5, useCORS: true, logging: false, scrollY: 0,
+        windowWidth: ref.current.scrollWidth,
+        onclone: (clonedDoc) => purgeOklch(clonedDoc),
+      },
       jsPDF: { unit: "mm", format: "a4", orientation },
       pagebreak: { mode: ["css"], avoid: ["tr", ".rounded-2xl"] },
-    }).from(el).save();
-
-    // Cleanup
-    overrideSheet.remove();
-    for (const { node, saved } of origInline) {
-      for (const [prop, val] of Object.entries(saved)) {
-        if (val) node.style.setProperty(prop, val);
-        else node.style.removeProperty(prop);
-      }
-    }
+    }).from(ref.current).save();
   } catch (e) {
     alert("Error al generar PDF: " + e.message);
   }
