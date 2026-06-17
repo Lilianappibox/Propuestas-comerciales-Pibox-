@@ -437,10 +437,18 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   const [insRows, setInsRows] = useState(null);
   const [insPrevRows, setInsPrevRows] = useState(null);
   const insPrevKey = useMemo(() => {
-    const s = Object.keys(trafIndex).sort();
-    const i = s.indexOf(mesSel);
-    return i > 0 ? s[i - 1] : null;
-  }, [mesSel, trafIndex]);
+    if (!mesSel) return null;
+    // Calcular mes calendario anterior (Junio 2026 → Mayo 2026)
+    const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const parts = mesSel.split(" ");
+    if (parts.length !== 2) return null;
+    const mi = ML.indexOf(parts[0]);
+    const yr = parseInt(parts[1]);
+    if (mi <= 0 || isNaN(yr)) return null;
+    const prevMi = mi === 1 ? 12 : mi - 1;
+    const prevYr = mi === 1 ? yr - 1 : yr;
+    return `${ML[prevMi]} ${prevYr}`;
+  }, [mesSel]);
   useEffect(() => {
     setInsRows(null);
     if (!mesSel || !isAdmin) return;
@@ -1045,10 +1053,17 @@ export default function InformeTada({ isAdmin }) {
   /* ── derived data (tráfico) ────────────────────────────────────────────── */
   const trafActual = useMemo(() => trafMesSel ? _loadTrafMes(trafMesSel) : null, [trafMesSel, trafIndex]);
   const trafPrevKey = useMemo(() => {
-    const sorted = Object.keys(trafIndex).sort();
-    const idx = sorted.indexOf(trafMesSel);
-    return idx > 0 ? sorted[idx - 1] : null;
-  }, [trafMesSel, trafIndex]);
+    if (!trafMesSel) return null;
+    const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const parts = trafMesSel.split(" ");
+    if (parts.length !== 2) return null;
+    const mi = ML.indexOf(parts[0]);
+    const yr = parseInt(parts[1]);
+    if (mi <= 0 || isNaN(yr)) return null;
+    const prevMi = mi === 1 ? 12 : mi - 1;
+    const prevYr = mi === 1 ? yr - 1 : yr;
+    return `${ML[prevMi]} ${prevYr}`;
+  }, [trafMesSel]);
   const trafPrev = useMemo(() => trafPrevKey ? _loadTrafMes(trafPrevKey) : null, [trafPrevKey, trafIndex]);
 
   // Cargar rows desde IndexedDB cuando cambia el mes (actual + anterior)
