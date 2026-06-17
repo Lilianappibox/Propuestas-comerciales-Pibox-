@@ -1096,15 +1096,41 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 async function exportPDF(ref, filename, orientation = "portrait") {
   if (!ref?.current) return;
   try {
+    // Fix oklch colors not supported by html2canvas
+    const el = ref.current;
+    const allEls = [el, ...el.querySelectorAll("*")];
+    const origStyles = [];
+    for (const node of allEls) {
+      const cs = getComputedStyle(node);
+      const fixes = {};
+      for (const prop of ["color", "background-color", "border-color", "border-top-color", "border-bottom-color", "border-left-color", "border-right-color"]) {
+        const val = cs.getPropertyValue(prop);
+        if (val && val.includes("oklch")) {
+          fixes[prop] = node.style.getPropertyValue(prop);
+          // Convert via canvas
+          const ctx = document.createElement("canvas").getContext("2d");
+          ctx.fillStyle = val;
+          node.style.setProperty(prop, ctx.fillStyle);
+        }
+      }
+      if (Object.keys(fixes).length) origStyles.push({ node, fixes });
+    }
     const html2pdf = (await import("html2pdf.js")).default;
     await html2pdf().set({
       margin: [6, 6, 6, 6],
       filename,
       image: { type: "jpeg", quality: 0.85 },
-      html2canvas: { scale: 1.5, useCORS: true, logging: false, scrollY: 0, windowWidth: ref.current.scrollWidth },
+      html2canvas: { scale: 1.5, useCORS: true, logging: false, scrollY: 0, windowWidth: el.scrollWidth },
       jsPDF: { unit: "mm", format: "a4", orientation },
       pagebreak: { mode: ["css"], avoid: ["tr", ".rounded-2xl"] },
-    }).from(ref.current).save();
+    }).from(el).save();
+    // Restore original styles
+    for (const { node, fixes } of origStyles) {
+      for (const [prop, val] of Object.entries(fixes)) {
+        if (val) node.style.setProperty(prop, val);
+        else node.style.removeProperty(prop);
+      }
+    }
   } catch (e) {
     alert("Error al generar PDF: " + e.message);
   }
