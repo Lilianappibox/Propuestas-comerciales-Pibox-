@@ -1039,13 +1039,25 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-gray-700">🏆 Top 5 Pilotos Nuevos Más Activos</h3>
                   <button onClick={() => {
-                    const rows = [["#","Piloto","ID","Ciudad","Turnos","Confirmados","Cancelaciones","% Puntualidad","Puntos"].join(",")];
-                    analisisNuevos.allActivos.forEach((p, i) => {
-                      const conf = p.estados?.["Confirmado"] || 0;
-                      rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,conf,p.cancela||0,p.pctPunt!==null?`${p.pctPunt.toFixed(1)}%`:"",`"${(p.puntos||[]).join(", ")}"`].join(","));
-                    });
-                    const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-                    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Nuevos_Activos_${mesSel}.csv`; a.click();
+                    try {
+                      const csvRows = [["#","Piloto","ID","Ciudad","Turnos","Confirmados","Cancelaciones","% Puntualidad","Puntos"].join(",")];
+                      (analisisNuevos.allActivos || []).forEach((p, i) => {
+                        const nombre = String(p.nombre||"").replace(/"/g,'""');
+                        const conf = (p.estados && p.estados["Confirmado"]) || 0;
+                        const punt = p.pctPunt !== null && p.pctPunt !== undefined ? p.pctPunt.toFixed(1)+"%" : "";
+                        const puntos = Array.isArray(p.puntos) ? p.puntos.join("; ") : "";
+                        csvRows.push([i+1,`"${nombre}"`,`"${p.id||""}"`,`"${p.ciudad||""}"`,p.turnos||0,conf,p.cancela||0,punt,`"${puntos}"`].join(","));
+                      });
+                      const blob = new Blob(["\uFEFF"+csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "Pilotos_Nuevos_Activos_" + mesSel.replace(/ /g,"_") + ".csv";
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch(e) { alert("Error: " + e.message); }
                   }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition">
                     📥 Descargar todos ({analisisNuevos.allActivos.length})
                   </button>
@@ -1075,12 +1087,23 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-gray-700">🚫 Top 5 Pilotos Nuevos que Más Cancelan</h3>
                   <button onClick={() => {
-                    const rows = [["#","Piloto","ID","Ciudad","Turnos","Cancelaciones","No Cancela","% Cancelación","Puntos"].join(",")];
-                    analisisNuevos.allCanceladores.forEach((p, i) => {
-                      rows.push([i+1,`"${(p.nombre||"").replace(/"/g,'""')}"`,p.id,p.ciudad,p.turnos,p.cancela,p.turnos-p.cancela,`${p.pctCancela.toFixed(1)}%`,`"${(p.puntos||[]).join(", ")}"`].join(","));
-                    });
-                    const blob = new Blob(["\uFEFF"+rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-                    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Pilotos_Nuevos_Canceladores_${mesSel}.csv`; a.click();
+                    try {
+                      const csvRows = [["#","Piloto","ID","Ciudad","Turnos","Cancelaciones","No Cancela","% Cancelación","Puntos"].join(",")];
+                      (analisisNuevos.allCanceladores || []).forEach((p, i) => {
+                        const nombre = String(p.nombre||"").replace(/"/g,'""');
+                        const puntos = Array.isArray(p.puntos) ? p.puntos.join("; ") : "";
+                        csvRows.push([i+1,`"${nombre}"`,`"${p.id||""}"`,`"${p.ciudad||""}"`,p.turnos||0,p.cancela||0,(p.turnos||0)-(p.cancela||0),p.pctCancela.toFixed(1)+"%",`"${puntos}"`].join(","));
+                      });
+                      const blob = new Blob(["\uFEFF"+csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "Pilotos_Nuevos_Canceladores_" + mesSel.replace(/ /g,"_") + ".csv";
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch(e) { alert("Error: " + e.message); }
                   }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
                     📥 Descargar todos ({analisisNuevos.allCanceladores.length})
                   </button>
