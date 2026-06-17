@@ -1093,57 +1093,35 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   );
 }
 
-function oklchToRgb(oklchStr) {
-  const div = document.createElement("div");
-  div.style.color = oklchStr;
-  div.style.display = "none";
-  document.body.appendChild(div);
-  const rgb = getComputedStyle(div).color;
-  div.remove();
-  return rgb || "#888888";
-}
-
-function purgeOklch(doc) {
-  // 1. Replace oklch in all style elements
-  for (const style of doc.querySelectorAll("style")) {
-    if (style.textContent.includes("oklch")) {
-      style.textContent = style.textContent.replace(/oklch\([^)]+\)/g, (m) => oklchToRgb(m));
-    }
-  }
-  // 2. Replace oklch in all inline styles
-  for (const el of doc.querySelectorAll("[style]")) {
-    if (el.getAttribute("style").includes("oklch")) {
-      el.setAttribute("style", el.getAttribute("style").replace(/oklch\([^)]+\)/g, (m) => oklchToRgb(m)));
-    }
-  }
-  // 3. Fix CSS custom properties on :root
-  const rootEl = doc.documentElement;
-  const rootCS = getComputedStyle(rootEl);
-  for (let i = 0; i < rootCS.length; i++) {
-    const prop = rootCS[i];
-    if (prop.startsWith("--")) {
-      const val = rootCS.getPropertyValue(prop);
-      if (val && val.includes("oklch")) {
-        rootEl.style.setProperty(prop, oklchToRgb(val.trim()));
-      }
-    }
-  }
-  // 4. Inline all computed color properties on every element
-  const colorProps = ["color","background-color","border-color","border-top-color","border-bottom-color","border-left-color","border-right-color","outline-color","fill","stroke"];
-  for (const node of doc.querySelectorAll("*")) {
-    const cs = getComputedStyle(node);
-    for (const prop of colorProps) {
-      const val = cs.getPropertyValue(prop);
-      if (val && val.includes("oklch")) {
-        node.style.setProperty(prop, oklchToRgb(val), "important");
-      }
-    }
-  }
-}
-
 async function exportPDF(ref, filename, orientation = "portrait") {
   if (!ref?.current) return;
   try {
+    // Pre-compute all styles as RGB inline before cloning
+    const el = ref.current;
+    const allNodes = [el, ...el.querySelectorAll("*")];
+    const saved = [];
+    const props = ["color","background-color","border-color","border-top-color","border-bottom-color","border-left-color","border-right-color","fill","stroke"];
+    for (const node of allNodes) {
+      const cs = getComputedStyle(node);
+      const orig = node.getAttribute("style") || "";
+      const inlines = [];
+      for (const p of props) {
+        const v = cs.getPropertyValue(p);
+        if (v && v !== "none" && v !== "transparent" && v !== "rgba(0, 0, 0, 0)") {
+          inlines.push(`${p}:${v}`);
+        }
+      }
+      // Also grab layout-critical props
+      for (const p of ["font-size","font-weight","font-family","text-align","padding","margin","display","width","max-width","border-radius","overflow"]) {
+        const v = cs.getPropertyValue(p);
+        if (v) inlines.push(`${p}:${v}`);
+      }
+      if (inlines.length) {
+        saved.push({ node, orig });
+        node.setAttribute("style", inlines.join(";"));
+      }
+    }
+
     const html2pdf = (await import("html2pdf.js")).default;
     await html2pdf().set({
       margin: [6, 6, 6, 6],
@@ -1151,12 +1129,25 @@ async function exportPDF(ref, filename, orientation = "portrait") {
       image: { type: "jpeg", quality: 0.85 },
       html2canvas: {
         scale: 1.5, useCORS: true, logging: false, scrollY: 0,
-        windowWidth: ref.current.scrollWidth,
-        onclone: (clonedDoc) => purgeOklch(clonedDoc),
+        windowWidth: el.scrollWidth,
+        onclone: (clonedDoc) => {
+          // Remove ALL stylesheets from clone so html2canvas never parses oklch
+          for (const s of [...clonedDoc.querySelectorAll('link[rel="stylesheet"], style')]) s.remove();
+          // Add minimal reset
+          const reset = clonedDoc.createElement("style");
+          reset.textContent = "* { box-sizing: border-box; } body { margin: 0; font-family: sans-serif; } table { border-collapse: collapse; } svg text { fill: currentColor; }";
+          clonedDoc.head.appendChild(reset);
+        },
       },
       jsPDF: { unit: "mm", format: "a4", orientation },
-      pagebreak: { mode: ["css"], avoid: ["tr", ".rounded-2xl"] },
-    }).from(ref.current).save();
+      pagebreak: { mode: ["css"], avoid: ["tr"] },
+    }).from(el).save();
+
+    // Restore original inline styles
+    for (const { node, orig } of saved) {
+      if (orig) node.setAttribute("style", orig);
+      else node.removeAttribute("style");
+    }
   } catch (e) {
     alert("Error al generar PDF: " + e.message);
   }
