@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import XLSX from "../utils/xlsxHelper";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -427,7 +427,6 @@ const UMB_DEFAULT = {
 
 function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin, importedData }) {
   const pilotosNuevosPdfRef = useRef(null);
-  const [pdfNuevosLoading, setPdfNuevosLoading] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [umb, setUmb] = useState(() => { try { return { ...UMB_DEFAULT, ...JSON.parse(localStorage.getItem(SK_TADA_UMB) || "{}") }; } catch { return UMB_DEFAULT; } });
   const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
@@ -915,14 +914,9 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
           <div className="bg-gradient-to-r from-purple-700 to-fuchsia-600 rounded-2xl shadow-md p-5 text-white">
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-sm font-bold">🆕 Análisis de Pilotos Nuevos — {mesSel}</h3>
-              <button onClick={async () => {
-                setPdfNuevosLoading(true);
-                await new Promise(r => setTimeout(r, 300));
-                await exportPDF(pilotosNuevosPdfRef, `Pilotos_Nuevos_${mesSel}.pdf`, "landscape");
-                setPdfNuevosLoading(false);
-              }} disabled={pdfNuevosLoading}
-                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
-                {pdfNuevosLoading ? "Generando..." : "📄 Descargar PDF"}
+              <button onClick={() => printSection(pilotosNuevosPdfRef, `Pilotos Nuevos — ${mesSel}`)}
+                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold transition">
+                📄 Descargar PDF
               </button>
             </div>
             <p className="text-xs opacity-80 mb-4">Pilotos programados este mes que no aparecieron en {insPrevKey}.</p>
@@ -1093,64 +1087,23 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   );
 }
 
-async function exportPDF(ref, filename, orientation = "portrait") {
+function printSection(ref, title) {
   if (!ref?.current) return;
-  try {
-    // Pre-compute all styles as RGB inline before cloning
-    const el = ref.current;
-    const allNodes = [el, ...el.querySelectorAll("*")];
-    const saved = [];
-    const props = ["color","background-color","border-color","border-top-color","border-bottom-color","border-left-color","border-right-color","fill","stroke"];
-    for (const node of allNodes) {
-      const cs = getComputedStyle(node);
-      const orig = node.getAttribute("style") || "";
-      const inlines = [];
-      for (const p of props) {
-        const v = cs.getPropertyValue(p);
-        if (v && v !== "none" && v !== "transparent" && v !== "rgba(0, 0, 0, 0)") {
-          inlines.push(`${p}:${v}`);
-        }
-      }
-      // Also grab layout-critical props
-      for (const p of ["font-size","font-weight","font-family","text-align","padding","margin","display","width","max-width","border-radius","overflow"]) {
-        const v = cs.getPropertyValue(p);
-        if (v) inlines.push(`${p}:${v}`);
-      }
-      if (inlines.length) {
-        saved.push({ node, orig });
-        node.setAttribute("style", inlines.join(";"));
-      }
-    }
-
-    const html2pdf = (await import("html2pdf.js")).default;
-    await html2pdf().set({
-      margin: [6, 6, 6, 6],
-      filename,
-      image: { type: "jpeg", quality: 0.85 },
-      html2canvas: {
-        scale: 1.5, useCORS: true, logging: false, scrollY: 0,
-        windowWidth: el.scrollWidth,
-        onclone: (clonedDoc) => {
-          // Remove ALL stylesheets from clone so html2canvas never parses oklch
-          for (const s of [...clonedDoc.querySelectorAll('link[rel="stylesheet"], style')]) s.remove();
-          // Add minimal reset
-          const reset = clonedDoc.createElement("style");
-          reset.textContent = "* { box-sizing: border-box; } body { margin: 0; font-family: sans-serif; } table { border-collapse: collapse; } svg text { fill: currentColor; }";
-          clonedDoc.head.appendChild(reset);
-        },
-      },
-      jsPDF: { unit: "mm", format: "a4", orientation },
-      pagebreak: { mode: ["css"], avoid: ["tr"] },
-    }).from(el).save();
-
-    // Restore original inline styles
-    for (const { node, orig } of saved) {
-      if (orig) node.setAttribute("style", orig);
-      else node.removeAttribute("style");
-    }
-  } catch (e) {
-    alert("Error al generar PDF: " + e.message);
+  const content = ref.current.cloneNode(true);
+  // Remove download buttons from the clone
+  for (const btn of content.querySelectorAll("button")) btn.remove();
+  for (const lbl of content.querySelectorAll("label")) {
+    if (lbl.querySelector('input[type="file"]')) lbl.remove();
   }
+  const win = window.open("", "_blank");
+  if (!win) { alert("Permite ventanas emergentes para descargar el PDF"); return; }
+  // Copy all stylesheets
+  const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')].map(s => s.outerHTML).join("\n");
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>${styles}
+    <style>@media print { body { margin: 0; } @page { size: A4 landscape; margin: 8mm; } }</style>
+    </head><body class="bg-white"><div class="max-w-7xl mx-auto px-4 py-6 space-y-6">${content.innerHTML}</div></body></html>`);
+  win.document.close();
+  setTimeout(() => { win.print(); win.close(); }, 500);
 }
 
 export default function InformeTada({ isAdmin }) {
@@ -1158,7 +1111,6 @@ export default function InformeTada({ isAdmin }) {
   const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   const trafDashRef = useRef(null);
   const pilotosNuevosRef = useRef(null);
-  const [pdfLoading, setPdfLoading] = useState("");
 
   // Funciones de lectura según rol
   const _loadTrafIndex = isAdmin ? loadTrafIndex : loadTrafIndexReadonly;
@@ -1790,15 +1742,10 @@ export default function InformeTada({ isAdmin }) {
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
           <div className="flex flex-wrap gap-4 items-end">
             {data && (
-              <button onClick={async () => {
-                setPdfLoading("trafico");
-                await new Promise(r => setTimeout(r, 300));
-                await exportPDF(trafDashRef, `Trafico_Pilotos_${trafMesSel}.pdf`, "landscape");
-                setPdfLoading("");
-              }} disabled={pdfLoading === "trafico"}
-                className="px-3 py-2 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition disabled:opacity-50"
+              <button onClick={() => printSection(trafDashRef, `Tráfico Pilotos — ${trafMesSel}`)}
+                className="px-3 py-2 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition"
                 style={{ background: BRAND_GRADIENT }}>
-                {pdfLoading === "trafico" ? "Generando..." : "📄 Descargar PDF"}
+                📄 Descargar PDF
               </button>
             )}
             {trafMeses.length > 0 && (
