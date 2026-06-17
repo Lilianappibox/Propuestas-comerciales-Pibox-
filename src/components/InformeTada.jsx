@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import XLSX from "../utils/xlsxHelper";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -426,6 +426,8 @@ const UMB_DEFAULT = {
 };
 
 function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin, importedData }) {
+  const pilotosNuevosPdfRef = useRef(null);
+  const [pdfNuevosLoading, setPdfNuevosLoading] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [umb, setUmb] = useState(() => { try { return { ...UMB_DEFAULT, ...JSON.parse(localStorage.getItem(SK_TADA_UMB) || "{}") }; } catch { return UMB_DEFAULT; } });
   const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
@@ -909,9 +911,20 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
       {/* ── Análisis Pilotos Nuevos ──────────────────────────────────── */}
       {analisisNuevos && (
-        <>
+        <div ref={pilotosNuevosPdfRef} className="space-y-6">
           <div className="bg-gradient-to-r from-purple-700 to-fuchsia-600 rounded-2xl shadow-md p-5 text-white">
-            <h3 className="text-sm font-bold mb-1">🆕 Análisis de Pilotos Nuevos — {mesSel}</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-bold">🆕 Análisis de Pilotos Nuevos — {mesSel}</h3>
+              <button onClick={async () => {
+                setPdfNuevosLoading(true);
+                await new Promise(r => setTimeout(r, 300));
+                await exportPDF(pilotosNuevosPdfRef, `Pilotos_Nuevos_${mesSel}.pdf`, "landscape");
+                setPdfNuevosLoading(false);
+              }} disabled={pdfNuevosLoading}
+                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                {pdfNuevosLoading ? "Generando..." : "📄 Descargar PDF"}
+              </button>
+            </div>
             <p className="text-xs opacity-80 mb-4">Pilotos programados este mes que no aparecieron en {insPrevKey}.</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
@@ -1069,7 +1082,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
       {isAdmin && insRows && !insPrevRows && insPrevKey && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center text-purple-600 text-sm">
@@ -1080,9 +1093,25 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   );
 }
 
+async function exportPDF(ref, filename, orientation = "portrait") {
+  if (!ref?.current) return;
+  const html2pdf = (await import("html2pdf.js")).default;
+  await html2pdf().set({
+    margin: [8, 8, 8, 8],
+    filename,
+    image: { type: "jpeg", quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: "mm", format: "a4", orientation },
+    pagebreak: { mode: ["css", "legacy"] },
+  }).from(ref.current).save();
+}
+
 export default function InformeTada({ isAdmin }) {
   const [tab, setTab] = useState("trafico");
   const MESES_LABEL = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  const trafDashRef = useRef(null);
+  const pilotosNuevosRef = useRef(null);
+  const [pdfLoading, setPdfLoading] = useState("");
 
   // Funciones de lectura según rol
   const _loadTrafIndex = isAdmin ? loadTrafIndex : loadTrafIndexReadonly;
@@ -1713,6 +1742,18 @@ export default function InformeTada({ isAdmin }) {
         {/* Selector de mes para análisis */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
           <div className="flex flex-wrap gap-4 items-end">
+            {data && (
+              <button onClick={async () => {
+                setPdfLoading("trafico");
+                await new Promise(r => setTimeout(r, 300));
+                await exportPDF(trafDashRef, `Trafico_Pilotos_${trafMesSel}.pdf`, "landscape");
+                setPdfLoading("");
+              }} disabled={pdfLoading === "trafico"}
+                className="px-3 py-2 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition disabled:opacity-50"
+                style={{ background: BRAND_GRADIENT }}>
+                {pdfLoading === "trafico" ? "Generando..." : "📄 Descargar PDF"}
+              </button>
+            )}
             {trafMeses.length > 0 && (
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
@@ -1798,7 +1839,7 @@ export default function InformeTada({ isAdmin }) {
 
         {/* ── Dashboard ───────────────────────────────────────────────── */}
         {data && (
-          <>
+          <div ref={trafDashRef} className="space-y-6">
             {/* KPI Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               <KpiCard
@@ -1996,8 +2037,6 @@ export default function InformeTada({ isAdmin }) {
                 </span>
               </div>
             </div>
-          </>
-        )}
 
         {/* Turnos por hora de inicio + heatmap hora x día */}
         {data?.porHora?.length > 0 && (
@@ -2294,6 +2333,8 @@ export default function InformeTada({ isAdmin }) {
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center text-purple-600 text-sm">
             Para ver pilotos nuevos, sube también el reporte de <b>{trafPrevKey}</b>.
           </div>
+        )}
+        </div>
         )}
 
         {/* Subir nuevo mes tráfico (Admin) — al final */}
