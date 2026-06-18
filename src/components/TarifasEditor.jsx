@@ -1,4 +1,234 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+
+// ── Calculadora de Utilidades Adicionales (tarifas base PIBOX) ──────────────
+
+const SK_TARIFARIO = "pibox_tarifario_interno";
+
+// Defaults from TarifarioInterno TABLE_DATA (read-only copy of the relevant tabs)
+const TARIFARIO_DEFAULTS = {
+  distancia: {
+    headers: ["Ciudad", "Tipo Vehículo", "Base Km", "Tarifa Base", "Km Extra", "Parada Adicional", "Recargo Nocturno", "Recargo Dominical"],
+    rows: [
+      ["Bogotá - Nacional", "Moto", "3 Km", "$6.650", "$1.250", "$4.500", "$665", "$1.330"],
+      ["Medellín, Cali, B/quilla, B/manga", "Moto", "3 Km", "$7.300", "$1.250", "$4.500", "$3.700", "$3.650"],
+      ["Bogotá - Nacional", "Carry", "10 Km", "$70.000", "$4.000", "$6.000", "—", "$17.500"],
+      ["Bogotá - Nacional", "NHR", "10 Km", "$87.500", "$5.500", "$7.000", "—", "$21.875"],
+      ["Medellín, Cali, B/quilla", "Carry", "10 Km", "$75.000", "$4.300", "$6.500", "—", "$18.750"],
+      ["Medellín, Cali, B/quilla", "NHR", "10 Km", "$93.750", "$5.800", "$7.500", "—", "$23.437"],
+      ["Bogotá - Nacional", "NPR", "10 Km", "$120.000", "$7.000", "$10.000", "—", "$30.000"],
+    ],
+  },
+  horas: {
+    headers: ["Ciudad", "Tipo Vehículo", "Tarifa Hora (Km Base)", "Tarifa Hora (15 Km)", "Tarifa Hora (20 Km)", "Recargo Nocturno", "Hora Extra", "Min Horas"],
+    rows: [
+      ["Colombia", "Moto", "$16.400", "$18.900", "$21.400", "$6.550", "$8.200", "4h"],
+      ["Bogotá - Nacional", "Carry", "$33.150", "N/A", "N/A", "$14.200", "$16.575", "4h"],
+      ["Bogotá - Nacional", "NHR", "$42.000", "N/A", "N/A", "$17.300", "$21.000", "8h"],
+      ["Bogotá - Nacional", "NPR", "$55.000", "N/A", "N/A", "$22.000", "$27.500", "8h"],
+      ["Medellín, Cali", "Carry", "$36.200", "N/A", "N/A", "$15.500", "$18.100", "4h"],
+      ["Medellín, Cali", "NHR", "$45.900", "N/A", "N/A", "$18.900", "$22.950", "8h"],
+    ],
+  },
+  paquetes: {
+    headers: ["Ciudad", "Tamaño", "Paquetes/Ruta", "Tarifa Paquete (3%)", "Tarifa Ruta", "Recargo Nocturno", "Recargo Dominical"],
+    rows: [
+      ["Bogotá", "Entregas Optimizadas", ">10", "$12.000", "—", "—", "—"],
+      ["Bogotá", "Pequeño", "10", "$11.000", "$110.000", "$6.550", "$9.350"],
+      ["Bogotá", "Pequeño", "12", "$9.600", "$115.200", "—", "—"],
+      ["Bogotá", "Mediano", "10", "$13.500", "$135.000", "—", "—"],
+      ["Bogotá", "Grande", "8", "$17.000", "$136.000", "—", "—"],
+    ],
+  },
+  tat: {
+    headers: ["Ciudad", "Tipo Vehículo", "Disponibilidad 8h", "Máx Paradas", "Tarifa Parada Extra", "Observaciones"],
+    rows: [
+      ["Bogotá - Nacional", "Carry", "$120.000", "40", "$3.500", "Utilidad corporativa 3%"],
+      ["Bogotá - Nacional", "NHR", "$152.000", "40", "$4.000", "—"],
+      ["Medellín y Área Metro", "Carry", "$130.000", "40", "$3.800", "—"],
+      ["Medellín y Área Metro", "NHR", "$170.000", "40", "$4.500", "—"],
+    ],
+  },
+  storage: {
+    headers: ["Ocupación", "Ítem", "Medidas", "Capacidad", "Costo", "Peso Max Kg", "Observaciones"],
+    rows: [
+      ["Mensual", "Metro / Estiba", "1m x 1,20m x 1,20m Alt. 2m", "1 Mtr", "$165.950", "1.000", "—"],
+      ["Mensual", "Estante 4 Entrepaños", "1,76 x 50 x 70 cm", "2 Mtrs", "$331.850", "200", "50 kg por Entrepaño"],
+      ["Mensual", "1/2 Estante 2 Entrepaños", "—", "1 Mtr", "$199.100", "100", "50 kg por Entrepaño"],
+      ["Quincenal", "Estiba", "1m x 1,20m x 1,20m Alt. 2m", "1 Mtr", "$94.000", "1.000", "—"],
+      ["Quincenal", "Estante", "1,76 x 50 x 70 cm", "4 Mtrs", "$199.000", "200", "50 kg por Entrepaño"],
+      ["Quincenal", "1/2 Estante", "—", "2 Mtrs", "$119.500", "100", "50 kg por Entrepaño"],
+      ["Semanal", "Estiba", "1m x 1,20m x 1,20m Alt. 2m", "1 Mtr", "$56.500", "1.000", "—"],
+      ["Semanal", "Estante", "1,76 x 50 x 70 cm", "4 Mtrs", "$119.500", "200", "50 kg por Entrepaño"],
+      ["Semanal", "1/2 Estante", "—", "2 Mtrs", "$71.700", "100", "50 kg por Entrepaño"],
+      ["Cross", "Día / Paso por Bodega", "N/A", "Unidad", "$700", "30", "Máx 80x20x20 cm"],
+      ["Cross", "Noche / Pernocte", "N/A", "Unidad", "$900", "30", "—"],
+    ],
+  },
+};
+
+// Map TarifasEditor tab ids → TarifarioInterno tab ids
+const TAB_TO_TARIFARIO = {
+  onDemand: "distancia",
+  programadoBloqueHoras: "horas",
+  programadoRutas: "paquetes",
+  entregasOptimizadas: "paquetes",
+  picarga: "tat",
+  storage: "storage",
+};
+
+/** Parse "$6.650" or "$165.950" → 6650, 165950.  Returns NaN for non-monetary. */
+function parsePesos(s) {
+  if (typeof s !== "string" || !s.startsWith("$")) return NaN;
+  const clean = s.replace(/\$/g, "").replace(/\./g, "").replace(/,/g, ".").trim();
+  return Number(clean);
+}
+
+/** Format number → "$6.650" Colombian pesos with dots as thousands separator */
+function formatPesos(n) {
+  if (isNaN(n)) return "—";
+  return "$" + Math.round(n).toLocaleString("es-CO");
+}
+
+/** Apply utility % to a cell: only monetary values get multiplied */
+function applyUtility(cell, pct) {
+  const n = parsePesos(cell);
+  if (isNaN(n)) return cell; // non-monetary → unchanged
+  return formatPesos(n * (1 + pct / 100));
+}
+
+function TarifasBaseSection({ activeTab }) {
+  const tarifarioKey = TAB_TO_TARIFARIO[activeTab];
+  const [open, setOpen] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [copiedMsg, setCopiedMsg] = useState("");
+
+  // Load tarifario data from localStorage or defaults
+  const tarifarioData = useMemo(() => {
+    try {
+      const stored = localStorage.getItem(SK_TARIFARIO);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed[tarifarioKey]) return parsed[tarifarioKey];
+      }
+    } catch {}
+    return TARIFARIO_DEFAULTS[tarifarioKey] || null;
+  }, [tarifarioKey]);
+
+  if (!tarifarioKey || !tarifarioData) return null;
+
+  const { headers, rows } = tarifarioData;
+
+  const rowsWithUtility = useMemo(() => {
+    if (pct === 0) return rows;
+    return rows.map((row) => row.map((cell) => applyUtility(cell, pct)));
+  }, [rows, pct]);
+
+  const handleCopyTable = () => {
+    const source = pct === 0 ? rows : rowsWithUtility;
+    const lines = [headers.join("\t"), ...source.map((r) => r.join("\t"))];
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopiedMsg("Tabla copiada al portapapeles");
+      setTimeout(() => setCopiedMsg(""), 2500);
+    });
+  };
+
+  const tabLabels = {
+    onDemand: "Distancia (On Demand)",
+    programadoBloqueHoras: "Horas (Bloque Horas)",
+    programadoRutas: "Paquetes (Rutas)",
+    entregasOptimizadas: "Paquetes (Entregas Opt.)",
+    picarga: "TAT (Picarga)",
+    storage: "Storage",
+  };
+
+  return (
+    <div className="mb-4 border border-purple-200 rounded-xl overflow-hidden">
+      {/* Toggle header */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-150 transition-colors"
+      >
+        <span className="text-sm font-semibold text-purple-800 flex items-center gap-2">
+          <span className="text-base">📊</span>
+          Tarifas Base PIBOX + Utilidad Adicional
+          <span className="text-xs font-normal text-purple-500">({tabLabels[activeTab] || activeTab})</span>
+        </span>
+        <span className={`text-purple-600 text-xs transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4 bg-white">
+          {/* Utility % input */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">% Utilidad Adicional:</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={pct}
+                onChange={(e) => setPct(Number(e.target.value) || 0)}
+                className="w-20 border border-purple-300 rounded-lg px-3 py-1.5 text-sm font-semibold text-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-400 text-center"
+              />
+              <span className="text-sm text-gray-500">%</span>
+            </div>
+            <button
+              onClick={handleCopyTable}
+              className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-200 transition-colors flex items-center gap-1"
+            >
+              📋 Copiar tabla
+            </button>
+            {copiedMsg && <span className="text-xs text-green-600 font-medium">{copiedMsg}</span>}
+          </div>
+
+          {/* Info */}
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-2.5 text-xs text-purple-700">
+            {pct > 0
+              ? `Las tarifas monetarias se muestran multiplicadas por ${(1 + pct / 100).toFixed(4)} (base + ${pct}% utilidad). Los valores no monetarios no cambian.`
+              : "Tarifas base del Tarifario Interno PIBOX. Ajusta el % de utilidad para calcular las tarifas con margen adicional."}
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-purple-600 text-white">
+                  {headers.map((h, i) => (
+                    <th key={i} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rowsWithUtility.map((row, ri) => (
+                  <tr key={ri} className={`border-t border-gray-100 ${ri % 2 === 0 ? "bg-white" : "bg-purple-50/40"} hover:bg-purple-50 transition-colors`}>
+                    {row.map((cell, ci) => {
+                      const isModified = pct > 0 && !isNaN(parsePesos(rows[ri][ci]));
+                      return (
+                        <td key={ci} className={`px-3 py-2 whitespace-nowrap ${ci === 0 ? "font-medium text-gray-800" : "text-gray-600"} ${isModified ? "text-purple-700 font-semibold bg-purple-50/60" : ""}`}>
+                          {cell}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Show original vs modified comparison when utility > 0 */}
+          {pct > 0 && (
+            <p className="text-xs text-gray-400 italic">
+              Los valores resaltados en morado han sido ajustados con la utilidad del {pct}%.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Original TarifasEditor components ─────────────────────────────────────────
 
 const Input = ({ value, onChange, prefix = "", type = "number", className = "", placeholder = "" }) => {
   const isNum = type === "number";
@@ -160,7 +390,11 @@ export default function TarifasEditor({ tarifas, onChange }) {
   ];
 
   return (
-    <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+    <div>
+      {/* Calculadora de Utilidades Adicionales */}
+      <TarifasBaseSection activeTab={tab} />
+
+      <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
       {/* Tabs */}
       <div className="flex border-b border-gray-200 overflow-x-auto">
         {tabs.map((t) => (
@@ -704,6 +938,7 @@ export default function TarifasEditor({ tarifas, onChange }) {
         )}
 
       </div>
+    </div>
     </div>
   );
 }
