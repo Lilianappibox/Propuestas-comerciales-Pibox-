@@ -341,8 +341,8 @@ function DataTable({ headers, rows }) {
               {row.map((cell, ci) => (
                 <td
                   key={ci}
-                  className={`px-3 py-1.5 whitespace-nowrap ${
-                    ci === 0 ? "font-medium text-gray-800" : "text-gray-600"
+                  className={`px-3 py-1.5 ${
+                    ci === 0 ? "font-medium text-gray-800 max-w-[180px]" : "text-gray-600 whitespace-nowrap"
                   }`}
                 >
                   {cell}
