@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import IncrementoTarifas from "./IncrementoTarifas";
 import InformeTada from "./InformeTada";
 
@@ -17,6 +17,7 @@ const TABS = [
   { id: "onboarding", label: "🚀 Onboarding 2.0" },
   { id: "calculadora", label: "🧮 Calculadora" },
   { id: "incremento", label: "📈 Incremento Tarifas" },
+  { id: "incrementoAnual", label: "Incremento Anual Tarifario" },
 ];
 
 const fmt = (v) => {
@@ -598,6 +599,215 @@ function EditableTable({ headers, rows, onChange }) {
   );
 }
 
+/* ── Incremento Anual ─────────────────────────────────────────────────────── */
+const SK_INCREMENTO_LOG = "pibox_tarifario_incremento_log";
+const TABS_CON_TARIFAS = ["distancia","horas","paquetes","tarifasTada","recargos","manifiesto","storage","seguros","rent"];
+
+function parsePesoVal(s) {
+  if (typeof s !== "string") return null;
+  const m = s.match(/^\$?\s*([\d.,]+)/);
+  if (!m) return null;
+  return Number(m[1].replace(/\./g, "").replace(",", "."));
+}
+function formatPesoVal(n) {
+  return "$" + Math.round(n).toLocaleString("es-CO");
+}
+function applyPctToCell(cell, pct) {
+  const n = parsePesoVal(cell);
+  if (n === null || n === 0) return cell;
+  return formatPesoVal(n * (1 + pct / 100));
+}
+function applyPctToData(data, pct) {
+  const next = JSON.parse(JSON.stringify(data));
+  for (const key of TABS_CON_TARIFAS) {
+    if (!next[key]) continue;
+    if (next[key].rows) next[key].rows = next[key].rows.map(row => row.map(c => applyPctToCell(c, pct)));
+    if (next[key].extra?.rows) next[key].extra.rows = next[key].extra.rows.map(row => row.map(c => applyPctToCell(c, pct)));
+  }
+  return next;
+}
+
+function loadIncrementoLog() {
+  try { return JSON.parse(localStorage.getItem(SK_INCREMENTO_LOG) || "[]"); } catch { return []; }
+}
+
+function IncrementoAnual({ data, onApply, isAdmin }) {
+  const [pct, setPct] = useState(0);
+  const [previewTab, setPreviewTab] = useState("distancia");
+  const log = useMemo(loadIncrementoLog, []);
+
+  const preview = useMemo(() => {
+    if (pct <= 0) return null;
+    return applyPctToData(data, pct);
+  }, [data, pct]);
+
+  const handleApply = () => {
+    if (pct <= 0) return;
+    if (!confirm(`¿Aplicar incremento del ${pct}% a TODAS las tarifas? Esta acción no se puede deshacer.`)) return;
+    // Guardar snapshot actual en el log
+    const entry = {
+      fecha: new Date().toISOString(),
+      pct,
+      label: `Incremento ${pct}% — ${new Date().toLocaleDateString("es-CO", { year: "numeric", month: "long" })}`,
+      snapshot: {},
+    };
+    for (const key of TABS_CON_TARIFAS) {
+      if (data[key]?.rows) entry.snapshot[key] = { headers: data[key].headers, rows: data[key].rows };
+    }
+    const updatedLog = [entry, ...log];
+    localStorage.setItem(SK_INCREMENTO_LOG, JSON.stringify(updatedLog));
+    // Aplicar incremento
+    const newData = applyPctToData(data, pct);
+    onApply(newData);
+    setPct(0);
+  };
+
+  const previewData = preview?.[previewTab];
+
+  return (
+    <div className="space-y-6">
+      {/* Configurar incremento */}
+      <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5">
+        <h3 className="text-sm font-bold text-gray-700 mb-4">Aplicar Incremento Anual a Todas las Tarifas</h3>
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">% Incremento</label>
+            <input type="number" min="0" max="100" step="0.5" value={pct}
+              onChange={e => setPct(Number(e.target.value) || 0)}
+              className="w-24 border border-purple-300 rounded-lg px-3 py-2 text-sm font-bold text-purple-800 text-center focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+          {pct > 0 && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-2 text-xs text-purple-700">
+              Multiplicador: <b>×{(1 + pct / 100).toFixed(4)}</b> — Todas las tarifas monetarias se incrementarán en {pct}%
+            </div>
+          )}
+          {isAdmin && pct > 0 && (
+            <button onClick={handleApply}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition shadow">
+              Aplicar incremento del {pct}%
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Preview */}
+      {preview && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">Vista previa con +{pct}%</h3>
+          <div className="flex gap-1 overflow-x-auto mb-4 border-b border-gray-200">
+            {TABS_CON_TARIFAS.filter(k => data[k]?.rows).map(k => (
+              <button key={k} onClick={() => setPreviewTab(k)}
+                className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap rounded-t-lg transition ${
+                  previewTab === k ? "border-b-2 border-purple-600 text-purple-600 bg-purple-50" : "text-gray-400 hover:text-gray-600"
+                }`}>{k}</button>
+            ))}
+          </div>
+          {previewData?.rows && (
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-100">
+                    {previewData.headers.map((h, i) => (
+                      <th key={i} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-600 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewData.rows.map((row, ri) => {
+                    const origRow = data[previewTab]?.rows?.[ri];
+                    return (
+                      <tr key={ri} className={`border-t border-gray-100 ${ri % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                        {row.map((cell, ci) => {
+                          const changed = origRow && origRow[ci] !== cell;
+                          return (
+                            <td key={ci} className={`px-3 py-1.5 whitespace-nowrap ${changed ? "text-purple-700 font-semibold bg-purple-50/60" : "text-gray-600"}`}>
+                              {changed ? (
+                                <span>{cell} <span className="text-[9px] text-gray-400 line-through ml-1">{origRow[ci]}</span></span>
+                              ) : cell}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Historial */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+        <h3 className="text-sm font-bold text-gray-700 mb-3">Historial de Incrementos</h3>
+        {log.length === 0 ? (
+          <p className="text-xs text-gray-400">No hay incrementos registrados.</p>
+        ) : (
+          <div className="space-y-3">
+            {log.map((entry, idx) => (
+              <HistorialEntry key={idx} entry={entry} defaultOpen={idx === 0} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HistorialEntry({ entry, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [viewTab, setViewTab] = useState(Object.keys(entry.snapshot || {})[0] || "distancia");
+  const snap = entry.snapshot?.[viewTab];
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-left">
+        <div>
+          <p className="text-xs font-bold text-gray-700">{entry.label}</p>
+          <p className="text-[10px] text-gray-400">{new Date(entry.fecha).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-bold">+{entry.pct}%</span>
+          <span className={`text-gray-400 text-xs transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+        </div>
+      </button>
+      {open && snap && (
+        <div className="p-4 border-t border-gray-200">
+          <p className="text-[10px] text-gray-400 mb-2">Tarifas ANTES de aplicar el incremento:</p>
+          <div className="flex gap-1 overflow-x-auto mb-3 border-b border-gray-100">
+            {Object.keys(entry.snapshot).map(k => (
+              <button key={k} onClick={() => setViewTab(k)}
+                className={`px-2 py-1 text-[10px] font-medium whitespace-nowrap rounded-t ${
+                  viewTab === k ? "border-b border-purple-500 text-purple-600" : "text-gray-400"
+                }`}>{k}</button>
+            ))}
+          </div>
+          <div className="overflow-x-auto rounded border border-gray-200">
+            <table className="min-w-full text-[11px]">
+              <thead>
+                <tr className="bg-gray-100">
+                  {snap.headers.map((h, i) => (
+                    <th key={i} className="px-2 py-1.5 text-left text-[9px] font-semibold text-gray-500 uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {snap.rows.map((row, ri) => (
+                  <tr key={ri} className={`border-t border-gray-50 ${ri % 2 ? "bg-gray-50/30" : ""}`}>
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="px-2 py-1 text-gray-500 whitespace-nowrap">{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TarifarioInterno({ currentUser }) {
   const isAdmin = currentUser?.rol === "Administrativo";
   const [tab, setTab] = useState("politicasGenerales");
@@ -690,6 +900,13 @@ export default function TarifarioInterno({ currentUser }) {
         <Calculadora />
       ) : tab === "incremento" ? (
         <IncrementoTarifas isAdmin={isAdmin} />
+      ) : tab === "incrementoAnual" ? (
+        <IncrementoAnual data={data} isAdmin={isAdmin} onApply={(newData) => {
+          setData(newData);
+          localStorage.setItem(SK_TARIFARIO, JSON.stringify(newData));
+          setToast("✅ Incremento aplicado y guardado");
+          setTimeout(() => setToast(""), 4000);
+        }} />
       ) : tab === "tada" ? (
         <InformeTada isAdmin={isAdmin} />
       ) : (
