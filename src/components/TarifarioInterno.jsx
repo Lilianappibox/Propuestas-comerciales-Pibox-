@@ -299,13 +299,13 @@ const TABLE_DATA = {
 function DataTable({ headers, rows }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200">
-      <table className="min-w-full text-sm">
+      <table className="min-w-full text-xs">
         <thead>
           <tr className="bg-purple-600 text-white">
             {headers.map((h, i) => (
               <th
                 key={i}
-                className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap"
+                className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap"
               >
                 {h}
               </th>
@@ -323,7 +323,7 @@ function DataTable({ headers, rows }) {
               {row.map((cell, ci) => (
                 <td
                   key={ci}
-                  className={`px-4 py-2 whitespace-nowrap ${
+                  className={`px-3 py-1.5 whitespace-nowrap ${
                     ci === 0 ? "font-medium text-gray-800" : "text-gray-600"
                   }`}
                 >
@@ -532,11 +532,11 @@ function EditableTable({ headers, rows, onChange }) {
   return (
     <div>
       <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="min-w-full text-sm">
+        <table className="min-w-full text-xs">
           <thead>
             <tr className="bg-purple-600 text-white">
               {headers.map((h, i) => (
-                <th key={i} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap">{h}</th>
+                <th key={i} className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap">{h}</th>
               ))}
               <th className="px-2 py-2 w-8"></th>
             </tr>
