@@ -459,7 +459,12 @@ export default function ProyeccionCierre({ data }) {
           <div className="bg-purple-50 rounded-xl border border-purple-100 p-4">
             <p className="text-xs text-gray-500 mb-1">Proyeccion a fin de mes</p>
             <p className="font-bold text-purple-700 text-lg">{M(calc.proyFinMes)}</p>
-            <p className="text-xs text-gray-400 mt-1">
+            {proy.metaMes > 0 && (
+              <p className={`text-xs font-semibold mt-1 ${calc.proyFinMes >= proy.metaMes ? "text-green-600" : "text-red-500"}`}>
+                {(calc.proyFinMes / proy.metaMes * 100).toFixed(1)}% de la meta ({fmtAbr(proy.metaMes)})
+              </p>
+            )}
+            <p className="text-xs text-gray-400 mt-0.5">
               Al ritmo actual ({fmtAbr(calc.promDiario)}/dia x {proy.diasTotalesMes} dias)
             </p>
           </div>
