@@ -3,6 +3,7 @@ import IncrementoTarifas from "./IncrementoTarifas";
 import InformeTada from "./InformeTada";
 
 const TABS = [
+  { id: "politicasGenerales", label: "📋 Políticas Generales" },
   { id: "distancia", label: "Distancia (Km)" },
   { id: "horas", label: "Horas" },
   { id: "paquetes", label: "Paquetes" },
@@ -183,6 +184,23 @@ const coberturaRows = [
 const POL = ["Ítem", "Política / Observaciones"];
 
 const TABLE_DATA = {
+  politicasGenerales: {
+    headers: ["Ítem", "Política / Observaciones"],
+    rows: [
+      ["Utilidad de Tarifas Base", "Todas las tarifas están calculadas con utilidad corporativa del 3%. Es posible negociar utilidad adicional según volumen y tipo de cliente."],
+      ["Negociación de Tarifas", "Todas las negociaciones parten de las tarifas base (15% utilidad). Excepción: pagos en efectivo o recargas no permiten configurar utilidad corporativa."],
+      ["Recargos Periferia", "Se aplican en doble vía (ida y vuelta al punto de origen/destino en dichas zonas). Ver tabla de cobertura por ciudad."],
+      ["Capacidad Vehículo", "El solicitante debe verificar la capacidad cúbica del vehículo asegurando que la mercancía pueda transportarse adecuadamente."],
+      ["Política de Cancelación", "Cancelaciones con mínimo 3 horas hábiles de anticipación (Lun-Sáb, 6am-7pm). Menos de 4h genera parada en falso."],
+      ["Stand By", "Se cobra cuando el vehículo permanezca sin carga, previamente planificado. Equivale al 100% de la tarifa. Fee adicional: 20%."],
+      ["Parada en Falso", "Después de 2 horas de espera y se cancela el servicio. Se cobra 60% de la tarifa. Aplica a jornadas de 8 horas."],
+      ["Carga Pesada (Carry)", "Para 4+ unidades o peso ≥90kg, es obligatorio cobrar auxiliar de carga o que el cliente garantice personal."],
+      ["Seguro y Valor Declarado", "Carry y NHR: VD máximo por servicio $20.000.000. Cobertura aliado hasta $1.000.000.000."],
+      ["Recaudo", "Las tarifas no incluyen recaudo. Ninguna negociación puede recaudar por encima del 270% de su facturación."],
+      ["Devoluciones", "Toda devolución genera cobro por los kilómetros recorridos para retornar el paquete al origen."],
+      ["Inhouse", "Costo adicional: $2.800.000. Escalar a líderes con: horario, funciones, lugar, cantidad de horas/semana."],
+    ],
+  },
   distancia: {
     headers: distanciaHeaders, rows: distanciaRows,
     politicas: { headers: POL, rows: [
@@ -565,7 +583,7 @@ function EditableTable({ headers, rows, onChange }) {
 
 export default function TarifarioInterno({ currentUser }) {
   const isAdmin = currentUser?.rol === "Administrativo";
-  const [tab, setTab] = useState("distancia");
+  const [tab, setTab] = useState("politicasGenerales");
   const [data, setData] = useState(loadData);
   const [editing, setEditing] = useState(false);
   const [toast, setToast] = useState("");
