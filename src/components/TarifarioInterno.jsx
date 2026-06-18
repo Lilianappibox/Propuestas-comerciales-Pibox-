@@ -7,6 +7,7 @@ const TABS = [
   { id: "distancia", label: "Distancia (Km)" },
   { id: "horas", label: "Horas" },
   { id: "paquetes", label: "Paquetes" },
+  { id: "tarifasTada", label: "TaDa" },
   { id: "recargos", label: "Recargos y Adicionales" },
   { id: "manifiesto", label: "Manifiesto" },
   { id: "storage", label: "Storage" },
@@ -225,6 +226,22 @@ const TABLE_DATA = {
       ["Entregas Optimizadas", "Mínimo >10 paquetes por ruta agrupados por sector geográfico."],
       ["Recargos", "Recargo nocturno y dominical aplican según tabla. Verificar con líder operaciones."],
       ["Devoluciones", "Toda devolución genera cobro por los kilómetros recorridos para retornar el paquete al origen."],
+    ]},
+  },
+  tarifasTada: {
+    headers: ["Concepto", "Pago a Piloto", "Cobro a Cliente", "Fee"],
+    rows: [
+      ["Paquete", "$7.300", "$8.870", "18%"],
+      ["Incentivo", "$1.300", "$1.580", "18%"],
+      ["Paquete cancelado", "$7.000", "$8.505", "18%"],
+      ["Tarea", "$5.000", "$6.075", "18%"],
+      ["Garantizado L-J", "$70.000", "$85.050", "18%"],
+      ["Garantizado V-D", "$80.000", "$97.200", "18%"],
+    ],
+    politicas: { headers: POL, rows: [
+      ["Utilidad Corporativa", "Tarifas base calculadas con utilidad corporativa del 3%."],
+      ["Fee", "El fee del 18% se aplica sobre el pago a piloto para obtener el cobro a cliente."],
+      ["Garantizado", "L-J: Lunes a Jueves. V-D: Viernes a Domingo y festivos."],
     ]},
   },
   recargos: {
