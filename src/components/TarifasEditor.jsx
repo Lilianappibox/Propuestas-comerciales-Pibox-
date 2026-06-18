@@ -544,6 +544,9 @@ export default function TarifasEditor({ tarifas, onChange }) {
               <Row label="Tarifa Devoluciones ($)">
                 <Input value={tarifas.programadoRutas.adicionales.tarifaDevoluciones} onChange={(v) => update("programadoRutas.adicionales.tarifaDevoluciones", v)} prefix="$" />
               </Row>
+              <Row label="Recargo Periferia ($)">
+                <Input value={tarifas.programadoRutas.adicionales.recargoPeriferia ?? 0} onChange={(v) => update("programadoRutas.adicionales.recargoPeriferia", v)} prefix="$" />
+              </Row>
             </div>
           </div>
         )}
@@ -584,6 +587,9 @@ export default function TarifasEditor({ tarifas, onChange }) {
               </Row>
               <Row label="Tarifa Devoluciones ($)">
                 <Input value={tarifas.entregasOptimizadas?.adicionales?.tarifaDevoluciones || 0} onChange={(v) => update("entregasOptimizadas.adicionales.tarifaDevoluciones", v)} prefix="$" />
+              </Row>
+              <Row label="Recargo Periferia ($)">
+                <Input value={tarifas.entregasOptimizadas?.adicionales?.recargoPeriferia ?? 0} onChange={(v) => update("entregasOptimizadas.adicionales.recargoPeriferia", v)} prefix="$" />
               </Row>
             </div>
           </div>
