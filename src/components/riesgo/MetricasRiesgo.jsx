@@ -65,11 +65,6 @@ export default function MetricasRiesgo() {
   const umb         = getUmbrales();
 
   const [mesKey, setMesKey]           = useState(meses[meses.length-1]?.key || "");
-  const [filtroSem, setFiltroSem]     = useState("Todos");
-  const [filtroKam, setFiltroKam]     = useState("Todos");
-  const [filtroFactor, setFiltroFactor] = useState("Todos");
-  const [busca, setBusca]             = useState("");
-  const [empresaSel, setEmpresaSel]   = useState(null);
 
   // Mes anterior automático
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
@@ -93,41 +88,6 @@ export default function MetricasRiesgo() {
     });
   }, [dataMes, dataPrev, umb]);
 
-  // Lista dinámica de ejecutivos
-  const kamsDisponibles = useMemo(()=>{
-    const set = new Set(empresasConScore.map(e=>e.ejecutivo).filter(Boolean));
-    return ["Todos", ...Array.from(set).sort()];
-  }, [empresasConScore]);
-
-  // Catálogo fijo de factores de riesgo posibles
-  const FACTORES_CATALOGO = [
-    { key:"Todos",                label:"⚠️ Todos los factores" },
-    { key:"Completado bajo",      label:"📉 Completado bajo"       },
-    { key:"Completado moderado",  label:"📊 Completado moderado"   },
-    { key:"Cancelaciones altas",  label:"❌ Cancelaciones altas"   },
-    { key:"Cancelaciones moderadas", label:"⚠️ Cancelaciones moderadas" },
-    { key:"Expirados altos",      label:"⏱️ Expirados altos"       },
-    { key:"Expirados moderados",  label:"⏱️ Expirados moderados"   },
-    { key:"GMV cayó",             label:"💸 GMV cayó"              },
-    { key:"GMV bajó",             label:"📉 GMV bajó"              },
-    { key:"GMV = $0",             label:"🚫 GMV = $0"              },
-    { key:"Sin alertas",          label:"✅ Sin alertas"           },
-  ];
-
-  const empresasFiltradas = useMemo(()=>{
-    let r = empresasConScore;
-    if (filtroSem !== "Todos") r = r.filter(e=>e.semaforo.includes(filtroSem.replace(/🔴|🟡|🟢/,"").trim()));
-    if (filtroKam !== "Todos") r = r.filter(e=>e.ejecutivo === filtroKam);
-    if (filtroFactor !== "Todos") {
-      if (filtroFactor === "Sin alertas") {
-        r = r.filter(e => e.factores.length === 0);
-      } else {
-        r = r.filter(e => e.factores.some(f => f.startsWith(filtroFactor)));
-      }
-    }
-    if (busca) r = r.filter(e=>e.empresa.toLowerCase().includes(busca.toLowerCase()));
-    return r;
-  }, [empresasConScore, filtroSem, filtroKam, filtroFactor, busca]);
 
   if (!meses.length) return (
     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-800 text-sm">
@@ -137,12 +97,12 @@ export default function MetricasRiesgo() {
 
   // ── Totales del mes ───────────────────────────────────────────────────────
   const tot       = dataMes?.totales;
-  const nRojo     = empresasFiltradas.filter(e=>e.color==="rojo").length;
-  const nAmarillo = empresasFiltradas.filter(e=>e.color==="amarillo").length;
-  const nVerde    = empresasFiltradas.filter(e=>e.color==="verde").length;
-  const gmvTotal  = empresasFiltradas.reduce((s,e)=>s+e.gmv, 0);
-  const tcGlobal  = empresasFiltradas.reduce((s,e)=>s+e.completados,0) /
-                    Math.max(empresasFiltradas.reduce((s,e)=>s+e.total,0),1);
+  const nRojo     = empresasConScore.filter(e=>e.color==="rojo").length;
+  const nAmarillo = empresasConScore.filter(e=>e.color==="amarillo").length;
+  const nVerde    = empresasConScore.filter(e=>e.color==="verde").length;
+  const gmvTotal  = empresasConScore.reduce((s,e)=>s+e.gmv, 0);
+  const tcGlobal  = empresasConScore.reduce((s,e)=>s+e.completados,0) /
+                    Math.max(empresasConScore.reduce((s,e)=>s+e.total,0),1);
 
   // ── Totales mes anterior ─────────────────────────────────────────────────
   const empPrevAll    = dataPrev?.empresas || [];
@@ -154,8 +114,8 @@ export default function MetricasRiesgo() {
   const nRojoPrev     = empPrevAll.filter(e=>calcularScore(e,null,umb).color==="rojo").length;
 
   // Servicios, paquetes, drivers actuales
-  const totalServicios = empresasFiltradas.reduce((s,e)=>s+e.total, 0);
-  const totalPaquetes  = empresasFiltradas.reduce((s,e)=>s+(e.paquetes||0), 0);
+  const totalServicios = empresasConScore.reduce((s,e)=>s+e.total, 0);
+  const totalPaquetes  = empresasConScore.reduce((s,e)=>s+(e.paquetes||0), 0);
   const totalDrivers   = tot?.totalDriversActivos || 0;
 
   // Mes anterior
@@ -164,14 +124,12 @@ export default function MetricasRiesgo() {
   const totalDriversPrev = dataPrev?.totales?.totalDriversActivos || 0;
 
   const varGmv     = gmvPrevTotal  > 0 ? (gmvTotal - gmvPrevTotal)/gmvPrevTotal  : null;
-  const varEmp     = nEmpPrev      > 0 ? (empresasFiltradas.length - nEmpPrev)/nEmpPrev : null;
+  const varEmp     = nEmpPrev      > 0 ? (empresasConScore.length - nEmpPrev)/nEmpPrev : null;
   const varRojo    = nRojoPrev     > 0 ? (nRojo - nRojoPrev)/nRojoPrev            : null;
   const varTc      = tcPrev !== null   ? tcGlobal - tcPrev                         : null;
   const varServ    = totalServPrev > 0 ? (totalServicios - totalServPrev)/totalServPrev : null;
   const varPaq     = totalPaqPrev  > 0 ? (totalPaquetes - totalPaqPrev)/totalPaqPrev   : null;
   const varDrivers = totalDriversPrev > 0 ? (totalDrivers - totalDriversPrev)/totalDriversPrev : null;
-
-  const empSel = empresaSel ? empresasConScore.find(e=>e.empresa===empresaSel) : null;
 
   return (
     <div className="space-y-6">
@@ -203,7 +161,7 @@ export default function MetricasRiesgo() {
 
       {/* KPIs globales — fila 1: operacionales */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-        <KpiCard icon="🏢" label="Empresas"       value={empresasFiltradas.length.toLocaleString()} borderColor={PIBOX_PURPLE} delta={varEmp}/>
+        <KpiCard icon="🏢" label="Empresas"       value={empresasConScore.length.toLocaleString()} borderColor={PIBOX_PURPLE} delta={varEmp}/>
         <KpiCard icon="💰" label="GMV Total"       value={fmtFull(gmvTotal)} borderColor={PIBOX_PURPLE} delta={varGmv}/>
         <KpiCard icon="📦" label="Servicios"       value={totalServicios.toLocaleString()} borderColor="#6366F1" delta={varServ}/>
         <KpiCard icon="📮" label="Paquetes"        value={totalPaquetes.toLocaleString()} borderColor="#0EA5E9" delta={varPaq}/>
@@ -579,113 +537,6 @@ export default function MetricasRiesgo() {
         </div>
       )}
 
-      {/* Filtros + tabla de riesgo */}
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-        {/* Título + contador */}
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-gray-700 text-sm">🗂️ Ranking de riesgo
-            <span className="ml-2 text-xs font-normal text-gray-400">({empresasFiltradas.length} empresas)</span>
-          </h3>
-          {(filtroSem!=="Todos"||filtroKam!=="Todos"||filtroFactor!=="Todos"||busca) && (
-            <button onClick={()=>{setFiltroSem("Todos");setFiltroKam("Todos");setFiltroFactor("Todos");setBusca("");setEmpresaSel(null);}}
-              className="text-xs text-purple-600 hover:underline">✕ Limpiar filtros</button>
-          )}
-        </div>
-
-        {/* Barra de filtros */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-          {/* Semáforo */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-1">🚦 Semáforo</p>
-            <div className="flex flex-wrap gap-1">
-              {["Todos","🔴 Rojo","🟡 Amarillo","🟢 Verde"].map(s=>(
-                <button key={s} onClick={()=>setFiltroSem(s)}
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border transition ${
-                    filtroSem===s?"bg-purple-600 text-white border-purple-600"
-                                :"border-gray-200 text-gray-600 hover:bg-purple-50"}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Ejecutivo */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-1">👤 Ejecutivo</p>
-            <select value={filtroKam} onChange={e=>{setFiltroKam(e.target.value);setEmpresaSel(null);}}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
-              {kamsDisponibles.map(k=>(
-                <option key={k} value={k}>{k==="Todos" ? "Todos los ejecutivos" : k}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Factor de riesgo */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-1">⚠️ Factor de riesgo</p>
-            <select value={filtroFactor} onChange={e=>{setFiltroFactor(e.target.value);setEmpresaSel(null);}}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-600">
-              {FACTORES_CATALOGO.map(f=>(
-                <option key={f.key} value={f.key}>{f.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Buscar empresa */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-1">🔍 Buscar empresa</p>
-            <input value={busca} onChange={e=>setBusca(e.target.value)}
-              placeholder="Nombre de empresa..."
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300"/>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                {["Empresa","Semáforo","Score","Servicios","Completado","Cancelación","Expirado","GMV","Ejecutivo","Factores"].map(h=>(
-                  <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {empresasFiltradas.slice(0,100).map((e,i)=>(
-                <tr key={e.empresa}
-                  className={`cursor-pointer transition-colors ${
-                    empresaSel===e.empresa?"bg-purple-50":i%2===0?"bg-white":"bg-purple-50/30"
-                  } hover:bg-purple-50`}
-                  onClick={()=>setEmpresaSel(empresaSel===e.empresa?null:e.empresa)}>
-                  <td className="px-3 py-2 font-semibold text-gray-800 max-w-[160px] truncate">{e.empresa}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <SemBadge color={e.color} label={e.semaforo}/>
-                  </td>
-                  <td className="px-3 py-2 font-bold" style={{color:e.semColor}}>{e.score}/100</td>
-                  <td className="px-3 py-2">{e.total.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-semibold" style={{color:SEM_VERDE}}>{fmtPct(e.tasa_completado)}</td>
-                  <td className="px-3 py-2 font-semibold" style={{color:SEM_ROJO}}>{fmtPct(e.tasa_cancelacion)}</td>
-                  <td className="px-3 py-2">{fmtPct(e.tasa_expirado)}</td>
-                  <td className="px-3 py-2 font-semibold text-gray-700">{fmtFull(e.gmv)}</td>
-                  <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate">{e.ejecutivo}</td>
-                  <td className="px-3 py-2 text-gray-500 max-w-[200px]">
-                    {e.factores.length > 0
-                      ? <span className="text-red-600">{e.factores.join(" · ")}</span>
-                      : <span className="text-green-600">Sin alertas</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {empresasFiltradas.length > 100 && (
-            <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 100 de {empresasFiltradas.length} empresas. Usa el filtro de búsqueda para encontrar una en específico.</p>
-          )}
-        </div>
-      </div>
-
-      {/* Drill-down empresa */}
-      {empSel && (
-        <DrillDown empresa={empSel} mesLabel={dataMes?.label} />
-      )}
     </div>
   );
 }
