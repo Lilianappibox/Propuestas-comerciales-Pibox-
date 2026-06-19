@@ -451,6 +451,92 @@ export default function InformeEmpresa() {
               </div>
             </div>
 
+            {/* Usuarios y Sedes en paralelo */}
+            {(empData.topUsuarios?.length > 0 || empData.topSedes?.length > 0) && (
+              <div className="px-6 py-5 border-t border-gray-100">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Por usuario */}
+                  {empData.topUsuarios?.length > 0 && (
+                    <div>
+                      <h4 className="font-bold text-gray-700 text-sm mb-3">👤 Servicios por usuario</h4>
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr style={{background:PIBOX_PURPLE}} className="text-white">
+                              <th className="px-3 py-2 text-left">Usuario</th>
+                              <th className="px-3 py-2 text-right">Servicios</th>
+                              <th className="px-3 py-2 text-right">GMV</th>
+                              <th className="px-3 py-2 text-center">Var</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {empData.topUsuarios.slice(0, 15).map((u, i) => {
+                              const prev = prevData?.topUsuarios?.find(p => p.usuario === u.usuario);
+                              const varSvc = prev?.total > 0 ? ((u.total - prev.total) / prev.total) : null;
+                              return (
+                                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-purple-50/30"}>
+                                  <td className="px-3 py-1.5 font-medium text-gray-700 max-w-[140px] truncate" title={u.usuario}>{u.usuario}</td>
+                                  <td className="px-3 py-1.5 text-right">{u.total.toLocaleString()}</td>
+                                  <td className="px-3 py-1.5 text-right font-semibold" style={{color:PIBOX_PURPLE}}>{fmtFull(u.gmv)}</td>
+                                  <td className="px-3 py-1.5 text-center">
+                                    {varSvc !== null ? (
+                                      <span className={`font-bold ${varSvc >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                        {varSvc >= 0 ? "▲" : "▼"} {Math.abs(varSvc * 100).toFixed(0)}%
+                                      </span>
+                                    ) : <span className="text-gray-300">—</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      {empData.topUsuarios.length > 15 && <p className="text-[10px] text-gray-400 mt-1 text-center">Mostrando 15 de {empData.topUsuarios.length}</p>}
+                    </div>
+                  )}
+                  {/* Por sede */}
+                  {empData.topSedes?.length > 0 && (
+                    <div>
+                      <h4 className="font-bold text-gray-700 text-sm mb-3">🏢 Servicios por sede</h4>
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr style={{background:PIBOX_PURPLE}} className="text-white">
+                              <th className="px-3 py-2 text-left">Sede</th>
+                              <th className="px-3 py-2 text-right">Servicios</th>
+                              <th className="px-3 py-2 text-right">GMV</th>
+                              <th className="px-3 py-2 text-center">Var</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {empData.topSedes.slice(0, 15).map((s, i) => {
+                              const prev = prevData?.topSedes?.find(p => p.sede === s.sede);
+                              const varSvc = prev?.total > 0 ? ((s.total - prev.total) / prev.total) : null;
+                              return (
+                                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-purple-50/30"}>
+                                  <td className="px-3 py-1.5 font-medium text-gray-700 max-w-[140px] truncate" title={s.sede}>{s.sede}</td>
+                                  <td className="px-3 py-1.5 text-right">{s.total.toLocaleString()}</td>
+                                  <td className="px-3 py-1.5 text-right font-semibold" style={{color:PIBOX_PURPLE}}>{fmtFull(s.gmv)}</td>
+                                  <td className="px-3 py-1.5 text-center">
+                                    {varSvc !== null ? (
+                                      <span className={`font-bold ${varSvc >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                        {varSvc >= 0 ? "▲" : "▼"} {Math.abs(varSvc * 100).toFixed(0)}%
+                                      </span>
+                                    ) : <span className="text-gray-300">—</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      {empData.topSedes.length > 15 && <p className="text-[10px] text-gray-400 mt-1 text-center">Mostrando 15 de {empData.topSedes.length}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Estado del booking */}
             {empData.total > 0 && (
               <div className="px-6 py-4 border-t border-gray-100">
