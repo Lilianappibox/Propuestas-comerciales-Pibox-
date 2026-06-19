@@ -166,11 +166,9 @@ const fmtDate = () => new Date().toLocaleDateString("es-CO",{day:"2-digit",month
 export default function InformeEmpresa() {
   const meses   = mesesDisponibles();
   const umb     = getUmbrales();
-  const printRef = useRef();
 
   const [mesKey, setMesKey]     = useState(meses[meses.length-1]?.key||"");
   const [empresa, setEmpresa]   = useState("");
-  const [printing, setPrinting] = useState(false);
 
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
@@ -186,25 +184,50 @@ export default function InformeEmpresa() {
 
   const semColor = score?.color==="rojo"?SEM_ROJO:score?.color==="amarillo"?SEM_AMARILLO:SEM_VERDE;
 
-  const handlePrint = async () => {
-    if (!empData) return;
-    setPrinting(true);
-    await new Promise(r=>setTimeout(r,300));
-    try {
-      const html2pdf = (await import("html2pdf.js")).default;
-      await html2pdf().set({
-        margin:      [10,12,10,12],
-        filename:    `Informe_${empresa.replace(/[^a-zA-Z0-9]/g,"_")}_${mesKey}.pdf`,
-        image:       {type:"jpeg",quality:0.97},
-        html2canvas: {scale:2,useCORS:true,logging:false},
-        jsPDF:       {unit:"mm",format:"a4",orientation:"portrait"},
-        pagebreak:   {mode:["css","legacy"]},
-      }).from(printRef.current).save();
-    } catch(e) {
-      alert("Error al generar PDF: "+e.message);
+  // Generar insights automáticos
+  const insights = useMemo(() => {
+    if (!empData || !score) return { positivos: [], alertas: [] };
+    const pos = [], alt = [];
+    // Completado
+    if (empData.tasa_completado >= 0.95) pos.push(`Tasa de completado excelente: ${fmtPct(empData.tasa_completado)} — servicio altamente confiable.`);
+    else if (empData.tasa_completado >= 0.85) pos.push(`Tasa de completado sólida: ${fmtPct(empData.tasa_completado)}.`);
+    else alt.push(`Tasa de completado baja: ${fmtPct(empData.tasa_completado)} — revisar causas de servicios no completados.`);
+    // Cancelación
+    if (empData.tasa_cancelacion <= 0.05) pos.push(`Cancelaciones mínimas: ${fmtPct(empData.tasa_cancelacion)} — cliente estable.`);
+    else if (empData.tasa_cancelacion > 0.15) alt.push(`Cancelaciones altas: ${fmtPct(empData.tasa_cancelacion)} (${empData.cancelados} servicios). Investigar causas.`);
+    else if (empData.tasa_cancelacion > 0.08) alt.push(`Cancelaciones moderadas: ${fmtPct(empData.tasa_cancelacion)}. Mantener monitoreo.`);
+    // GMV vs anterior
+    if (prevData && prevData.gmv > 0) {
+      const varGmv = (empData.gmv - prevData.gmv) / prevData.gmv;
+      if (varGmv > 0.1) pos.push(`GMV creció ${(varGmv * 100).toFixed(1)}%: ${fmtFull(prevData.gmv)} → ${fmtFull(empData.gmv)}.`);
+      else if (varGmv < -0.15) alt.push(`GMV cayó ${Math.abs(varGmv * 100).toFixed(1)}%: ${fmtFull(prevData.gmv)} → ${fmtFull(empData.gmv)}. Analizar si es por volumen o precio.`);
+      else if (varGmv < -0.05) alt.push(`GMV bajó ${Math.abs(varGmv * 100).toFixed(1)}% vs mes anterior.`);
     }
-    setPrinting(false);
-  };
+    // Servicios vs anterior
+    if (prevData && prevData.total > 0) {
+      const varSvc = (empData.total - prevData.total) / prevData.total;
+      if (varSvc > 0.1) pos.push(`Servicios crecieron ${(varSvc * 100).toFixed(1)}%: ${prevData.total} → ${empData.total}.`);
+      else if (varSvc < -0.15) alt.push(`Servicios cayeron ${Math.abs(varSvc * 100).toFixed(1)}%: ${prevData.total} → ${empData.total}.`);
+    }
+    // Diversificación de ciudades
+    if (empData.topCiudades?.length >= 3) pos.push(`Opera en ${empData.topCiudades.length} ciudades — buena diversificación geográfica.`);
+    else if (empData.topCiudades?.length === 1) alt.push(`Concentrado en una sola ciudad (${empData.ciudad}). Riesgo de dependencia geográfica.`);
+    // Expirados
+    if (empData.tasa_expirado > 0.1) alt.push(`Tasa de expirados alta: ${fmtPct(empData.tasa_expirado)} — puede indicar problemas de asignación.`);
+    else if (empData.tasa_expirado <= 0.02) pos.push(`Expirados controlados: ${fmtPct(empData.tasa_expirado)}.`);
+    // Volumen
+    if (empData.total >= 500) pos.push(`Alto volumen: ${empData.total.toLocaleString()} servicios en el mes — cliente estratégico.`);
+    else if (empData.total < 10) alt.push(`Solo ${empData.total} servicios en el mes — riesgo de inactividad.`);
+    // Score
+    if (score.score >= 80) pos.push(`Score de riesgo saludable: ${score.score}/100.`);
+    else if (score.score < 50) alt.push(`Score de riesgo crítico: ${score.score}/100. Requiere plan de acción inmediato.`);
+    // Pilotos
+    if (empData.totalDrivers > 20) pos.push(`${empData.totalDrivers} pilotos activos asignados — buena cobertura.`);
+    else if (empData.totalDrivers > 0 && empData.totalDrivers <= 3) alt.push(`Solo ${empData.totalDrivers} pilotos activos. Riesgo de dependencia operativa.`);
+    // Paquetes
+    if (empData.paquetes > 1000) pos.push(`${empData.paquetes.toLocaleString()} paquetes entregados — volumen sólido.`);
+    return { positivos: pos.slice(0, 5), alertas: alt.slice(0, 5) };
+  }, [empData, prevData, score]);
 
   if (!meses.length) return (
     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-800 text-sm">
@@ -218,7 +241,7 @@ export default function InformeEmpresa() {
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
         <h3 className="font-bold text-gray-700 text-sm mb-4 flex items-center gap-2">
           <span className="bg-purple-100 text-purple-700 rounded-lg p-1">📄</span>
-          Configurar informe
+          Seleccionar empresa
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
@@ -253,64 +276,52 @@ export default function InformeEmpresa() {
           <TablaUsuariosSedes empData={empData} prevData={prevData}
             mesLabel={dataMes?.label} prevLabel={mesPrevMeta?.label}/>
 
-          {/* Botón de descarga */}
-          <div className="flex gap-3">
-            <button onClick={handlePrint} disabled={printing}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-semibold text-sm disabled:opacity-60 hover:opacity-90 transition-opacity"
-              style={{background:BRAND_GRADIENT}}>
-              {printing
-                ? <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Generando PDF...</>
-                : "⬇️ Descargar PDF"}
-            </button>
-            <div className="flex items-center text-xs text-gray-500">
-              El PDF incluye score, KPIs, comparativo, gráficas y distribución geográfica.
-            </div>
-          </div>
-
-          {/* Vista previa / contenido del PDF */}
-          <div ref={printRef} className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden"
-               id="informe-pdf-content">
-            {/* Header */}
-            <div className="p-6 text-white" style={{background:BRAND_GRADIENT}}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-1">
-                    Informe de Riesgo Comercial 360° · PIBOX
-                  </p>
-                  <h2 className="text-xl font-extrabold">{empresa}</h2>
-                  <p className="text-sm text-white/80 mt-1">
-                    Período: <b>{dataMes?.label}</b>
-                    {mesPrevMeta && ` · Comparado con: ${mesPrevMeta.label}`}
-                  </p>
-                </div>
-                <div className="text-right text-sm text-white/70">
-                  <p>Ejecutivo: <b className="text-white">{empData.ejecutivo}</b></p>
-                  <p>Ciudad: <b className="text-white">{empData.ciudad}</b></p>
-                  <p className="text-xs mt-1">Generado: {fmtDate()}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Score */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-6 flex-wrap"
-                 style={{borderLeft:`6px solid ${semColor}`}}>
+          {/* Score + Info empresa */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 flex items-center gap-6 flex-wrap" style={{borderLeft:`6px solid ${semColor}`}}>
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Score de riesgo</p>
                 <p className="text-4xl font-extrabold" style={{color:semColor}}>{score.score}</p>
                 <p className="text-xs text-gray-400">sobre 100</p>
               </div>
               <div>
-                <span className="inline-block px-4 py-1.5 rounded-full text-white font-bold text-sm"
-                      style={{background:semColor}}>
-                  {score.semaforo}
-                </span>
+                <span className="inline-block px-4 py-1.5 rounded-full text-white font-bold text-sm" style={{background:semColor}}>{score.semaforo}</span>
               </div>
-              {score.factores.length > 0 && (
-                <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2 flex-1">
-                  <p className="text-xs font-bold text-red-700 mb-1">⚠️ Factores de alerta</p>
-                  <p className="text-xs text-red-600">{score.factores.join(" · ")}</p>
+              <div className="flex-1 text-right text-xs text-gray-500">
+                <p>Ejecutivo: <b className="text-gray-700">{empData.ejecutivo}</b></p>
+                <p>Ciudad: <b className="text-gray-700">{empData.ciudad}</b></p>
+                {empData.totalDrivers > 0 && <p>Pilotos activos: <b className="text-gray-700">{empData.totalDrivers}</b></p>}
+              </div>
+            </div>
+
+            {/* Insights */}
+            <div className="px-6 py-4 border-t border-gray-100">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-xs font-bold text-green-700 mb-2">✅ Puntos positivos ({insights.positivos.length})</h4>
+                  {insights.positivos.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {insights.positivos.map((t, i) => (
+                        <div key={i} className="bg-green-50 border border-green-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
+                          <span className="text-green-500 shrink-0">●</span> {t}
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-xs text-gray-400">Sin puntos positivos destacados.</p>}
                 </div>
-              )}
+                <div>
+                  <h4 className="text-xs font-bold text-red-700 mb-2">⚠️ Alertas ({insights.alertas.length})</h4>
+                  {insights.alertas.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {insights.alertas.map((t, i) => (
+                        <div key={i} className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-xs text-gray-700 flex items-start gap-2">
+                          <span className="text-red-500 shrink-0">●</span> {t}
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-xs text-gray-400">Sin alertas para esta empresa.</p>}
+                </div>
+              </div>
             </div>
 
             {/* KPIs tabla comparativa */}

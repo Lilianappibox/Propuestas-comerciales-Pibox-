@@ -14,7 +14,7 @@ const TABS = [
   { id:"metricas", icon:"📊",  label:"Métricas"           },
   { id:"ranking",  icon:"🗂️",  label:"Ranking"            },
   { id:"ciudad",   icon:"🏙️",  label:"Análisis por Ciudad" },
-  { id:"informe",  icon:"📄",  label:"Informe por Empresa" },
+  { id:"informe",  icon:"📄",  label:"Análisis por Empresa" },
   { id:"pilotos",  icon:"👤",  label:"Análisis Pilotos"    },
   { id:"config",   icon:"⚙️",  label:"Configuración"      },
 ];
