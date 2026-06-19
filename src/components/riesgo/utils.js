@@ -381,9 +381,41 @@ export function procesarDatos(rows) {
     };
   }).sort((a,b)=>b.paquetes-a.paquetes);
 
+  // ── Detalle por piloto ──────────────────────────────────────────────────
+  const pilotoMap = {};
+  for (const row of rows) {
+    const dId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
+    const dNm = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
+    const dk = dId || dNm;
+    if (!dk) continue;
+    const city = toStr(row["city"] || row["City"] || "");
+    const st = toStr(row["service_status"] || "");
+    const gmv = toNum(row["gmv"]);
+    const dtTime = toStr(row["dt_time"] || "");
+    let hora = -1;
+    const hmMatch = dtTime.match(/^(\d{1,2}):/);
+    if (hmMatch) hora = parseInt(hmMatch[1]);
+    else { try { const d = new Date(row["date"]); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {} }
+    if (!pilotoMap[dk]) pilotoMap[dk] = { id: dId, n: dNm, ci: city, s: 0, c: 0, x: 0, g: 0, hp: {} };
+    const p = pilotoMap[dk];
+    p.s++;
+    if (st === "Completed") p.c++;
+    if (st.startsWith("Canceled")) p.x++;
+    p.g += gmv;
+    if (hora >= 0) p.hp[hora] = (p.hp[hora] || 0) + 1;
+    if (dNm && dNm.length > (p.n || "").length) p.n = dNm;
+    if (city) p.ci = city;
+  }
+  const drivers = Object.values(pilotoMap).map(p => {
+    let h = -1, mx = 0;
+    for (const [hr, cnt] of Object.entries(p.hp)) { if (cnt > mx) { mx = cnt; h = Number(hr); } }
+    return { id: p.id, n: p.n, ci: p.ci, s: p.s, c: p.c, x: p.x, g: Math.round(p.g), h };
+  });
+
   return {
     empresas,
     ciudades,
+    drivers,
     totales: {
       servicios: rows.length,
       gmv: totalGmv,
@@ -397,6 +429,27 @@ export function procesarDatos(rows) {
       totalDriversActivos,
     }
   };
+}
+
+// ── IndexedDB para drivers (evita exceder localStorage) ──────────────────
+const IDB_NAME = "pibox_riesgo_db";
+const IDB_STORE = "drivers";
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+export async function idbSaveDrivers(mesKey, drivers) {
+  try { const db = await idbOpen(); const tx = db.transaction(IDB_STORE, "readwrite"); tx.objectStore(IDB_STORE).put(drivers, mesKey); await new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; }); } catch (e) { console.warn("IDB save drivers:", e); }
+}
+export async function idbLoadDrivers(mesKey) {
+  try { const db = await idbOpen(); const tx = db.transaction(IDB_STORE, "readonly"); const req = tx.objectStore(IDB_STORE).get(mesKey); return new Promise(r => { req.onsuccess = () => r(req.result || null); req.onerror = () => r(null); }); } catch { return null; }
+}
+export async function idbDeleteDrivers(mesKey) {
+  try { const db = await idbOpen(); const tx = db.transaction(IDB_STORE, "readwrite"); tx.objectStore(IDB_STORE).delete(mesKey); } catch {}
 }
 
 // ── Score de riesgo ───────────────────────────────────────────────────────────

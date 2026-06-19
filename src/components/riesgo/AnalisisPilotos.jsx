@@ -1,102 +1,37 @@
-import { useState, useMemo } from "react";
-import XLSX from "../../utils/xlsxHelper";
+import { useState, useMemo, useEffect } from "react";
+import { loadIndex, idbLoadDrivers, MESES_ES, PIBOX_PURPLE } from "./utils";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
-const PIBOX_PURPLE = "#7C22D4";
 const fmtM = (v) => "$" + Math.round(v).toLocaleString("es-CO");
-const SK = (k) => `pibox_pilotos_${k}`;
-const SK_IDX = "pibox_pilotos_index";
-
-function processFile(wb) {
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
-  if (!rows.length) throw new Error("Archivo vacío");
-  const toStr = v => (v == null ? "" : String(v).trim());
-  const toNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
-  const dMap = {};
-  for (const r of rows) {
-    const id = toStr(r.driver_id || r.DRIVER_ID || r.driverId || "");
-    const nm = toStr(r.driver_name || r.DRIVER_NAME || r.driverName || "");
-    const dk = id || nm;
-    if (!dk) continue;
-    const city = toStr(r.city || r.City || "");
-    const st = toStr(r.service_status || "");
-    const gmv = toNum(r.gmv);
-    const dtTime = toStr(r.dt_time || "");
-    let hora = -1;
-    const hm = dtTime.match(/^(\d{1,2}):/);
-    if (hm) hora = parseInt(hm[1]);
-    if (!dMap[dk]) dMap[dk] = { id, nombre: nm, ciudad: city, s: 0, c: 0, x: 0, g: 0, hp: {} };
-    const p = dMap[dk];
-    p.s++;
-    if (st === "Completed") p.c++;
-    if (st.startsWith("Canceled")) p.x++;
-    p.g += gmv;
-    if (hora >= 0) p.hp[hora] = (p.hp[hora] || 0) + 1;
-    if (nm && nm.length > (p.nombre || "").length) p.nombre = nm;
-    if (city) p.ciudad = city;
-  }
-  return Object.values(dMap).map(p => {
-    let hp = -1, mx = 0;
-    for (const [h, c] of Object.entries(p.hp)) { if (c > mx) { mx = c; hp = Number(h); } }
-    return { id: p.id, n: p.nombre, ci: p.ciudad, s: p.s, c: p.c, x: p.x, g: Math.round(p.g), h: hp };
-  });
-}
-
-function loadIdx() { try { return JSON.parse(localStorage.getItem(SK_IDX) || "{}"); } catch { return {}; } }
-function loadMes(k) { try { return JSON.parse(localStorage.getItem(SK(k)) || "null"); } catch { return null; } }
-
-const MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 export default function AnalisisPilotos() {
-  const [idx, setIdx] = useState(loadIdx);
-  const mesKeys = Object.keys(idx).sort().reverse();
-  const [mesSel, setMesSel] = useState(mesKeys[0] || "");
-  const [anio, setAnio] = useState(2026);
-  const [mesNum, setMesNum] = useState(new Date().getMonth() + 1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const meses = useMemo(() => Object.values(loadIndex()).sort((a, b) => (a.key > b.key ? -1 : 1)), []);
+  const [mesSel, setMesSel] = useState(meses[0]?.key || "");
 
   const prevKey = useMemo(() => {
     if (!mesSel) return null;
     const [y, m] = mesSel.split("-").map(Number);
     return `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, "0")}`;
   }, [mesSel]);
-  const mesLabel = useMemo(() => { if (!mesSel) return ""; const [y, m] = mesSel.split("-").map(Number); return `${MESES[m]} ${y}`; }, [mesSel]);
-  const prevLabel = useMemo(() => { if (!prevKey) return ""; const [y, m] = prevKey.split("-").map(Number); return `${MESES[m]} ${y}`; }, [prevKey]);
+  const mesLabel = useMemo(() => { if (!mesSel) return ""; const [y, m] = mesSel.split("-").map(Number); return `${MESES_ES[m]} ${y}`; }, [mesSel]);
+  const prevLabel = useMemo(() => { if (!prevKey) return ""; const [y, m] = prevKey.split("-").map(Number); return `${MESES_ES[m]} ${y}`; }, [prevKey]);
 
-  const driversActual = useMemo(() => loadMes(mesSel) || [], [mesSel, idx]);
-  const driversPrev = useMemo(() => prevKey ? loadMes(prevKey) || [] : [], [prevKey, idx]);
+  const [driversActual, setDriversActual] = useState([]);
+  const [driversPrev, setDriversPrev] = useState([]);
+  const [loadingMsg, setLoadingMsg] = useState("");
 
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLoading(true); setError("");
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-      const drivers = processFile(wb);
-      const key = `${anio}-${String(mesNum).padStart(2, "0")}`;
-      localStorage.setItem(SK(key), JSON.stringify(drivers));
-      const newIdx = { ...idx, [key]: { archivo: file.name, pilotos: drivers.length, fecha: new Date().toISOString() } };
-      localStorage.setItem(SK_IDX, JSON.stringify(newIdx));
-      setIdx(newIdx);
-      setMesSel(key);
-    } catch (err) { setError(err.message); }
-    setLoading(false); e.target.value = "";
-  };
+  useEffect(() => {
+    setDriversActual([]); setLoadingMsg("Cargando...");
+    if (!mesSel) { setLoadingMsg(""); return; }
+    idbLoadDrivers(mesSel).then(d => { setDriversActual(d || []); setLoadingMsg(d ? "" : "Sin datos de pilotos. Re-sube el archivo en Configuración."); });
+  }, [mesSel]);
+  useEffect(() => {
+    setDriversPrev([]);
+    if (!prevKey) return;
+    idbLoadDrivers(prevKey).then(d => setDriversPrev(d || []));
+  }, [prevKey]);
 
-  const handleDelete = (key) => {
-    if (!confirm(`¿Eliminar ${key}?`)) return;
-    localStorage.removeItem(SK(key));
-    const newIdx = { ...idx }; delete newIdx[key];
-    localStorage.setItem(SK_IDX, JSON.stringify(newIdx));
-    setIdx(newIdx);
-    const remaining = Object.keys(newIdx).sort().reverse();
-    setMesSel(remaining[0] || "");
-  };
-
-  // ── Análisis ──
+  // Análisis
   const analisis = useMemo(() => {
     if (!driversActual.length) return null;
     const prevIds = new Set(driversPrev.map(d => d.id || d.n));
@@ -133,9 +68,11 @@ export default function AnalisisPilotos() {
     const topG = [...driversActual].sort((a, b) => b.g - a.g).slice(0, 10);
     // Tendencia
     const tend = [];
-    for (const k of Object.keys(idx).sort()) { const d = loadMes(k); if (d) { const [y, m] = k.split("-").map(Number); tend.push({ mes: `${MESES[m]} ${y}`, key: k, pilotos: d.length }); } }
+    for (const m of Object.values(loadIndex()).sort((a, b) => (a.key < b.key ? -1 : 1))) {
+      tend.push({ mes: m.label, key: m.key, pilotos: m.totales?.totalDriversActivos || 0 });
+    }
     return { T, totalS, totalC, totalX, totalG, avg, pctC, pctX, retenidos, perdidos, tasaRetencion, prevTotal: driversPrev.length, nuevosTotal: nuevos.length, franjas, porCiudad, rangos, topA, topX, topG, tend, allA: [...driversActual].sort((a, b) => b.s - a.s), allX: driversActual.filter(d => d.x > 0).sort((a, b) => b.x - a.x) };
-  }, [driversActual, driversPrev, idx]);
+  }, [driversActual, driversPrev]);
 
   const dlCsv = (rows, hdr, fn) => {
     const csv = [hdr.join(","), ...rows.map(r => r.map(c => typeof c === "string" && (c.includes(",") || c.includes('"')) ? `"${c.replace(/"/g, '""')}"` : c).join(","))];
@@ -143,70 +80,25 @@ export default function AnalisisPilotos() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = fn; document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
+  if (!meses.length) return (<div className="text-center py-20 text-gray-400"><p className="text-4xl mb-3">👤</p><p className="font-semibold">No hay datos cargados</p><p className="text-sm mt-1">Sube archivos en la pestaña Configuración.</p></div>);
+
   return (
     <div className="space-y-6">
-      {/* Upload */}
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-        <h3 className="text-sm font-bold text-gray-700 mb-3">Subir archivo de operaciones</h3>
-        <p className="text-xs text-gray-400 mb-3">Sube el mismo archivo Excel de operaciones que usas en Configuración. Se extraen solo los datos de pilotos.</p>
-        <div className="flex flex-wrap gap-3 items-end">
+      {/* Selector */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
+        <div className="flex flex-wrap gap-4 items-end">
           <div>
-            <label className="text-xs font-semibold text-gray-600 mb-1 block">Año</label>
-            <select value={anio} onChange={e => setAnio(Number(e.target.value))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-              {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes a analizar</label>
+            <select value={mesSel} onChange={e => setMesSel(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+              {meses.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes</label>
-            <select value={mesNum} onChange={e => setMesNum(Number(e.target.value))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-              {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow hover:shadow-lg transition" style={{ background: BRAND_GRADIENT }}>
-              {loading ? "Procesando..." : "Seleccionar archivo"}
-              <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={loading} />
-            </label>
-          </div>
+          {driversPrev.length > 0 && <div className="px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>Comparando vs {prevLabel}</div>}
+          {driversPrev.length === 0 && prevKey && <p className="text-xs text-gray-400">No hay datos de {prevLabel} para retención.</p>}
         </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        {mesKeys.length > 0 && (
-          <div className="mt-4">
-            <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({mesKeys.length})</p>
-            <div className="flex flex-wrap gap-2">
-              {mesKeys.map(k => {
-                const info = idx[k];
-                const [y, m] = k.split("-").map(Number);
-                return (
-                  <div key={k} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${k === mesSel ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
-                    <button onClick={() => setMesSel(k)}>{MESES[m]} {y}</button>
-                    <span className="opacity-60">{info?.pilotos} pilotos</span>
-                    <button onClick={() => handleDelete(k)} className="text-red-300 hover:text-red-500 ml-1">✕</button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Selector */}
-      {mesKeys.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes a analizar</label>
-              <select value={mesSel} onChange={e => setMesSel(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-                {mesKeys.map(k => { const [y, m] = k.split("-").map(Number); return <option key={k} value={k}>{MESES[m]} {y}</option>; })}
-              </select>
-            </div>
-            {driversPrev.length > 0 && <div className="px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>Comparando vs {prevLabel}</div>}
-            {driversPrev.length === 0 && prevKey && <p className="text-xs text-gray-400">Sube {prevLabel} para ver retención.</p>}
-          </div>
-        </div>
-      )}
-
-      {!analisis && mesKeys.length > 0 && <p className="text-center py-10 text-gray-400 text-sm">No hay datos de pilotos para este mes.</p>}
+      {loadingMsg && <p className="text-center py-10 text-gray-400 text-sm">{loadingMsg}</p>}
 
       {analisis && (<>
         {/* KPIs */}
@@ -214,13 +106,13 @@ export default function AnalisisPilotos() {
           <h3 className="text-sm font-bold mb-4">Análisis de Pilotos — {mesLabel}</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             {[
-              { l: "Pilotos activos", v: analisis.T, i: "👤" },
+              { l: "Pilotos activos", v: analisis.T.toLocaleString(), i: "👤" },
               { l: "Servicios", v: analisis.totalS.toLocaleString(), i: "📋" },
               { l: "Prom. serv/piloto", v: analisis.avg.toFixed(1), i: "📊" },
               { l: "% Completado", v: `${analisis.pctC.toFixed(1)}%`, i: "✅" },
               { l: "% Cancelación", v: `${analisis.pctX.toFixed(1)}%`, i: "🚫" },
               { l: "GMV Total", v: fmtM(analisis.totalG), i: "💰" },
-              { l: "Nuevos", v: analisis.nuevosTotal, i: "🆕" },
+              { l: "Nuevos", v: analisis.nuevosTotal.toLocaleString(), i: "🆕" },
               { l: "Retención", v: `${analisis.tasaRetencion.toFixed(0)}%`, i: "🔄" },
             ].map((k, i) => (
               <div key={i} className="bg-white/15 backdrop-blur rounded-xl p-2.5 text-center">
@@ -242,9 +134,7 @@ export default function AnalisisPilotos() {
                 const diff = prev !== null ? t.pilotos - prev : null;
                 return (
                   <div key={i} className="text-center flex-1 min-w-[80px]">
-                    <div className="h-24 flex items-end justify-center mb-1">
-                      <div className="w-10 rounded-t-md" style={{ height: `${Math.max(pct, 5)}%`, background: t.key === mesSel ? PIBOX_PURPLE : "#DDD6FE" }} />
-                    </div>
+                    <div className="h-24 flex items-end justify-center mb-1"><div className="w-10 rounded-t-md" style={{ height: `${Math.max(pct, 5)}%`, background: t.key === mesSel ? PIBOX_PURPLE : "#DDD6FE" }} /></div>
                     <p className="text-sm font-bold text-purple-700">{t.pilotos.toLocaleString()}</p>
                     {diff !== null && <p className={`text-[9px] font-semibold ${diff >= 0 ? "text-green-600" : "text-red-500"}`}>{diff >= 0 ? "+" : ""}{diff}</p>}
                     <p className="text-[9px] text-gray-400">{t.mes}</p>
@@ -266,10 +156,7 @@ export default function AnalisisPilotos() {
               <div className="bg-blue-50 rounded-xl p-3 text-center"><p className="text-2xl font-bold text-blue-600">{analisis.nuevosTotal.toLocaleString()}</p><p className="text-xs text-gray-500">Nuevos</p></div>
             </div>
             <div className="flex items-center gap-3 text-xs">
-              <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden flex">
-                <div className="h-full bg-green-500" style={{ width: `${analisis.tasaRetencion}%` }} />
-                <div className="h-full bg-red-400" style={{ width: `${100 - analisis.tasaRetencion}%` }} />
-              </div>
+              <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden flex"><div className="h-full bg-green-500" style={{ width: `${analisis.tasaRetencion}%` }} /><div className="h-full bg-red-400" style={{ width: `${100 - analisis.tasaRetencion}%` }} /></div>
               <span className="font-bold text-green-600">{analisis.tasaRetencion.toFixed(0)}% retención</span>
             </div>
           </div>
@@ -282,14 +169,12 @@ export default function AnalisisPilotos() {
             {Object.entries(analisis.rangos).map(([rango, count], i) => {
               const pct = analisis.T > 0 ? (count / analisis.T * 100) : 0;
               const colors = ["#7C22D4", "#A855F7", "#C026D3", "#6366F1", "#EC4899"];
-              return (
-                <div key={rango} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
-                  <p className="text-2xl font-bold" style={{ color: colors[i] }}>{count.toLocaleString()}</p>
-                  <p className="text-xs font-semibold text-gray-600 mt-1">{rango} serv</p>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2"><div className="h-2 rounded-full" style={{ width: `${Math.max(pct, 4)}%`, background: colors[i] }} /></div>
-                  <p className="text-[10px] text-gray-400 mt-1">{pct.toFixed(0)}%</p>
-                </div>
-              );
+              return (<div key={rango} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <p className="text-2xl font-bold" style={{ color: colors[i] }}>{count.toLocaleString()}</p>
+                <p className="text-xs font-semibold text-gray-600 mt-1">{rango} serv</p>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2"><div className="h-2 rounded-full" style={{ width: `${Math.max(pct, 4)}%`, background: colors[i] }} /></div>
+                <p className="text-[10px] text-gray-400 mt-1">{pct.toFixed(0)}%</p>
+              </div>);
             })}
           </div>
         </div>
@@ -302,13 +187,11 @@ export default function AnalisisPilotos() {
               {analisis.franjas.map(f => {
                 const max = Math.max(...analisis.franjas.map(x => x.pilotos));
                 const pct = max > 0 ? (f.pilotos / max * 100) : 0;
-                return (
-                  <div key={f.hora} className="flex-1 text-center group relative">
-                    <div className="mx-auto rounded-t" style={{ height: `${Math.max(pct, 3)}%`, minHeight: 2, background: PIBOX_PURPLE, maxWidth: 28 }} />
-                    <p className="text-[8px] text-gray-400 mt-1">{f.hora.slice(0, 2)}</p>
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">{f.hora}: {f.pilotos} pilotos</div>
-                  </div>
-                );
+                return (<div key={f.hora} className="flex-1 text-center group relative">
+                  <div className="mx-auto rounded-t" style={{ height: `${Math.max(pct, 3)}%`, minHeight: 2, background: PIBOX_PURPLE, maxWidth: 28 }} />
+                  <p className="text-[8px] text-gray-400 mt-1">{f.hora.slice(0, 2)}</p>
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">{f.hora}: {f.pilotos} pilotos</div>
+                </div>);
               })}
             </div>
           </div>
@@ -346,7 +229,7 @@ export default function AnalisisPilotos() {
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-gray-700">Top 10 Más Activos</h3>
-              <button onClick={() => dlCsv(analisis.allA.map((p, i) => [i + 1, p.n, p.id, p.ci, p.s, p.c, p.x, p.g]), ["#", "Piloto", "ID", "Ciudad", "Servicios", "Completados", "Cancelados", "GMV"], `Pilotos_Activos_${mesSel}.csv`)} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 border border-purple-200">Descargar ({analisis.allA.length})</button>
+              <button onClick={() => dlCsv(analisis.allA.map((p, i) => [i + 1, p.n, p.id, p.ci, p.s, p.c, p.x, p.g]), ["#", "Piloto", "ID", "Ciudad", "Servicios", "Completados", "Cancelados", "GMV"], `Pilotos_Activos_${mesSel}.csv`)} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 border border-purple-200">Todos ({analisis.allA.length})</button>
             </div>
             <div className="space-y-1.5">{analisis.topA.map((p, i) => (
               <div key={p.id || p.n} className="flex items-center gap-2 bg-gray-50 rounded-lg px-2 py-1.5">
@@ -359,7 +242,7 @@ export default function AnalisisPilotos() {
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-gray-700">Top 10 Cancelaciones</h3>
-              <button onClick={() => dlCsv(analisis.allX.map((p, i) => [i + 1, p.n, p.id, p.ci, p.s, p.x, (p.s > 0 ? p.x / p.s * 100 : 0).toFixed(1) + "%"]), ["#", "Piloto", "ID", "Ciudad", "Servicios", "Cancelados", "% Cancel"], `Pilotos_Cancel_${mesSel}.csv`)} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200">Descargar ({analisis.allX.length})</button>
+              <button onClick={() => dlCsv(analisis.allX.map((p, i) => [i + 1, p.n, p.id, p.ci, p.s, p.x, (p.s > 0 ? p.x / p.s * 100 : 0).toFixed(1) + "%"]), ["#", "Piloto", "ID", "Ciudad", "Servicios", "Cancelados", "% Cancel"], `Pilotos_Cancel_${mesSel}.csv`)} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200">Todos ({analisis.allX.length})</button>
             </div>
             <div className="space-y-1.5">{analisis.topX.map((p, i) => (
               <div key={p.id || p.n} className="flex items-center gap-2 bg-red-50/50 rounded-lg px-2 py-1.5">

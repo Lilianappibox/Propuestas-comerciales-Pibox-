@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import XLSX from "../../utils/xlsxHelper";
 import {
   procesarDatos, deleteMes, mesesDisponibles,
-  saveIndex, loadIndex, mesKey, labelMes, MESES_ES, PIBOX_PURPLE,
+  saveIndex, loadIndex, mesKey, labelMes, MESES_ES, PIBOX_PURPLE, idbSaveDrivers, idbDeleteDrivers,
   saveMesData,
 } from "./utils";
 
@@ -50,8 +50,9 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
       idx[key] = entry;
       saveIndex(idx);
 
-      // Guardar data procesada (empresas + ciudades)
+      // Guardar data procesada (empresas + ciudades en localStorage, drivers en IndexedDB)
       saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades });
+      if (processed.drivers) idbSaveDrivers(key, processed.drivers);
 
       const fresh = mesesDisponibles();
       setMeses(fresh);
@@ -68,6 +69,7 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
   const handleDelete = (key, label) => {
     if (!confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`)) return;
     deleteMes(key);
+    idbDeleteDrivers(key);
     const fresh = mesesDisponibles();
     setMeses(fresh);
     onMesesChange?.(fresh);
