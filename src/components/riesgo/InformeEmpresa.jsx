@@ -451,6 +451,66 @@ export default function InformeEmpresa() {
               </div>
             </div>
 
+            {/* Estado del booking */}
+            {empData.total > 0 && (
+              <div className="px-6 py-4 border-t border-gray-100">
+                <h4 className="font-bold text-gray-700 text-sm mb-1">📋 Estado del Servicio</h4>
+                {prevData && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta?.label}</p>}
+                {(() => {
+                  const estados = [
+                    { estado: "Completed", total: empData.completados || 0 },
+                    { estado: "Canceled", total: empData.cancelados || 0 },
+                    { estado: "Expired", total: empData.expirados || 0 },
+                  ].filter(e => e.total > 0 || (prevData && (e.estado === "Completed" ? prevData.completados : e.estado === "Canceled" ? prevData.cancelados : prevData.expirados) > 0));
+                  const merged = estados.map(e => ({
+                    ...e,
+                    totalPrev: prevData ? (e.estado === "Completed" ? prevData.completados : e.estado === "Canceled" ? prevData.cancelados : prevData.expirados) || 0 : 0,
+                  }));
+                  const other = (empData.total || 0) - (empData.completados || 0) - (empData.cancelados || 0) - (empData.expirados || 0);
+                  if (other > 0) merged.push({ estado: "Other", total: other, totalPrev: 0 });
+                  return (
+                    <ResponsiveContainer width="100%" height={Math.max(160, merged.length * 40)}>
+                      <BarChart data={merged} layout="vertical" margin={{ left: 5, right: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                        <XAxis type="number" tick={{ fontSize: 9 }} tickFormatter={v => v.toLocaleString()} />
+                        <YAxis type="category" dataKey="estado" tick={{ fontSize: 9 }} width={80} />
+                        <Tooltip formatter={v => [v.toLocaleString() + " servicios"]} />
+                        <Legend iconSize={8} wrapperStyle={{ fontSize: 9 }} />
+                        <Bar dataKey="total" name={dataMes?.label || "Actual"} radius={[0, 4, 4, 0]}>
+                          {merged.map((e, i) => (
+                            <Cell key={i} fill={e.estado === "Completed" ? SEM_VERDE : e.estado === "Canceled" ? SEM_ROJO : e.estado === "Expired" ? SEM_AMARILLO : "#9CA3AF"} />
+                          ))}
+                        </Bar>
+                        {prevData && <Bar dataKey="totalPrev" name={mesPrevMeta?.label} fill={PIBOX_PINK} fillOpacity={0.45} radius={[0, 4, 4, 0]} />}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  );
+                })()}
+                <div className="mt-2 space-y-1">
+                  {[
+                    { label: "Completed", value: empData.completados, prev: prevData?.completados, color: SEM_VERDE },
+                    { label: "Canceled", value: empData.cancelados, prev: prevData?.cancelados, color: SEM_ROJO },
+                    { label: "Expired", value: empData.expirados, prev: prevData?.expirados, color: SEM_AMARILLO },
+                  ].map(d => {
+                    const varPct = d.prev > 0 ? ((d.value - d.prev) / d.prev * 100) : 0;
+                    return (
+                      <div key={d.label} className="flex justify-between text-xs items-center">
+                        <span style={{ color: d.color }}>{d.label}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-700">{(d.value || 0).toLocaleString()}</span>
+                          {d.prev > 0 && (
+                            <span className={`text-xs font-bold ${varPct >= 0 ? (d.label === "Completed" ? "text-green-600" : "text-red-500") : (d.label === "Completed" ? "text-red-500" : "text-green-600")}`}>
+                              {varPct >= 0 ? "▲" : "▼"} {Math.abs(varPct).toFixed(1)}%
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Gráficas semanales */}
             {empData.weekly?.length > 0 && (
               <div className="px-6 py-4 border-t border-gray-100">
