@@ -540,6 +540,109 @@ export default function MetricasRiesgo() {
               </div>
             </div>
 
+            {/* Gráficas comparativas: Devoluciones + Relanzamientos vs mes anterior */}
+            {(() => {
+              const totalDevAct = empresasConScore.reduce((s,e) => s + (e.devueltos||0), 0);
+              const totalRelAct = empresasConScore.reduce((s,e) => s + (e.relanzamientos||0), 0);
+              const totalServAct = empresasConScore.reduce((s,e) => s + e.total, 0);
+              const prevEmps = dataPrev?.empresas || [];
+              const totalDevPrev = prevEmps.reduce((s,e) => s + (e.devueltos||0), 0);
+              const totalRelPrev = prevEmps.reduce((s,e) => s + (e.relanzamientos||0), 0);
+              const totalServPrev = prevEmps.reduce((s,e) => s + e.total, 0);
+              const mesActLabel = dataMes?.label || "Actual";
+              const mesPrevLabel = mesPrevMeta?.label || "Anterior";
+
+              const barData = [
+                { name: "Devoluciones", [mesActLabel]: totalDevAct, [mesPrevLabel]: totalDevPrev },
+                { name: "Relanzamientos", [mesActLabel]: totalRelAct, [mesPrevLabel]: totalRelPrev },
+              ];
+              const pctData = [
+                { name: "% Devoluciones", [mesActLabel]: totalServAct > 0 ? +(totalDevAct/totalServAct*100).toFixed(2) : 0, [mesPrevLabel]: totalServPrev > 0 ? +(totalDevPrev/totalServPrev*100).toFixed(2) : 0 },
+                { name: "% Relanzamientos", [mesActLabel]: totalServAct > 0 ? +(totalRelAct/totalServAct*100).toFixed(2) : 0, [mesPrevLabel]: totalServPrev > 0 ? +(totalRelPrev/totalServPrev*100).toFixed(2) : 0 },
+              ];
+
+              // Relanzamientos por ciudad
+              const ciudadRelMap = {};
+              for (const e of empresasConScore) {
+                for (const c of (e.topCiudades || [])) {
+                  if (!ciudadRelMap[c.city]) ciudadRelMap[c.city] = { actual: 0, prev: 0 };
+                }
+              }
+              // Actual: sum relanzamientos by ciudad from empresas
+              if (dataMes?.ciudades) {
+                for (const c of dataMes.ciudades) {
+                  if (!ciudadRelMap[c.city]) ciudadRelMap[c.city] = { actual: 0, prev: 0 };
+                  // Aggregate from empresas that operate in this city
+                  const empsInCity = empresasConScore.filter(e => (e.topCiudades||[]).some(tc => tc.city === c.city));
+                  ciudadRelMap[c.city].actual = empsInCity.reduce((s,e) => s + (e.relanzamientos||0), 0);
+                }
+              }
+              if (dataPrev?.ciudades) {
+                for (const c of dataPrev.ciudades) {
+                  if (!ciudadRelMap[c.city]) ciudadRelMap[c.city] = { actual: 0, prev: 0 };
+                  const empsInCity = (dataPrev.empresas||[]).filter(e => (e.topCiudades||[]).some(tc => tc.city === c.city));
+                  ciudadRelMap[c.city].prev = empsInCity.reduce((s,e) => s + (e.relanzamientos||0), 0);
+                }
+              }
+              const ciudadRelData = Object.entries(ciudadRelMap)
+                .filter(([,v]) => v.actual > 0 || v.prev > 0)
+                .map(([city, v]) => ({ city, [mesActLabel]: v.actual, [mesPrevLabel]: v.prev }))
+                .sort((a,b) => b[mesActLabel] - a[mesActLabel])
+                .slice(0, 12);
+
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Devoluciones + Relanzamientos vs anterior */}
+                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                    <h3 className="font-bold text-gray-700 text-sm mb-3">📦 Devoluciones y Relanzamientos vs {mesPrevLabel}</h3>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={barData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip />
+                        <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                        <Bar dataKey={mesActLabel} fill={PIBOX_PURPLE} radius={[4,4,0,0]} />
+                        <Bar dataKey={mesPrevLabel} fill="#DDD6FE" radius={[4,4,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* % participación sobre servicios */}
+                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                    <h3 className="font-bold text-gray-700 text-sm mb-3">📊 % sobre servicios totales</h3>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={pctData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} unit="%" />
+                        <Tooltip formatter={v => `${v}%`} />
+                        <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                        <Bar dataKey={mesActLabel} fill={SEM_ROJO} radius={[4,4,0,0]} />
+                        <Bar dataKey={mesPrevLabel} fill="#FCA5A5" radius={[4,4,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Relanzamientos por ciudad */}
+                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                    <h3 className="font-bold text-gray-700 text-sm mb-3">🏙️ Relanzamientos por ciudad</h3>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={ciudadRelData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                        <XAxis type="number" tick={{ fontSize: 9 }} />
+                        <YAxis dataKey="city" type="category" width={80} tick={{ fontSize: 9 }} />
+                        <Tooltip />
+                        <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                        <Bar dataKey={mesActLabel} fill={PIBOX_PURPLE} radius={[0,4,4,0]} />
+                        <Bar dataKey={mesPrevLabel} fill="#DDD6FE" radius={[0,4,4,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Relanzamientos por empresa */}
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-1">
