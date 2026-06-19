@@ -242,11 +242,12 @@ export default function ClientesNuevos() {
         </div>
       </div>
 
-      {/* Relaunch distribution */}
+      {/* Relaunch distribution + Devoluciones — side by side */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 16, marginBottom: 20 }}>
       {(() => {
         const relaunchEmps = newClients.filter(c => (c.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0));
         return (
-      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Distribucion de relanzamientos</h4>
@@ -302,7 +303,7 @@ export default function ClientesNuevos() {
         const totDev = devolData.reduce((s,d) => s+d.devueltos, 0);
         const totTasa = totPaq > 0 ? totDev/totPaq : 0;
         return (
-          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
+          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", overflow: "hidden" }}>
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Devoluciones por empresa</h4>
               <button onClick={() => {
@@ -348,6 +349,7 @@ export default function ClientesNuevos() {
           </div>
         );
       })()}
+      </div>
 
       {/* Top 5 by GMV */}
       {top5.length > 0 && (

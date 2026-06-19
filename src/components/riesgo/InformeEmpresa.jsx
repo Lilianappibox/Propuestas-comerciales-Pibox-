@@ -886,6 +886,8 @@ export default function InformeEmpresa() {
                   )}
 
                   <div className="px-6 py-5 border-t border-gray-100">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-bold text-gray-700 text-sm">🔄 Distribucion de relanzamientos</h4>
                       {empWithRelaunch.length > 0 && (
@@ -926,6 +928,7 @@ export default function InformeEmpresa() {
                       <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {empWithRelaunch.length}. Descarga CSV para ver todos.</p>
                     )}
                   </div>
+                    </div>
 
                   {/* Devoluciones por empresa */}
                   {(() => {
@@ -937,7 +940,7 @@ export default function InformeEmpresa() {
                     const totDev = devolData.reduce((s,d) => s+d.devueltos, 0);
                     const totTasa = totPaq > 0 ? totDev/totPaq : 0;
                     return (
-                      <div className="px-6 py-5 border-t border-gray-100">
+                      <div>
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-bold text-gray-700 text-sm">📦 Devoluciones por empresa</h4>
                           <button onClick={() => {
@@ -983,6 +986,7 @@ export default function InformeEmpresa() {
                       </div>
                     );
                   })()}
+                  </div>
                 </>
               ) : null;
             })()}
