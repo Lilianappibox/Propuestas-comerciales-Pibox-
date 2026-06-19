@@ -162,6 +162,22 @@ export default function AnalisisCiudad() {
     return m;
   }, [dataPrev, ciudadesSeleccionadas]);
 
+  // Clientes activos en ciudades seleccionadas
+  const clientesCiudad = useMemo(() => {
+    if (!ciudadesSeleccionadas.length || !dataMes?.empresas) return [];
+    const result = [];
+    for (const emp of dataMes.empresas) {
+      const ciudadesEmp = emp.topCiudades || [];
+      const match = ciudadesEmp.filter(c => ciudadesSeleccionadas.includes(c.city));
+      if (match.length > 0) {
+        const gmv = match.reduce((s, c) => s + c.gmv, 0);
+        const servicios = match.reduce((s, c) => s + c.count, 0);
+        result.push({ empresa: emp.empresa, servicios, gmv, paquetes: emp.paquetes, ciudades: match.map(c => c.city).join(", "), ejecutivo: emp.ejecutivo || "" });
+      }
+    }
+    return result.sort((a, b) => b.gmv - a.gmv);
+  }, [dataMes, ciudadesSeleccionadas]);
+
   // Deltas
   const varPaq  = cityPrev?.paquetes  > 0 ? (cityData?.paquetes  - cityPrev.paquetes)  / cityPrev.paquetes  : null;
   const varSvc  = cityPrev?.total     > 0 ? (cityData?.total      - cityPrev.total)      / cityPrev.total      : null;
@@ -546,6 +562,46 @@ export default function AnalisisCiudad() {
                     <Bar dataKey="promServPorDriver" name="Prom. Serv/Driver" fill={PIBOX_PINK} radius={[0,4,4,0]}/>
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Clientes activos en las ciudades */}
+          {clientesCiudad.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">Clientes activos ({clientesCiudad.length})</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-purple-700 text-white">
+                      {["#", "Empresa", "Servicios", "Paquetes", "GMV", "Ciudades", "Ejecutivo"].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientesCiudad.map((c, i) => (
+                      <tr key={c.empresa} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
+                        <td className="px-3 py-2 text-gray-400 font-mono">{i + 1}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-800 max-w-[200px] truncate" title={c.empresa}>{c.empresa}</td>
+                        <td className="px-3 py-2 text-center">{c.servicios.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-center font-bold text-purple-600">{c.paquetes.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right font-bold text-green-700">{fmtFull(c.gmv)}</td>
+                        <td className="px-3 py-2 text-gray-500 max-w-[150px] truncate" title={c.ciudades}>{c.ciudades}</td>
+                        <td className="px-3 py-2 text-gray-500">{c.ejecutivo}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-purple-200 bg-purple-50 font-bold">
+                      <td className="px-3 py-2" colSpan={2}>Total</td>
+                      <td className="px-3 py-2 text-center">{clientesCiudad.reduce((s, c) => s + c.servicios, 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center text-purple-700">{clientesCiudad.reduce((s, c) => s + c.paquetes, 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-green-700">{fmtFull(clientesCiudad.reduce((s, c) => s + c.gmv, 0))}</td>
+                      <td className="px-3 py-2" colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </div>
           )}
