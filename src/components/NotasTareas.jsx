@@ -14,6 +14,62 @@ function saveTareas(t) { localStorage.setItem(SK_TAREAS, JSON.stringify(t)); }
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 function today() { return new Date().toISOString().slice(0, 10); }
 
+// Extraer texto de PDF usando pdf.js CDN
+async function extractPdfText(file) {
+  const pdfjsLib = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = "";
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(" ") + "\n";
+  }
+  return text;
+}
+
+// Parsear notas de Gemini: extraer resumen, próximos pasos, detalles
+function parseGeminiNotes(text) {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  // Buscar título y fecha
+  let titulo = "Tráfico TaDa / Pibox";
+  let fecha = today();
+  for (const l of lines) {
+    if (l.match(/^(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\s/i) || l.match(/\d{4}$/)) {
+      const dm = l.match(/(\w+)\s+(\d{1,2}),?\s*(\d{4})/i);
+      if (dm) { try { const d = new Date(`${dm[1]} ${dm[2]}, ${dm[3]}`); if (!isNaN(d)) fecha = d.toISOString().slice(0, 10); } catch {} }
+    }
+    if (l.includes("Tráfico") || l.includes("TaDa")) titulo = l.slice(0, 60);
+  }
+  // Extraer secciones
+  const fullText = lines.join("\n");
+  let resumen = "";
+  const resMatch = fullText.match(/Resumen\s*\n([\s\S]*?)(?=Próximos pasos|Detalles|$)/i);
+  if (resMatch) resumen = resMatch[1].trim();
+  let detalles = "";
+  const detMatch = fullText.match(/Detalles\s*\n([\s\S]*?)$/i);
+  if (detMatch) detalles = detMatch[1].trim();
+  // Extraer tareas de "Próximos pasos"
+  const tareas = [];
+  const pasosMatch = fullText.match(/Próximos pasos\s*\n([\s\S]*?)(?=Detalles|$)/i);
+  if (pasosMatch) {
+    // Patrón: [Responsable] Título: Descripción
+    const taskLines = pasosMatch[1].split(/(?=\[)/);
+    for (const tl of taskLines) {
+      const m = tl.match(/\[([^\]]+)\]\s*([^:]+):\s*([\s\S]*)/);
+      if (m) {
+        tareas.push({
+          responsable: m[1].trim(),
+          tarea: `${m[2].trim()}: ${m[3].trim().replace(/\s+/g, " ")}`,
+        });
+      }
+    }
+  }
+  const contenido = (resumen ? "RESUMEN:\n" + resumen : "") + (detalles ? "\n\nDETALLES:\n" + detalles : "");
+  return { titulo, fecha, contenido, tareas };
+}
+
 export default function NotasTareas() {
   /* ── Notas ──────────────────────────────────────────────────────────── */
   const [notas, setNotas] = useState(loadNotas);
@@ -21,6 +77,38 @@ export default function NotasTareas() {
   const [fecha, setFecha] = useState(today);
   const [contenido, setContenido] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfMsg, setPdfMsg] = useState("");
+
+  async function handlePdfUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfLoading(true); setPdfMsg("");
+    try {
+      const text = await extractPdfText(file);
+      const parsed = parseGeminiNotes(text);
+      setTitulo(parsed.titulo);
+      setFecha(parsed.fecha);
+      setContenido(parsed.contenido);
+      // Auto-agregar tareas extraídas
+      if (parsed.tareas.length > 0) {
+        const newTareas = parsed.tareas.map(t => ({
+          id: uid(), tarea: t.tarea, responsable: t.responsable,
+          fechaLimite: "", completada: false, creadoEn: new Date().toISOString(),
+        }));
+        const next = [...newTareas, ...tareas];
+        setTareas(next);
+        saveTareas(next);
+        setPdfMsg(`✅ ${parsed.tareas.length} tareas extraídas y agregadas al tablero.`);
+      } else {
+        setPdfMsg("✅ Contenido extraído. No se encontraron tareas en formato [Responsable].");
+      }
+    } catch (err) {
+      setPdfMsg("❌ Error al leer PDF: " + err.message);
+    }
+    setPdfLoading(false);
+    e.target.value = "";
+  }
 
   function guardarNota() {
     if (!contenido.trim()) return;
@@ -29,6 +117,7 @@ export default function NotasTareas() {
     setNotas(next);
     saveNotas(next);
     setContenido("");
+    setPdfMsg("");
   }
 
   function eliminarNota(id) {
@@ -98,11 +187,18 @@ export default function NotasTareas() {
             <textarea value={contenido} onChange={e => setContenido(e.target.value)} rows={6} placeholder="Pega aquí las notas de Gemini u otra fuente..."
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 focus:border-purple-400 outline-none resize-y" />
           </div>
-          <button onClick={guardarNota} disabled={!contenido.trim()}
-            className="px-5 py-2 rounded-lg text-white text-sm font-semibold shadow hover:shadow-md transition disabled:opacity-40"
-            style={{ background: BRAND_GRADIENT }}>
-            Guardar nota
-          </button>
+          <div className="flex flex-wrap gap-3 items-center">
+            <button onClick={guardarNota} disabled={!contenido.trim()}
+              className="px-5 py-2 rounded-lg text-white text-sm font-semibold shadow hover:shadow-md transition disabled:opacity-40"
+              style={{ background: BRAND_GRADIENT }}>
+              Guardar nota
+            </button>
+            <label className="px-4 py-2 rounded-lg text-xs font-semibold border-2 border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 cursor-pointer transition flex items-center gap-2">
+              {pdfLoading ? "Procesando..." : "📄 Subir PDF de Gemini"}
+              <input type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} disabled={pdfLoading} />
+            </label>
+            {pdfMsg && <span className={`text-xs font-medium ${pdfMsg.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>{pdfMsg}</span>}
+          </div>
         </div>
       </div>
 
