@@ -745,7 +745,17 @@ function IncrementoAnual({ data, onApply, isAdmin }) {
         ) : (
           <div className="space-y-3">
             {log.map((entry, idx) => (
-              <HistorialEntry key={idx} entry={entry} defaultOpen={idx === 0} />
+              <HistorialEntry key={idx} entry={entry} defaultOpen={idx === 0} isAdmin={isAdmin} onRevert={() => {
+                if (!confirm(`¿Reversar a las tarifas anteriores al "${entry.label}"? Las tarifas actuales se reemplazarán.`)) return;
+                const reverted = JSON.parse(JSON.stringify(data));
+                for (const [key, snap] of Object.entries(entry.snapshot)) {
+                  if (reverted[key]) {
+                    reverted[key].headers = snap.headers;
+                    reverted[key].rows = snap.rows;
+                  }
+                }
+                onApply(reverted);
+              }} />
             ))}
           </div>
         )}
@@ -754,7 +764,7 @@ function IncrementoAnual({ data, onApply, isAdmin }) {
   );
 }
 
-function HistorialEntry({ entry, defaultOpen }) {
+function HistorialEntry({ entry, defaultOpen, isAdmin, onRevert }) {
   const [open, setOpen] = useState(defaultOpen);
   const [viewTab, setViewTab] = useState(Object.keys(entry.snapshot || {})[0] || "distancia");
   const snap = entry.snapshot?.[viewTab];
@@ -773,7 +783,15 @@ function HistorialEntry({ entry, defaultOpen }) {
       </button>
       {open && snap && (
         <div className="p-4 border-t border-gray-200">
-          <p className="text-[10px] text-gray-400 mb-2">Tarifas ANTES de aplicar el incremento:</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-gray-400">Tarifas ANTES de aplicar el incremento:</p>
+            {isAdmin && (
+              <button onClick={onRevert}
+                className="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-[10px] font-semibold hover:bg-orange-100 transition">
+                Reversar a estas tarifas
+              </button>
+            )}
+          </div>
           <div className="flex gap-1 overflow-x-auto mb-3 border-b border-gray-100">
             {Object.keys(entry.snapshot).map(k => (
               <button key={k} onClick={() => setViewTab(k)}
