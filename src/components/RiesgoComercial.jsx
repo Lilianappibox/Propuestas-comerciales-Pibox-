@@ -7,6 +7,7 @@ const RankingRiesgo       = lazy(() => import("./riesgo/RankingRiesgo"));
 const InformeEmpresa      = lazy(() => import("./riesgo/InformeEmpresa"));
 const AnalisisCiudad      = lazy(() => import("./riesgo/AnalisisCiudad"));
 const AnalisisPilotos     = lazy(() => import("./riesgo/AnalisisPilotos"));
+const InformeCliente      = lazy(() => import("./riesgo/InformeCliente"));
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 
@@ -16,6 +17,7 @@ const TABS = [
   { id:"ciudad",   icon:"🏙️",  label:"Análisis por Ciudad" },
   { id:"informe",  icon:"📄",  label:"Análisis por Empresa" },
   { id:"pilotos",  icon:"👤",  label:"Análisis Pilotos"    },
+  { id:"informeCliente", icon:"📋", label:"Informe Clientes" },
   { id:"config",   icon:"⚙️",  label:"Configuración"      },
 ];
 
@@ -99,6 +101,7 @@ export default function RiesgoComercial({ currentUser }) {
           {tab === "ciudad"   && <AnalisisCiudad />}
           {tab === "informe"  && <InformeEmpresa />}
           {tab === "pilotos"  && <AnalisisPilotos />}
+          {tab === "informeCliente" && <InformeCliente />}
           {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
         </Suspense>
       </div>
