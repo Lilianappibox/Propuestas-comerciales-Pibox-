@@ -168,7 +168,8 @@ export default function InformeEmpresa() {
   const umb     = getUmbrales();
 
   const [mesKey, setMesKey]     = useState(meses[meses.length-1]?.key||"");
-  const [empresa, setEmpresa]   = useState("");
+  const [empresasSel, setEmpresasSel] = useState([]);
+  const [buscarEmp, setBuscarEmp] = useState("");
 
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
@@ -177,9 +178,52 @@ export default function InformeEmpresa() {
   const dataPrev = useMemo(()=>mesPrevMeta?loadMesData(mesPrevMeta.key):null, [mesPrevMeta]);
 
   const empresas = useMemo(()=>dataMes?.empresas?.map(e=>e.empresa).sort()||[], [dataMes]);
+  const empresasFiltradas = useMemo(() => !buscarEmp ? empresas : empresas.filter(e => e.toLowerCase().includes(buscarEmp.toLowerCase())), [empresas, buscarEmp]);
 
-  const empData  = useMemo(()=>dataMes?.empresas?.find(e=>e.empresa===empresa)||null, [dataMes, empresa]);
-  const prevData = useMemo(()=>dataPrev?.empresas?.find(e=>e.empresa===empresa)||null, [dataPrev, empresa]);
+  const toggleEmpresa = (e) => setEmpresasSel(prev => prev.includes(e) ? prev.filter(x => x !== e) : [...prev, e]);
+
+  // Compatibilidad: primera empresa seleccionada como referencia, merge si varias
+  const empresa = empresasSel[0] || "";
+
+  const empData = useMemo(() => {
+    if (!empresasSel.length || !dataMes?.empresas) return null;
+    const selected = dataMes.empresas.filter(e => empresasSel.includes(e.empresa));
+    if (!selected.length) return null;
+    if (selected.length === 1) return selected[0];
+    // Merge múltiples empresas
+    const m = { empresa: empresasSel.join(", "), total: 0, completados: 0, cancelados: 0, expirados: 0, gmv: 0, paquetes: 0, service_cost: 0, ejecutivo: selected[0].ejecutivo, ciudad: selected.map(e => e.ciudad).filter((v, i, a) => a.indexOf(v) === i).join(", "), topCiudades: [], topOps: [], weekly: [], topUsuarios: [], topSedes: [], totalDrivers: 0, tasa_completado: 0, tasa_cancelacion: 0, tasa_expirado: 0 };
+    const cityMap = {}, opMap = {}, weekMap = {}, userMap = {}, sedeMap = {};
+    for (const e of selected) {
+      m.total += e.total; m.completados += e.completados; m.cancelados += e.cancelados; m.expirados += e.expirados; m.gmv += e.gmv; m.paquetes += e.paquetes; m.service_cost += e.service_cost; m.totalDrivers += e.totalDrivers || 0;
+      for (const c of (e.topCiudades || [])) { if (!cityMap[c.city]) cityMap[c.city] = { ...c }; else { cityMap[c.city].gmv += c.gmv; cityMap[c.city].count += c.count; } }
+      for (const o of (e.topOps || [])) { if (!opMap[o.op]) opMap[o.op] = { ...o }; else { opMap[o.op].count += o.count; } }
+      for (const w of (e.weekly || [])) { if (!weekMap[w.semana]) weekMap[w.semana] = { ...w }; else { weekMap[w.semana].gmv += w.gmv; weekMap[w.semana].servicios += w.servicios; weekMap[w.semana].completados += w.completados; weekMap[w.semana].cancelados += w.cancelados; } }
+      for (const u of (e.topUsuarios || [])) { if (!userMap[u.usuario]) userMap[u.usuario] = { ...u }; else { userMap[u.usuario].total += u.total; userMap[u.usuario].completados += u.completados; userMap[u.usuario].gmv += u.gmv; } }
+      for (const s of (e.topSedes || [])) { if (!sedeMap[s.sede]) sedeMap[s.sede] = { ...s }; else { sedeMap[s.sede].total += s.total; sedeMap[s.sede].completados += s.completados; sedeMap[s.sede].gmv += s.gmv; } }
+    }
+    m.tasa_completado = m.total > 0 ? m.completados / m.total : 0;
+    m.tasa_cancelacion = m.total > 0 ? m.cancelados / m.total : 0;
+    m.tasa_expirado = m.total > 0 ? m.expirados / m.total : 0;
+    m.topCiudades = Object.values(cityMap).sort((a, b) => b.gmv - a.gmv);
+    m.topOps = Object.values(opMap).sort((a, b) => b.count - a.count);
+    m.weekly = Object.values(weekMap).sort((a, b) => a.semana - b.semana);
+    m.topUsuarios = Object.values(userMap).sort((a, b) => b.total - a.total).slice(0, 30);
+    m.topSedes = Object.values(sedeMap).sort((a, b) => b.total - a.total);
+    return m;
+  }, [dataMes, empresasSel]);
+
+  const prevData = useMemo(() => {
+    if (!empresasSel.length || !dataPrev?.empresas) return null;
+    const selected = dataPrev.empresas.filter(e => empresasSel.includes(e.empresa));
+    if (!selected.length) return null;
+    if (selected.length === 1) return selected[0];
+    const m = { total: 0, completados: 0, cancelados: 0, gmv: 0, paquetes: 0, tasa_completado: 0, tasa_cancelacion: 0, topUsuarios: [], topSedes: [] };
+    for (const e of selected) { m.total += e.total; m.completados += e.completados; m.cancelados += e.cancelados; m.gmv += e.gmv; m.paquetes += e.paquetes; }
+    m.tasa_completado = m.total > 0 ? m.completados / m.total : 0;
+    m.tasa_cancelacion = m.total > 0 ? m.cancelados / m.total : 0;
+    return m;
+  }, [dataPrev, empresasSel]);
+
   const score    = useMemo(()=>empData?calcularScore(empData,prevData||null,umb):null, [empData,prevData,umb]);
 
   const semColor = score?.color==="rojo"?SEM_ROJO:score?.color==="amarillo"?SEM_AMARILLO:SEM_VERDE;
@@ -243,24 +287,37 @@ export default function InformeEmpresa() {
           <span className="bg-purple-100 text-purple-700 rounded-lg p-1">📄</span>
           Seleccionar empresa
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div className="flex flex-wrap gap-4 items-end mb-4">
           <div>
             <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes</label>
-            <select value={mesKey} onChange={e=>{setMesKey(e.target.value);setEmpresa("");}}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+            <select value={mesKey} onChange={e=>setMesKey(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
               {[...meses].reverse().map(m=>(
                 <option key={m.key} value={m.key}>{m.label}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 mb-1 block">Empresa</label>
-            <select value={empresa} onChange={e=>setEmpresa(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-              <option value="">— Selecciona una empresa —</option>
-              {empresas.map(e=><option key={e} value={e}>{e}</option>)}
-            </select>
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Buscar empresa</label>
+            <input type="text" value={buscarEmp} onChange={e=>setBuscarEmp(e.target.value)} placeholder="Nombre..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
           </div>
+          {empresasSel.length > 0 && (
+            <button onClick={()=>setEmpresasSel([])} className="px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200">
+              Limpiar ({empresasSel.length})
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
+          {empresasFiltradas.map(e => {
+            const sel = empresasSel.includes(e);
+            return (
+              <button key={e} onClick={()=>toggleEmpresa(e)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition ${sel ? "bg-purple-600 text-white shadow" : "bg-gray-100 text-gray-600 hover:bg-purple-50"}`}>
+                {e}
+              </button>
+            );
+          })}
         </div>
 
         {mesPrevMeta && (
