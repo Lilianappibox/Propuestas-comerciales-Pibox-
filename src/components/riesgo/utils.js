@@ -381,48 +381,9 @@ export function procesarDatos(rows) {
     };
   }).sort((a,b)=>b.paquetes-a.paquetes);
 
-  // ── Detalle por piloto (para análisis de pilotos) ───────────────────────
-  const pilotoDetalle = {};
-  for (const row of rows) {
-    const dId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
-    const dNm = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
-    const dk = dId || dNm;
-    if (!dk) continue;
-    const city = toStr(row["city"] || row["City"] || "");
-    const st = toStr(row["service_status"] || "");
-    const op = toStr(row["operation_type"] || "");
-    const vh = toStr(row["vehicle_type"] || row["vehicleType"] || row["Vehicle Type"] || row["tipo_vehiculo"] || "");
-    const gmv = toNum(row["gmv"]);
-    let hora = -1;
-    // Extraer hora desde dt_time ("08:01") o date
-    const dtTime = toStr(row["dt_time"] || "");
-    const hmMatch = dtTime.match(/^(\d{1,2}):/);
-    if (hmMatch) { hora = parseInt(hmMatch[1]); }
-    else { try { const d = new Date(row["date"]); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {} }
-    if (!pilotoDetalle[dk]) pilotoDetalle[dk] = { id: dId, nombre: dNm, ciudad: city, servicios: 0, completados: 0, cancelados: 0, expirados: 0, gmv: 0, ops: {}, vehiculos: {}, horas: {} };
-    const p = pilotoDetalle[dk];
-    p.servicios++;
-    if (st === "Completed") p.completados++;
-    if (st.startsWith("Canceled")) p.cancelados++;
-    if (st === "Expired") p.expirados++;
-    p.gmv += gmv;
-    if (op) p.ops[op] = (p.ops[op] || 0) + 1;
-    if (vh) p.vehiculos[vh] = (p.vehiculos[vh] || 0) + 1;
-    if (hora >= 0) p.horas[hora] = (p.horas[hora] || 0) + 1;
-    if (dNm && dNm.length > (p.nombre || "").length) p.nombre = dNm;
-    if (city) p.ciudad = city;
-  }
-  // Slim: solo campos esenciales para ahorrar localStorage
-  const drivers = Object.values(pilotoDetalle).map(p => {
-    let horaPico = -1, maxH = 0;
-    for (const [h, c] of Object.entries(p.horas)) { if (c > maxH) { maxH = c; horaPico = Number(h); } }
-    return { id: p.id, nombre: p.nombre, ciudad: p.ciudad, servicios: p.servicios, completados: p.completados, cancelados: p.cancelados, gmv: Math.round(p.gmv), horaPico };
-  });
-
   return {
     empresas,
     ciudades,
-    drivers,
     totales: {
       servicios: rows.length,
       gmv: totalGmv,
