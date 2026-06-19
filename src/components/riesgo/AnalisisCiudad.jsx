@@ -53,10 +53,35 @@ function KpiCard({icon,label,value,sub,borderColor,delta}) {
   );
 }
 
+// Mapeo departamento → ciudades de Colombia
+const DEPARTAMENTOS = {
+  "Antioquia": ["Medellin","Medellín","Envigado","Itagüi","Itagui","Bello","Sabaneta","Rionegro","La Estrella","Caldas","Copacabana","Barbosa","Girardota"],
+  "Cundinamarca": ["Bogota","Bogotá","Soacha","Chia","Chía","Cajica","Cajicá","Funza","Mosquera","Madrid","Zipaquira","Zipaquirá","Cota","Facatativá","Facatativa","Toncancipa","Tenjo"],
+  "Valle del Cauca": ["Cali","Palmira","Yumbo","Buga","Tulua","Tuluá"],
+  "Atlántico": ["Barranquilla","Soledad"],
+  "Santander": ["Bucaramanga","Floridablanca","Giron","Girón","Piedecuesta","San Gil"],
+  "Bolívar": ["Cartagena"],
+  "Norte de Santander": ["Cucuta","Cúcuta","Villa del Rosario","Los Patios"],
+  "Magdalena": ["Santa Marta"],
+  "Risaralda": ["Pereira"],
+  "Quindío": ["Armenia"],
+  "Caldas": ["Manizales"],
+  "Meta": ["Villavicencio"],
+  "Córdoba": ["Monteria","Montería"],
+  "Sucre": ["Sincelejo"],
+  "Cauca": ["Popayan","Popayán"],
+  "Huila": ["Neiva"],
+  "Nariño": ["Pasto"],
+  "Tolima": ["Ibague","Ibagué"],
+  "Cesar": ["Valledupar"],
+  "La Guajira": ["Rioacha","Riohacha"],
+};
+
 export default function AnalisisCiudad() {
   const meses = mesesDisponibles();
   const [mesKey, setMesKey] = useState(meses[meses.length-1]?.key || "");
-  const [ciudad, setCiudad] = useState("");
+  const [ciudadesSeleccionadas, setCiudadesSeleccionadas] = useState([]);
+  const [deptoSel, setDeptoSel] = useState("");
 
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
@@ -64,19 +89,78 @@ export default function AnalisisCiudad() {
   const dataMes  = useMemo(()=> mesKey ? loadMesData(mesKey)   : null, [mesKey]);
   const dataPrev = useMemo(()=> mesPrevMeta ? loadMesData(mesPrevMeta.key) : null, [mesPrevMeta]);
 
-  // Si ciudades no existe aún (datos viejos), derivar lista de topCiudades
   const tieneCiudades = !!(dataMes?.ciudades?.length > 0);
   const ciudadesDisp = useMemo(()=>{
     if (dataMes?.ciudades?.length > 0)
       return dataMes.ciudades.map(c=>c.city).sort();
-    // Fallback: lista de topCiudades para que aparezcan en el selector
     return (dataMes?.totales?.topCiudades||[]).map(c=>c.city).sort();
   }, [dataMes]);
 
-  const cityData  = useMemo(()=>
-    dataMes?.ciudades?.find(c=>c.city===ciudad)||null, [dataMes,ciudad]);
-  const cityPrev  = useMemo(()=>
-    dataPrev?.ciudades?.find(c=>c.city===ciudad)||null, [dataPrev,ciudad]);
+  // Departamentos disponibles según ciudades del mes
+  const deptosDisp = useMemo(() => {
+    const result = [];
+    for (const [depto, ciudades] of Object.entries(DEPARTAMENTOS)) {
+      const match = ciudades.filter(c => ciudadesDisp.includes(c));
+      if (match.length > 0) result.push({ depto, ciudades: match });
+    }
+    return result.sort((a, b) => a.depto.localeCompare(b.depto));
+  }, [ciudadesDisp]);
+
+  const handleDeptoChange = (depto) => {
+    setDeptoSel(depto);
+    if (!depto) return;
+    const deptoCiudades = DEPARTAMENTOS[depto] || [];
+    const matching = ciudadesDisp.filter(c => deptoCiudades.includes(c));
+    setCiudadesSeleccionadas(matching);
+  };
+
+  const toggleCiudad = (c) => {
+    setCiudadesSeleccionadas(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
+    setDeptoSel("");
+  };
+
+  // Para compatibilidad: usar la primera ciudad seleccionada como "ciudad" principal
+  const ciudad = ciudadesSeleccionadas[0] || "";
+
+  // Agregar datos de todas las ciudades seleccionadas
+  const cityData = useMemo(() => {
+    if (!ciudadesSeleccionadas.length || !dataMes?.ciudades) return null;
+    const selected = dataMes.ciudades.filter(c => ciudadesSeleccionadas.includes(c.city));
+    if (!selected.length) return null;
+    if (selected.length === 1) return selected[0];
+    // Merge múltiples ciudades
+    const merged = { city: ciudadesSeleccionadas.join(", "), total: 0, gmv: 0, paquetes: 0, completados: 0, cancelados: 0, expirados: 0, localidades: [], ops: [], estados: [], weekly: [], driversPorOp: [], totalDrivers: 0 };
+    const locMap = {}, opMap = {}, stMap = {}, weekMap = {}, drvMap = {};
+    for (const c of selected) {
+      merged.total += c.total; merged.gmv += c.gmv; merged.paquetes += c.paquetes;
+      merged.completados += c.completados; merged.cancelados += c.cancelados; merged.expirados += c.expirados;
+      merged.totalDrivers += c.totalDrivers || 0;
+      for (const l of (c.localidades || [])) { if (!locMap[l.loc]) locMap[l.loc] = { ...l }; else { locMap[l.loc].total += l.total; locMap[l.loc].paquetes += l.paquetes; locMap[l.loc].gmv += l.gmv; locMap[l.loc].completados += l.completados; locMap[l.loc].cancelados += l.cancelados; } }
+      for (const o of (c.ops || [])) { if (!opMap[o.op]) opMap[o.op] = { ...o }; else { opMap[o.op].total += o.total; opMap[o.op].paquetes += (o.paquetes||0); opMap[o.op].gmv += o.gmv; } }
+      for (const s of (c.estados || [])) { if (!stMap[s.estado]) stMap[s.estado] = { ...s }; else { stMap[s.estado].total += s.total; stMap[s.estado].paquetes += (s.paquetes||0); } }
+      for (const w of (c.weekly || [])) { if (!weekMap[w.semana]) weekMap[w.semana] = { ...w }; else { weekMap[w.semana].gmv += w.gmv; weekMap[w.semana].servicios += w.servicios; weekMap[w.semana].paquetes += (w.paquetes||0); weekMap[w.semana].completados += w.completados; weekMap[w.semana].cancelados += w.cancelados; } }
+      for (const d of (c.driversPorOp || [])) { if (!drvMap[d.op]) drvMap[d.op] = { ...d }; else { drvMap[d.op].driversActivos += d.driversActivos; drvMap[d.op].servicios += d.servicios; } }
+    }
+    merged.tasa_completado = merged.total > 0 ? merged.completados / merged.total : 0;
+    merged.tasa_cancelacion = merged.total > 0 ? merged.cancelados / merged.total : 0;
+    merged.localidades = Object.values(locMap).sort((a, b) => b.paquetes - a.paquetes).slice(0, 20);
+    merged.ops = Object.values(opMap).sort((a, b) => b.total - a.total);
+    merged.estados = Object.values(stMap).sort((a, b) => b.total - a.total);
+    merged.weekly = Object.values(weekMap).sort((a, b) => a.semana - b.semana);
+    merged.driversPorOp = Object.values(drvMap).map(d => ({ ...d, promServPorDriver: d.driversActivos > 0 ? Math.round(d.servicios / d.driversActivos) : 0 })).sort((a, b) => b.driversActivos - a.driversActivos);
+    return merged;
+  }, [dataMes, ciudadesSeleccionadas]);
+
+  const cityPrev = useMemo(() => {
+    if (!ciudadesSeleccionadas.length || !dataPrev?.ciudades) return null;
+    const selected = dataPrev.ciudades.filter(c => ciudadesSeleccionadas.includes(c.city));
+    if (!selected.length) return null;
+    if (selected.length === 1) return selected[0];
+    const m = { total: 0, gmv: 0, paquetes: 0, completados: 0, tasa_completado: 0 };
+    for (const c of selected) { m.total += c.total; m.gmv += c.gmv; m.paquetes += c.paquetes; m.completados += c.completados; }
+    m.tasa_completado = m.total > 0 ? m.completados / m.total : 0;
+    return m;
+  }, [dataPrev, ciudadesSeleccionadas]);
 
   // Deltas
   const varPaq  = cityPrev?.paquetes  > 0 ? (cityData?.paquetes  - cityPrev.paquetes)  / cityPrev.paquetes  : null;
@@ -92,32 +176,52 @@ export default function AnalisisCiudad() {
 
   return (
     <div className="space-y-6">
-      {/* Selección de mes y ciudad */}
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+      {/* Filtros: Departamento/Ciudad primero, Mes después */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 space-y-4">
         <div className="flex flex-wrap gap-4 items-end">
+          {/* Departamento */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">📍 Departamento</label>
+            <select value={deptoSel} onChange={e => handleDeptoChange(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+              <option value="">— Todos —</option>
+              {deptosDisp.map(d => <option key={d.depto} value={d.depto}>{d.depto} ({d.ciudades.length})</option>)}
+            </select>
+          </div>
+          {/* Mes */}
           <div>
             <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes</label>
-            <select value={mesKey} onChange={e=>{setMesKey(e.target.value);setCiudad("");}}
+            <select value={mesKey} onChange={e => setMesKey(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-              {[...meses].reverse().map(m=>(
-                <option key={m.key} value={m.key}>{m.label}</option>
-              ))}
+              {[...meses].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-xs font-semibold text-gray-600 mb-1 block">🏙️ Ciudad</label>
-            <select value={ciudad} onChange={e=>setCiudad(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-              <option value="">— Selecciona una ciudad —</option>
-              {ciudadesDisp.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          {mesPrevMeta && ciudad && (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold"
-                 style={{background:BRAND_GRADIENT}}>
+          {ciudadesSeleccionadas.length > 0 && (
+            <button onClick={() => { setCiudadesSeleccionadas([]); setDeptoSel(""); }}
+              className="px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
+              Limpiar selección
+            </button>
+          )}
+          {mesPrevMeta && ciudadesSeleccionadas.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>
               📊 Comparando vs <b className="ml-1">{mesPrevMeta.label}</b>
             </div>
           )}
+        </div>
+        {/* Ciudades como chips multi-selección */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-2 block">🏙️ Ciudades {ciudadesSeleccionadas.length > 0 && `(${ciudadesSeleccionadas.length} seleccionadas)`}</label>
+          <div className="flex flex-wrap gap-1.5">
+            {ciudadesDisp.map(c => {
+              const sel = ciudadesSeleccionadas.includes(c);
+              return (
+                <button key={c} onClick={() => toggleCiudad(c)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${sel ? "bg-purple-600 text-white shadow" : "bg-gray-100 text-gray-600 hover:bg-purple-50"}`}>
+                  {c}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -132,15 +236,15 @@ export default function AnalisisCiudad() {
         </div>
       )}
 
-      {!ciudad && (
+      {!ciudadesSeleccionadas.length && (
         <div className="bg-purple-50 border border-purple-100 rounded-xl p-10 text-center text-purple-600">
           <p className="text-3xl mb-3">🏙️</p>
-          <p className="font-semibold">Selecciona una ciudad para ver el análisis detallado</p>
-          <p className="text-sm text-purple-400 mt-1">Paquetes por localidad · Tipo de operación · Estado del booking</p>
+          <p className="font-semibold">Selecciona una o más ciudades para ver el análisis detallado</p>
+          <p className="text-sm text-purple-400 mt-1">Puedes filtrar por departamento o seleccionar ciudades individualmente</p>
         </div>
       )}
 
-      {ciudad && cityData && (
+      {ciudadesSeleccionadas.length > 0 && cityData && (
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
