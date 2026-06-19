@@ -14,59 +14,76 @@ function saveTareas(t) { localStorage.setItem(SK_TAREAS, JSON.stringify(t)); }
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 function today() { return new Date().toISOString().slice(0, 10); }
 
-// Extraer texto de PDF usando pdf.js CDN
+// Extraer texto de PDF reconstruyendo líneas por posición Y
 async function extractPdfText(file) {
   const pdfjsLib = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
   const buf = await file.arrayBuffer();
   const doc = await pdfjsLib.getDocument({ data: buf }).promise;
-  let text = "";
+  const allLines = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    text += content.items.map(item => item.str).join(" ") + "\n";
+    // Agrupar items por posición Y (misma línea)
+    let lastY = null;
+    let currentLine = "";
+    for (const item of content.items) {
+      const y = Math.round(item.transform[5]);
+      if (lastY !== null && Math.abs(y - lastY) > 3) {
+        if (currentLine.trim()) allLines.push(currentLine.trim());
+        currentLine = "";
+      }
+      currentLine += (currentLine && !currentLine.endsWith(" ") ? " " : "") + item.str;
+      lastY = y;
+    }
+    if (currentLine.trim()) allLines.push(currentLine.trim());
   }
-  return text;
+  return allLines.join("\n");
 }
 
-// Parsear notas de Gemini: extraer resumen, próximos pasos, detalles
+// Parsear notas de Gemini
 function parseGeminiNotes(text) {
-  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-  // Buscar título y fecha
+  const lines = text.split("\n");
   let titulo = "Tráfico TaDa / Pibox";
   let fecha = today();
+  // Buscar fecha y título en las primeras líneas
+  for (const l of lines.slice(0, 10)) {
+    const dateMatch = l.match(/(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\.?\s+(\d{1,2}),?\s*(\d{4})/i);
+    if (dateMatch) {
+      const meses = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12 };
+      const m = meses[dateMatch[1].slice(0, 3).toLowerCase()];
+      if (m) fecha = `${dateMatch[3]}-${String(m).padStart(2, "0")}-${String(dateMatch[2]).padStart(2, "0")}`;
+    }
+    if (l.includes("Tráfico") && l.includes("TaDa")) titulo = l.trim();
+  }
+  // Dividir en secciones
+  const sections = { resumen: "", pasos: "", detalles: "" };
+  let currentSection = "header";
+  const pasosLines = [];
   for (const l of lines) {
-    if (l.match(/^(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\s/i) || l.match(/\d{4}$/)) {
-      const dm = l.match(/(\w+)\s+(\d{1,2}),?\s*(\d{4})/i);
-      if (dm) { try { const d = new Date(`${dm[1]} ${dm[2]}, ${dm[3]}`); if (!isNaN(d)) fecha = d.toISOString().slice(0, 10); } catch {} }
-    }
-    if (l.includes("Tráfico") || l.includes("TaDa")) titulo = l.slice(0, 60);
+    const lower = l.toLowerCase().trim();
+    if (lower === "resumen") { currentSection = "resumen"; continue; }
+    if (lower.startsWith("próximos pasos") || lower.startsWith("proximos pasos")) { currentSection = "pasos"; continue; }
+    if (lower === "detalles") { currentSection = "detalles"; continue; }
+    if (currentSection === "resumen") sections.resumen += l + "\n";
+    if (currentSection === "pasos") pasosLines.push(l);
+    if (currentSection === "detalles") sections.detalles += l + "\n";
   }
-  // Extraer secciones
-  const fullText = lines.join("\n");
-  let resumen = "";
-  const resMatch = fullText.match(/Resumen\s*\n([\s\S]*?)(?=Próximos pasos|Detalles|$)/i);
-  if (resMatch) resumen = resMatch[1].trim();
-  let detalles = "";
-  const detMatch = fullText.match(/Detalles\s*\n([\s\S]*?)$/i);
-  if (detMatch) detalles = detMatch[1].trim();
-  // Extraer tareas de "Próximos pasos"
+  // Extraer tareas: unir líneas que pertenecen a la misma tarea
   const tareas = [];
-  const pasosMatch = fullText.match(/Próximos pasos\s*\n([\s\S]*?)(?=Detalles|$)/i);
-  if (pasosMatch) {
-    // Patrón: [Responsable] Título: Descripción
-    const taskLines = pasosMatch[1].split(/(?=\[)/);
-    for (const tl of taskLines) {
-      const m = tl.match(/\[([^\]]+)\]\s*([^:]+):\s*([\s\S]*)/);
-      if (m) {
-        tareas.push({
-          responsable: m[1].trim(),
-          tarea: `${m[2].trim()}: ${m[3].trim().replace(/\s+/g, " ")}`,
-        });
-      }
+  let currentTask = null;
+  for (const l of pasosLines) {
+    const taskMatch = l.match(/^\[([^\]]+)\]\s*(.*)/);
+    if (taskMatch) {
+      if (currentTask) tareas.push(currentTask);
+      currentTask = { responsable: taskMatch[1].trim(), tarea: taskMatch[2].trim() };
+    } else if (currentTask && l.trim()) {
+      currentTask.tarea += " " + l.trim();
     }
   }
-  const contenido = (resumen ? "RESUMEN:\n" + resumen : "") + (detalles ? "\n\nDETALLES:\n" + detalles : "");
+  if (currentTask) tareas.push(currentTask);
+  const contenido = (sections.resumen.trim() ? "RESUMEN:\n" + sections.resumen.trim() : "") +
+    (sections.detalles.trim() ? "\n\nDETALLES:\n" + sections.detalles.trim() : "");
   return { titulo, fecha, contenido, tareas };
 }
 
@@ -79,6 +96,7 @@ export default function NotasTareas() {
   const [expandedId, setExpandedId] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfMsg, setPdfMsg] = useState("");
+  const [pdfCargado, setPdfCargado] = useState(false);
 
   async function handlePdfUpload(e) {
     const file = e.target.files?.[0];
@@ -90,6 +108,13 @@ export default function NotasTareas() {
       setTitulo(parsed.titulo);
       setFecha(parsed.fecha);
       setContenido(parsed.contenido);
+      // Auto-guardar nota
+      if (parsed.contenido.trim()) {
+        const nueva = { id: uid(), titulo: parsed.titulo, fecha: parsed.fecha, contenido: parsed.contenido.trim(), creadoEn: new Date().toISOString() };
+        const nextNotas = [nueva, ...notas];
+        setNotas(nextNotas);
+        saveNotas(nextNotas);
+      }
       // Auto-agregar tareas extraídas
       if (parsed.tareas.length > 0) {
         const newTareas = parsed.tareas.map(t => ({
@@ -99,15 +124,24 @@ export default function NotasTareas() {
         const next = [...newTareas, ...tareas];
         setTareas(next);
         saveTareas(next);
-        setPdfMsg(`✅ ${parsed.tareas.length} tareas extraídas y agregadas al tablero.`);
+        setPdfMsg(`✅ Nota guardada + ${parsed.tareas.length} tareas extraídas al tablero.`);
       } else {
-        setPdfMsg("✅ Contenido extraído. No se encontraron tareas en formato [Responsable].");
+        setPdfMsg("✅ Nota guardada. No se encontraron tareas con formato [Responsable].");
       }
+      setPdfCargado(true);
     } catch (err) {
       setPdfMsg("❌ Error al leer PDF: " + err.message);
     }
     setPdfLoading(false);
     e.target.value = "";
+  }
+
+  function limpiarDocumento() {
+    setTitulo("Tráfico TaDa / Pibox");
+    setFecha(today());
+    setContenido("");
+    setPdfMsg("");
+    setPdfCargado(false);
   }
 
   function guardarNota() {
@@ -188,15 +222,25 @@ export default function NotasTareas() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 focus:border-purple-400 outline-none resize-y" />
           </div>
           <div className="flex flex-wrap gap-3 items-center">
-            <button onClick={guardarNota} disabled={!contenido.trim()}
-              className="px-5 py-2 rounded-lg text-white text-sm font-semibold shadow hover:shadow-md transition disabled:opacity-40"
-              style={{ background: BRAND_GRADIENT }}>
-              Guardar nota
-            </button>
-            <label className="px-4 py-2 rounded-lg text-xs font-semibold border-2 border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 cursor-pointer transition flex items-center gap-2">
-              {pdfLoading ? "Procesando..." : "📄 Subir PDF de Gemini"}
-              <input type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} disabled={pdfLoading} />
-            </label>
+            {!pdfCargado && (
+              <label className="px-5 py-2 rounded-lg text-white text-sm font-semibold shadow hover:shadow-md cursor-pointer transition flex items-center gap-2"
+                style={{ background: BRAND_GRADIENT }}>
+                {pdfLoading ? "Procesando..." : "📄 Subir PDF de Gemini"}
+                <input type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} disabled={pdfLoading} />
+              </label>
+            )}
+            {pdfCargado && (
+              <button onClick={limpiarDocumento}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
+                🗑️ Eliminar documento y subir otro
+              </button>
+            )}
+            {!pdfCargado && (
+              <button onClick={guardarNota} disabled={!contenido.trim()}
+                className="px-4 py-2 rounded-lg text-xs font-semibold border-2 border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 transition disabled:opacity-40">
+                Guardar nota manual
+              </button>
+            )}
             {pdfMsg && <span className={`text-xs font-medium ${pdfMsg.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>{pdfMsg}</span>}
           </div>
         </div>
