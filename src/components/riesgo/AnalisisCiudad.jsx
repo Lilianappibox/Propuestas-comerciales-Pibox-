@@ -82,6 +82,9 @@ export default function AnalisisCiudad() {
   const [mesKey, setMesKey] = useState(meses[meses.length-1]?.key || "");
   const [ciudadesSeleccionadas, setCiudadesSeleccionadas] = useState([]);
   const [deptoSel, setDeptoSel] = useState("");
+  const [clienteBuscar, setClienteBuscar] = useState("");
+  const [clienteEjecutivo, setClienteEjecutivo] = useState("");
+  const [clienteOrden, setClienteOrden] = useState("gmv");
 
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
   const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
@@ -567,9 +570,48 @@ export default function AnalisisCiudad() {
           )}
 
           {/* Clientes activos en las ciudades */}
-          {clientesCiudad.length > 0 && (
+          {clientesCiudad.length > 0 && (() => {
+            const ejecutivos = [...new Set(clientesCiudad.map(c => c.ejecutivo).filter(Boolean))].sort();
+            const filtered = clientesCiudad
+              .filter(c => !clienteBuscar || c.empresa.toLowerCase().includes(clienteBuscar.toLowerCase()))
+              .filter(c => !clienteEjecutivo || c.ejecutivo === clienteEjecutivo)
+              .sort((a, b) => clienteOrden === "gmv" ? b.gmv - a.gmv : clienteOrden === "paquetes" ? b.paquetes - a.paquetes : clienteOrden === "servicios" ? b.servicios - a.servicios : a.empresa.localeCompare(b.empresa));
+            return (
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
               <h3 className="text-sm font-bold text-gray-700 mb-3">Clientes activos ({clientesCiudad.length})</h3>
+              {/* Filtros */}
+              <div className="flex flex-wrap gap-3 items-end mb-4">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="text-[10px] font-semibold text-gray-500 mb-1 block">Buscar empresa</label>
+                  <input type="text" value={clienteBuscar} onChange={e => setClienteBuscar(e.target.value)} placeholder="Nombre..."
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-500 mb-1 block">Ejecutivo</label>
+                  <select value={clienteEjecutivo} onChange={e => setClienteEjecutivo(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    <option value="">Todos</option>
+                    {ejecutivos.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-500 mb-1 block">Ordenar por</label>
+                  <select value={clienteOrden} onChange={e => setClienteOrden(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    <option value="gmv">Mayor GMV</option>
+                    <option value="paquetes">Mayor Paquetes</option>
+                    <option value="servicios">Mayor Servicios</option>
+                    <option value="nombre">Nombre A-Z</option>
+                  </select>
+                </div>
+                {(clienteBuscar || clienteEjecutivo) && (
+                  <button onClick={() => { setClienteBuscar(""); setClienteEjecutivo(""); }}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200">
+                    Limpiar
+                  </button>
+                )}
+                <span className="text-[10px] text-gray-400">{filtered.length} de {clientesCiudad.length}</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -580,7 +622,7 @@ export default function AnalisisCiudad() {
                     </tr>
                   </thead>
                   <tbody>
-                    {clientesCiudad.map((c, i) => (
+                    {filtered.map((c, i) => (
                       <tr key={c.empresa} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
                         <td className="px-3 py-2 text-gray-400 font-mono">{i + 1}</td>
                         <td className="px-3 py-2 font-semibold text-gray-800 max-w-[200px] truncate" title={c.empresa}>{c.empresa}</td>
@@ -594,17 +636,18 @@ export default function AnalisisCiudad() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-purple-200 bg-purple-50 font-bold">
-                      <td className="px-3 py-2" colSpan={2}>Total</td>
-                      <td className="px-3 py-2 text-center">{clientesCiudad.reduce((s, c) => s + c.servicios, 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-center text-purple-700">{clientesCiudad.reduce((s, c) => s + c.paquetes, 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right text-green-700">{fmtFull(clientesCiudad.reduce((s, c) => s + c.gmv, 0))}</td>
+                      <td className="px-3 py-2" colSpan={2}>Total ({filtered.length})</td>
+                      <td className="px-3 py-2 text-center">{filtered.reduce((s, c) => s + c.servicios, 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center text-purple-700">{filtered.reduce((s, c) => s + c.paquetes, 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-green-700">{fmtFull(filtered.reduce((s, c) => s + c.gmv, 0))}</td>
                       <td className="px-3 py-2" colSpan={2}></td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
             </div>
-          )}
+            );
+          })()}
         </>
       )}
     </div>
