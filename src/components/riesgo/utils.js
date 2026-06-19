@@ -394,7 +394,11 @@ export function procesarDatos(rows) {
     const vh = toStr(row["vehicle_type"] || row["vehicleType"] || row["Vehicle Type"] || row["tipo_vehiculo"] || "");
     const gmv = toNum(row["gmv"]);
     let hora = -1;
-    try { const d = new Date(row["date"]); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {}
+    // Extraer hora desde dt_time ("08:01") o date
+    const dtTime = toStr(row["dt_time"] || "");
+    const hmMatch = dtTime.match(/^(\d{1,2}):/);
+    if (hmMatch) { hora = parseInt(hmMatch[1]); }
+    else { try { const d = new Date(row["date"]); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {} }
     if (!pilotoDetalle[dk]) pilotoDetalle[dk] = { id: dId, nombre: dNm, ciudad: city, servicios: 0, completados: 0, cancelados: 0, expirados: 0, gmv: 0, ops: {}, vehiculos: {}, horas: {} };
     const p = pilotoDetalle[dk];
     p.servicios++;
