@@ -412,11 +412,12 @@ export function procesarDatos(rows) {
     if (dNm && dNm.length > (p.nombre || "").length) p.nombre = dNm;
     if (city) p.ciudad = city;
   }
-  const drivers = Object.values(pilotoDetalle).map(p => ({
-    ...p,
-    tasaCompletado: p.servicios > 0 ? p.completados / p.servicios : 0,
-    tasaCancelacion: p.servicios > 0 ? p.cancelados / p.servicios : 0,
-  }));
+  // Slim: solo campos esenciales para ahorrar localStorage
+  const drivers = Object.values(pilotoDetalle).map(p => {
+    let horaPico = -1, maxH = 0;
+    for (const [h, c] of Object.entries(p.horas)) { if (c > maxH) { maxH = c; horaPico = Number(h); } }
+    return { id: p.id, nombre: p.nombre, ciudad: p.ciudad, servicios: p.servicios, completados: p.completados, cancelados: p.cancelados, gmv: Math.round(p.gmv), horaPico };
+  });
 
   return {
     empresas,

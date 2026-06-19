@@ -52,9 +52,10 @@ export default function AnalisisPilotos() {
     const tasaCompletado = totalServicios > 0 ? (totalCompletados / totalServicios * 100) : 0;
     const tasaCancelacion = totalServicios > 0 ? (totalCancelados / totalServicios * 100) : 0;
     // Franjas horarias
+    // Franjas: contar pilotos por hora pico
     const horaMap = {};
-    for (const d of driversActual) { for (const [h, c] of Object.entries(d.horas || {})) horaMap[h] = (horaMap[h] || 0) + c; }
-    const franjas = Object.entries(horaMap).map(([h, servicios]) => ({ hora: `${String(h).padStart(2, "0")}:00`, servicios })).sort((a, b) => a.hora.localeCompare(b.hora));
+    for (const d of driversActual) { if (d.horaPico >= 0) horaMap[d.horaPico] = (horaMap[d.horaPico] || 0) + 1; }
+    const franjas = Object.entries(horaMap).map(([h, pilotos]) => ({ hora: `${String(h).padStart(2, "0")}:00`, pilotos })).sort((a, b) => a.hora.localeCompare(b.hora));
     // Por ciudad
     const ciudadMap = {};
     for (const d of driversActual) {
@@ -195,16 +196,16 @@ export default function AnalisisPilotos() {
         {/* Franjas horarias */}
         {analisis.franjas.length > 0 && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-            <h3 className="text-sm font-bold text-gray-700 mb-3">Servicios por Franja Horaria</h3>
+            <h3 className="text-sm font-bold text-gray-700 mb-3">Pilotos por Hora Pico de Actividad</h3>
             <div className="flex gap-1 items-end" style={{ height: 120 }}>
               {analisis.franjas.map(f => {
-                const max = Math.max(...analisis.franjas.map(x => x.servicios));
-                const pct = max > 0 ? (f.servicios / max * 100) : 0;
+                const max = Math.max(...analisis.franjas.map(x => x.pilotos));
+                const pct = max > 0 ? (f.pilotos / max * 100) : 0;
                 return (
                   <div key={f.hora} className="flex-1 text-center group relative">
                     <div className="mx-auto rounded-t" style={{ height: `${Math.max(pct, 3)}%`, minHeight: 2, background: PIBOX_PURPLE, maxWidth: 28 }} />
                     <p className="text-[8px] text-gray-400 mt-1">{f.hora.slice(0, 2)}</p>
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">{f.hora}: {f.servicios.toLocaleString()}</div>
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">{f.hora}: {f.pilotos} pilotos</div>
                   </div>
                 );
               })}
@@ -259,14 +260,14 @@ export default function AnalisisPilotos() {
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-gray-700">Top 10 Cancelaciones</h3>
-              <button onClick={() => downloadCsv(analisis.allCanceladores.map((p, i) => [i + 1, p.nombre, p.id, p.ciudad, p.servicios, p.cancelados, (p.tasaCancelacion * 100).toFixed(1) + "%"]), ["#", "Piloto", "ID", "Ciudad", "Servicios", "Cancelados", "% Cancel"], `Pilotos_Canceladores_${mesSel}.csv`)} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200">Descargar ({analisis.allCanceladores.length})</button>
+              <button onClick={() => downloadCsv(analisis.allCanceladores.map((p, i) => [i + 1, p.nombre, p.id, p.ciudad, p.servicios, p.cancelados, ((p.servicios > 0 ? p.cancelados / p.servicios : 0) * 100).toFixed(1) + "%"]), ["#", "Piloto", "ID", "Ciudad", "Servicios", "Cancelados", "% Cancel"], `Pilotos_Canceladores_${mesSel}.csv`)} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200">Descargar ({analisis.allCanceladores.length})</button>
             </div>
             <div className="space-y-1.5">
               {analisis.topCanceladores.map((p, i) => (
                 <div key={p.id || p.nombre} className="flex items-center gap-2 bg-red-50/50 rounded-lg px-2 py-1.5">
                   <span className="text-sm font-bold text-red-400 w-5">{i + 1}</span>
                   <div className="flex-1 min-w-0"><p className="text-[11px] font-semibold text-gray-800 truncate">{p.nombre || p.id}</p><p className="text-[9px] text-gray-400">{p.ciudad}</p></div>
-                  <div className="text-right"><p className="text-xs font-bold text-orange-600">{p.cancelados}/{p.servicios}</p><p className="text-[9px] font-bold text-red-600">{(p.tasaCancelacion * 100).toFixed(0)}%</p></div>
+                  <div className="text-right"><p className="text-xs font-bold text-orange-600">{p.cancelados}/{p.servicios}</p><p className="text-[9px] font-bold text-red-600">{((p.servicios > 0 ? p.cancelados / p.servicios : 0) * 100).toFixed(0)}%</p></div>
                 </div>
               ))}
             </div>
