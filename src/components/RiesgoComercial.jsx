@@ -101,7 +101,7 @@ export default function RiesgoComercial({ currentUser }) {
           {tab === "ciudad"   && <AnalisisCiudad />}
           {tab === "informe"  && <InformeEmpresa />}
           {tab === "pilotos"  && <AnalisisPilotos />}
-          {tab === "informeCliente" && <InformeCliente />}
+          {tab === "informeCliente" && <InformeCliente currentUser={currentUser} />}
           {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
         </Suspense>
       </div>

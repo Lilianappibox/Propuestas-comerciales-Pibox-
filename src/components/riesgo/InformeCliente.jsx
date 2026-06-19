@@ -233,10 +233,13 @@ function DataTable({ headers, rows, footer }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function InformeCliente() {
+const RAZONES_SOCIALES = ["Digital Network Colombia S.A.S.", "Digital Platforms Colombia S.A.S."];
+
+export default function InformeCliente({ currentUser }) {
   const [cliente, setCliente] = useState("");
   const [fechaInforme, setFechaInforme] = useState("");
   const [periodo, setPeriodo] = useState("");
+  const [razonSocial, setRazonSocial] = useState(RAZONES_SOCIALES[0]);
   const [serviciosFile, setServiciosFile] = useState(null);
   const [paquetesFile, setPaquetesFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -263,7 +266,7 @@ export default function InformeCliente() {
   };
 
   const handleLimpiar = () => {
-    setCliente(""); setFechaInforme(""); setPeriodo("");
+    setCliente(""); setFechaInforme(""); setPeriodo(""); setRazonSocial(RAZONES_SOCIALES[0]);
     setServiciosFile(null); setPaquetesFile(null);
     setSvcData(null); setPaqData(null); setError("");
     if (svcFileRef.current) svcFileRef.current.value = "";
@@ -318,6 +321,18 @@ export default function InformeCliente() {
             <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>Periodo</label>
             <input type="text" value={periodo} onChange={e => setPeriodo(e.target.value)} placeholder="Ej: Mayo 2026"
               style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 6 }}>Razón Social</label>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {RAZONES_SOCIALES.map(rs => (
+              <label key={rs} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 10, border: razonSocial === rs ? "2px solid #7C22D4" : "1px solid #d1d5db", background: razonSocial === rs ? "#F3E8FF" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: razonSocial === rs ? 600 : 400, color: razonSocial === rs ? "#7C22D4" : "#374151" }}>
+                <input type="radio" name="razonSocial" checked={razonSocial === rs} onChange={() => setRazonSocial(rs)} style={{ accentColor: "#7C22D4" }} />
+                {rs}
+              </label>
+            ))}
           </div>
         </div>
 
@@ -400,7 +415,7 @@ export default function InformeCliente() {
                 <h1 style={{ color: "#fff", fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>Informe Operacional</h1>
                 <p style={{ color: "rgba(255,255,255,.85)", fontSize: 13, margin: "0 0 2px" }}>{cliente || "Cliente"}</p>
                 <p style={{ color: "rgba(255,255,255,.7)", fontSize: 11, margin: 0 }}>
-                  Digital Network Colombia S.A.S.
+                  {razonSocial}
                   {periodo && ` \u00B7 ${periodo}`}
                   {fechaInforme && ` \u00B7 ${fechaInforme}`}
                 </p>
@@ -539,6 +554,17 @@ export default function InformeCliente() {
             </>
           )}
 
+          {/* Firma */}
+          <div style={{ height: 40 }} />
+          <div style={{ borderTop: "2px solid #E9D5FF", paddingTop: 20, textAlign: "center" }}>
+            <p style={{ fontSize: 11, color: "#9CA3AF", margin: "0 0 16px 0" }}>Este informe fue generado por la plataforma PIBOX.</p>
+            <div style={{ display: "inline-block", textAlign: "center", minWidth: 250 }}>
+              <div style={{ borderBottom: "2px solid #7C22D4", marginBottom: 8, height: 40 }} />
+              <p style={{ fontSize: 14, fontWeight: 700, color: "#1f2937", margin: "0 0 2px 0" }}>{currentUser?.nombre || "Ejecutivo PIBOX"}</p>
+              <p style={{ fontSize: 12, color: "#7C22D4", fontWeight: 600, margin: "0 0 2px 0" }}>{currentUser?.cargo || currentUser?.rol || "KAM"}</p>
+              <p style={{ fontSize: 11, color: "#6b7280", margin: 0 }}>{razonSocial}</p>
+            </div>
+          </div>
           <div style={{ height: 24 }} />
         </div>
       )}
