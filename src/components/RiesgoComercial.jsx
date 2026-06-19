@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
-import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData } from "./riesgo/utils";
+import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync } from "./riesgo/utils";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
@@ -30,12 +30,20 @@ export default function RiesgoComercial({ currentUser }) {
   const [, forceRender]   = useState(0);
   const isAdmin = currentUser?.rol === "Administrativo";
 
-  // No-admin: cargar datos del código a localStorage para que los componentes los lean
+  // Precargar datos de IndexedDB al cache en memoria
+  useEffect(() => {
+    const idx = loadIndex();
+    const keys = Object.keys(idx);
+    if (keys.length > 0) {
+      Promise.all(keys.map(k => loadMesDataAsync(k))).then(() => forceRender(n => n + 1));
+    }
+  }, []);
+
+  // No-admin: cargar datos del código
   useEffect(() => {
     if (isAdmin) return;
     const codeIndex = loadIndexReadonly();
     if (Object.keys(codeIndex).length === 0) return;
-    // Solo cargar si localStorage está vacío
     const localIndex = loadIndex();
     if (Object.keys(localIndex).length > 0) return;
     try {

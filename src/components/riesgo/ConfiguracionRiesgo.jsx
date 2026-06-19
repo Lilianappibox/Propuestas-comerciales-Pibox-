@@ -45,15 +45,15 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
         totales: processed.totales,
       };
 
-      // Guardar data procesada PRIMERO (puede fallar por quota)
-      saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades });
+      // Guardar data en IndexedDB (sin límite de espacio)
+      await saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades });
 
-      // Solo guardar índice si el save fue exitoso
+      // Guardar índice (solo metadata, muy pequeño)
       const idx = loadIndex();
       idx[key] = entry;
       saveIndex(idx);
 
-      // Drivers en IndexedDB (sin límite de espacio)
+      // Drivers en IndexedDB
       if (processed.drivers) idbSaveDrivers(key, processed.drivers);
 
       const fresh = mesesDisponibles();
@@ -68,9 +68,9 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
     }
   };
 
-  const handleDelete = (key, label) => {
+  const handleDelete = async (key, label) => {
     if (!confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`)) return;
-    deleteMes(key);
+    await deleteMes(key);
     idbDeleteDrivers(key);
     const fresh = mesesDisponibles();
     setMeses(fresh);

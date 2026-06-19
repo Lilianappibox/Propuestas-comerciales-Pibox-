@@ -49,25 +49,82 @@ export function loadIndex() {
 export function saveIndex(idx) {
   localStorage.setItem(SK_INDEX, JSON.stringify(idx));
 }
+// ── Datos de mes: IndexedDB (sin límite) con fallback a localStorage ────────
+const IDB_NAME = "pibox_riesgo_db";
+const IDB_STORE_MES = "mesData";
+
+function idbOpenMes() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 2);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("drivers")) db.createObjectStore("drivers");
+      if (!db.objectStoreNames.contains(IDB_STORE_MES)) db.createObjectStore(IDB_STORE_MES);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Cache en memoria para evitar lecturas IDB repetidas
+const _mesCache = {};
+
 export function loadMesData(key) {
-  try { return JSON.parse(localStorage.getItem(SK_MES(key)) || "null"); }
-  catch { return null; }
-}
-export function saveMesData(key, data) {
-  const json = JSON.stringify(data);
+  // Primero cache, luego localStorage (legacy), IDB se carga async
+  if (_mesCache[key]) return _mesCache[key];
   try {
-    localStorage.setItem(SK_MES(key), json);
-  } catch (e) {
-    // Quota exceeded - intentar liberar espacio y reintentar
-    console.warn("localStorage quota exceeded, size:", (json.length/1024).toFixed(0), "KB");
-    throw new Error(`No hay espacio en el navegador para guardar ${(json.length/1024).toFixed(0)}KB. Elimina meses antiguos antes de subir nuevos.`);
-  }
+    const ls = localStorage.getItem(SK_MES(key));
+    if (ls) { const d = JSON.parse(ls); _mesCache[key] = d; return d; }
+  } catch {}
+  return null;
 }
-export function deleteMes(key) {
+
+export async function loadMesDataAsync(key) {
+  if (_mesCache[key]) return _mesCache[key];
+  // Intentar localStorage primero (legacy)
+  try {
+    const ls = localStorage.getItem(SK_MES(key));
+    if (ls) { const d = JSON.parse(ls); _mesCache[key] = d; return d; }
+  } catch {}
+  // Intentar IndexedDB
+  try {
+    const db = await idbOpenMes();
+    const tx = db.transaction(IDB_STORE_MES, "readonly");
+    const req = tx.objectStore(IDB_STORE_MES).get(key);
+    const result = await new Promise(r => { req.onsuccess = () => r(req.result || null); req.onerror = () => r(null); });
+    if (result) _mesCache[key] = result;
+    return result;
+  } catch { return null; }
+}
+
+export async function saveMesData(key, data) {
+  _mesCache[key] = data;
+  // Guardar en IndexedDB (sin límite)
+  try {
+    const db = await idbOpenMes();
+    const tx = db.transaction(IDB_STORE_MES, "readwrite");
+    tx.objectStore(IDB_STORE_MES).put(data, key);
+    await new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
+  } catch (e) {
+    console.warn("IDB save error, fallback to localStorage:", e);
+    // Fallback a localStorage
+    localStorage.setItem(SK_MES(key), JSON.stringify(data));
+  }
+  // Limpiar localStorage legacy si existe (liberar espacio)
+  try { localStorage.removeItem(SK_MES(key)); } catch {}
+}
+
+export async function deleteMes(key) {
   const idx = loadIndex();
   delete idx[key];
   saveIndex(idx);
+  delete _mesCache[key];
   localStorage.removeItem(SK_MES(key));
+  try {
+    const db = await idbOpenMes();
+    const tx = db.transaction(IDB_STORE_MES, "readwrite");
+    tx.objectStore(IDB_STORE_MES).delete(key);
+  } catch {}
 }
 export function mesesDisponibles() {
   const idx = loadIndex();
@@ -470,25 +527,15 @@ export function procesarDatos(rows) {
   };
 }
 
-// ── IndexedDB para drivers (evita exceder localStorage) ──────────────────
-const IDB_NAME = "pibox_riesgo_db";
-const IDB_STORE = "drivers";
-function idbOpen() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+// ── IndexedDB para drivers ──────────────────────────────────────────────
 export async function idbSaveDrivers(mesKey, drivers) {
-  try { const db = await idbOpen(); const tx = db.transaction(IDB_STORE, "readwrite"); tx.objectStore(IDB_STORE).put(drivers, mesKey); await new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; }); } catch (e) { console.warn("IDB save drivers:", e); }
+  try { const db = await idbOpenMes(); const tx = db.transaction("drivers", "readwrite"); tx.objectStore("drivers").put(drivers, mesKey); await new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; }); } catch (e) { console.warn("IDB save drivers:", e); }
 }
 export async function idbLoadDrivers(mesKey) {
-  try { const db = await idbOpen(); const tx = db.transaction(IDB_STORE, "readonly"); const req = tx.objectStore(IDB_STORE).get(mesKey); return new Promise(r => { req.onsuccess = () => r(req.result || null); req.onerror = () => r(null); }); } catch { return null; }
+  try { const db = await idbOpenMes(); const tx = db.transaction("drivers", "readonly"); const req = tx.objectStore("drivers").get(mesKey); return new Promise(r => { req.onsuccess = () => r(req.result || null); req.onerror = () => r(null); }); } catch { return null; }
 }
 export async function idbDeleteDrivers(mesKey) {
-  try { const db = await idbOpen(); const tx = db.transaction(IDB_STORE, "readwrite"); tx.objectStore(IDB_STORE).delete(mesKey); } catch {}
+  try { const db = await idbOpenMes(); const tx = db.transaction("drivers", "readwrite"); tx.objectStore("drivers").delete(mesKey); } catch {}
 }
 
 // ── Score de riesgo ───────────────────────────────────────────────────────────
