@@ -673,6 +673,51 @@ export default function AnalisisCiudad() {
                     </table>
                   </div>
                 </div>
+
+                {/* Devoluciones por empresa */}
+                {(() => {
+                  const devolData = matchingEmpresas.filter(e => (e.devueltos||0) > 0)
+                    .map(e => ({ empresa: e.empresa, paquetes: e.paquetes||0, devueltos: e.devueltos||0, tasa: (e.paquetes||0) > 0 ? (e.devueltos||0)/(e.paquetes||0) : 0 }))
+                    .sort((a,b) => b.devueltos - a.devueltos);
+                  if (!devolData.length) return null;
+                  const totPaq = devolData.reduce((s,d) => s+d.paquetes, 0);
+                  const totDev = devolData.reduce((s,d) => s+d.devueltos, 0);
+                  const totTasa = totPaq > 0 ? totDev/totPaq : 0;
+                  return (
+                    <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                      <h3 className="font-bold text-gray-700 text-sm mb-4">📦 Devoluciones por empresa</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
+                          <thead>
+                            <tr style={{background:PIBOX_PURPLE}} className="text-white">
+                              {["Empresa","Paquetes","Devueltos","Tasa devolucion (%)"].map(h=>(
+                                <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {devolData.map((d,i)=>(
+                              <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
+                                <td className="px-3 py-2 font-semibold text-gray-700">{d.empresa}</td>
+                                <td className="px-3 py-2">{d.paquetes.toLocaleString()}</td>
+                                <td className="px-3 py-2">{d.devueltos.toLocaleString()}</td>
+                                <td className="px-3 py-2 font-semibold" style={{color: d.tasa > 0.10 ? SEM_ROJO : d.tasa > 0.05 ? SEM_AMARILLO : SEM_VERDE}}>{fmtPct(d.tasa)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-purple-300 bg-purple-50 font-bold">
+                              <td className="px-3 py-2 text-gray-800">Total</td>
+                              <td className="px-3 py-2">{totPaq.toLocaleString()}</td>
+                              <td className="px-3 py-2">{totDev.toLocaleString()}</td>
+                              <td className="px-3 py-2 font-semibold" style={{color: totTasa > 0.10 ? SEM_ROJO : totTasa > 0.05 ? SEM_AMARILLO : SEM_VERDE}}>{fmtPct(totTasa)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             ) : null;
           })()}

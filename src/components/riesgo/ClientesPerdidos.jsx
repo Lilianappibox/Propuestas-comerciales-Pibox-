@@ -262,6 +262,53 @@ export default function ClientesPerdidos() {
         </div>
       </div>
 
+      {/* Devoluciones por empresa */}
+      {(() => {
+        const devolData = lostClients.filter(c => (c.devueltos||0) > 0)
+          .map(c => ({ empresa: c.empresa, paquetes: c.paquetes||0, devueltos: c.devueltos||0, tasa: (c.paquetes||0) > 0 ? (c.devueltos||0)/(c.paquetes||0) : 0 }))
+          .sort((a,b) => b.devueltos - a.devueltos);
+        if (!devolData.length) return null;
+        const totPaq = devolData.reduce((s,d) => s+d.paquetes, 0);
+        const totDev = devolData.reduce((s,d) => s+d.devueltos, 0);
+        const totTasa = totPaq > 0 ? totDev/totPaq : 0;
+        return (
+          <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Devoluciones por empresa (mes anterior)</h4>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Empresa","Paquetes","Devueltos","Tasa devolucion (%)"].map(h => (
+                      <th key={h} style={{ background: PIBOX_PURPLE, color: "#fff", padding: "8px 12px", textAlign: "left", fontWeight: 600, fontSize: 11 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {devolData.map((d,i) => (
+                    <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#faf5ff" }}>
+                      <td style={{ padding: "6px 12px", fontWeight: 600, color: "#374151" }}>{d.empresa}</td>
+                      <td style={{ padding: "6px 12px", color: "#374151" }}>{d.paquetes.toLocaleString()}</td>
+                      <td style={{ padding: "6px 12px", color: "#374151" }}>{d.devueltos.toLocaleString()}</td>
+                      <td style={{ padding: "6px 12px", fontWeight: 600, color: d.tasa > 0.10 ? SEM_ROJO : d.tasa > 0.05 ? SEM_AMARILLO : SEM_VERDE }}>{fmtPct(d.tasa)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: "#ede9fe", fontWeight: 700, borderTop: "2px solid #c4b5fd" }}>
+                    <td style={{ padding: "7px 12px", color: "#1f2937" }}>Total</td>
+                    <td style={{ padding: "7px 12px" }}>{totPaq.toLocaleString()}</td>
+                    <td style={{ padding: "7px 12px" }}>{totDev.toLocaleString()}</td>
+                    <td style={{ padding: "7px 12px", fontWeight: 600, color: totTasa > 0.10 ? SEM_ROJO : totTasa > 0.05 ? SEM_AMARILLO : SEM_VERDE }}>{fmtPct(totTasa)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Analysis */}
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, padding: "16px 20px" }}>
         <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: "0 0 12px" }}>Analisis de clientes perdidos</h4>
