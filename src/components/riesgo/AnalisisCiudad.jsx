@@ -646,6 +646,84 @@ export default function AnalisisCiudad() {
                   </div>
                 </div>
 
+                {/* Gráficas comparativas devoluciones + relanzamientos */}
+                {(() => {
+                  const empsActual = dataMes?.empresas?.filter(e => (e.topCiudades||[]).some(c => ciudadesSeleccionadas.includes(c.city))) || [];
+                  const empsPrev = dataPrev?.ciudades ? (dataPrev.empresas||[]).filter(e => (e.topCiudades||[]).some(c => ciudadesSeleccionadas.includes(c.city))) : [];
+                  const totalDevAct = empsActual.reduce((s,e) => s + (e.devueltos||0), 0);
+                  const totalRelAct = empsActual.reduce((s,e) => s + (e.relanzamientos||0), 0);
+                  const totalServAct = empsActual.reduce((s,e) => s + e.total, 0);
+                  const totalDevPrev = empsPrev.reduce((s,e) => s + (e.devueltos||0), 0);
+                  const totalRelPrev = empsPrev.reduce((s,e) => s + (e.relanzamientos||0), 0);
+                  const totalServPrev = empsPrev.reduce((s,e) => s + e.total, 0);
+                  const mesActLabel = dataMes?.label || "Actual";
+                  const mesPrevLabel = mesPrevMeta?.label || "Anterior";
+                  const barData = [
+                    { name: "Devoluciones", [mesActLabel]: totalDevAct, [mesPrevLabel]: totalDevPrev },
+                    { name: "Relanzamientos", [mesActLabel]: totalRelAct, [mesPrevLabel]: totalRelPrev },
+                  ];
+                  const pctData = [
+                    { name: "% Devoluciones", [mesActLabel]: totalServAct > 0 ? +(totalDevAct/totalServAct*100).toFixed(2) : 0, [mesPrevLabel]: totalServPrev > 0 ? +(totalDevPrev/totalServPrev*100).toFixed(2) : 0 },
+                    { name: "% Relanzamientos", [mesActLabel]: totalServAct > 0 ? +(totalRelAct/totalServAct*100).toFixed(2) : 0, [mesPrevLabel]: totalServPrev > 0 ? +(totalRelPrev/totalServPrev*100).toFixed(2) : 0 },
+                  ];
+                  // Top empresas por relanzamientos en las ciudades
+                  const topRelEmps = empsActual.filter(e => (e.relanzamientos||0) > 0)
+                    .map(e => {
+                      const prev = empsPrev.find(p => p.companyId === e.companyId);
+                      return { name: e.empresa.length > 20 ? e.empresa.slice(0,20)+"…" : e.empresa, [mesActLabel]: e.relanzamientos||0, [mesPrevLabel]: prev?.relanzamientos||0 };
+                    })
+                    .sort((a,b) => b[mesActLabel] - a[mesActLabel]).slice(0, 10);
+                  if (totalDevAct === 0 && totalRelAct === 0 && totalDevPrev === 0 && totalRelPrev === 0) return null;
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                        <h3 className="font-bold text-gray-700 text-sm mb-3">📦 Devoluciones y Relanzamientos vs {mesPrevLabel}</h3>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <BarChart data={barData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                            <YAxis tick={{ fontSize: 10 }} />
+                            <Tooltip />
+                            <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                            <Bar dataKey={mesActLabel} fill={PIBOX_PURPLE} radius={[4,4,0,0]} />
+                            <Bar dataKey={mesPrevLabel} fill="#DDD6FE" radius={[4,4,0,0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                        <h3 className="font-bold text-gray-700 text-sm mb-3">📊 % sobre servicios totales</h3>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <BarChart data={pctData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                            <YAxis tick={{ fontSize: 10 }} unit="%" />
+                            <Tooltip formatter={v => `${v}%`} />
+                            <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                            <Bar dataKey={mesActLabel} fill={SEM_ROJO} radius={[4,4,0,0]} />
+                            <Bar dataKey={mesPrevLabel} fill="#FCA5A5" radius={[4,4,0,0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {topRelEmps.length > 0 && (
+                        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                          <h3 className="font-bold text-gray-700 text-sm mb-3">🔄 Relanzamientos por empresa</h3>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <BarChart data={topRelEmps} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                              <XAxis type="number" tick={{ fontSize: 9 }} />
+                              <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 8 }} />
+                              <Tooltip />
+                              <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                              <Bar dataKey={mesActLabel} fill={PIBOX_PURPLE} radius={[0,4,4,0]} />
+                              <Bar dataKey={mesPrevLabel} fill="#DDD6FE" radius={[0,4,4,0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="font-bold text-gray-700 text-sm">🔄 Distribucion de relanzamientos</h3>

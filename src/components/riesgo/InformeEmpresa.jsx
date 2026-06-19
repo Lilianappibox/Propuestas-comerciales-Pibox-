@@ -577,6 +577,63 @@ export default function InformeEmpresa() {
                     </div>
                   </div>
 
+                  {/* Gráficas comparativas devoluciones + relanzamientos */}
+                  {(() => {
+                    const selEmpsAct = dataMes?.empresas?.filter(e => empresasSel.includes(e.empresa)) || [];
+                    const selEmpsPrev = dataPrev?.empresas?.filter(e => empresasSel.includes(e.empresa)) || [];
+                    const totalDevAct = selEmpsAct.reduce((s,e) => s + (e.devueltos||0), 0);
+                    const totalRelAct = selEmpsAct.reduce((s,e) => s + (e.relanzamientos||0), 0);
+                    const totalServAct = selEmpsAct.reduce((s,e) => s + e.total, 0);
+                    const totalDevPrev = selEmpsPrev.reduce((s,e) => s + (e.devueltos||0), 0);
+                    const totalRelPrev = selEmpsPrev.reduce((s,e) => s + (e.relanzamientos||0), 0);
+                    const totalServPrev = selEmpsPrev.reduce((s,e) => s + e.total, 0);
+                    const mesActLabel = dataMes?.label || "Actual";
+                    const mesPrevLabel2 = mesPrevMeta?.label || "Anterior";
+                    const barData = [
+                      { name: "Devoluciones", [mesActLabel]: totalDevAct, [mesPrevLabel2]: totalDevPrev },
+                      { name: "Relanzamientos", [mesActLabel]: totalRelAct, [mesPrevLabel2]: totalRelPrev },
+                    ];
+                    const pctData = [
+                      { name: "% Devoluciones", [mesActLabel]: totalServAct > 0 ? +(totalDevAct/totalServAct*100).toFixed(2) : 0, [mesPrevLabel2]: totalServPrev > 0 ? +(totalDevPrev/totalServPrev*100).toFixed(2) : 0 },
+                      { name: "% Relanzamientos", [mesActLabel]: totalServAct > 0 ? +(totalRelAct/totalServAct*100).toFixed(2) : 0, [mesPrevLabel2]: totalServPrev > 0 ? +(totalRelPrev/totalServPrev*100).toFixed(2) : 0 },
+                    ];
+                    if (totalDevAct === 0 && totalRelAct === 0 && totalDevPrev === 0 && totalRelPrev === 0) return null;
+                    return (
+                      <div className="px-6 py-5 border-t border-gray-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <h4 className="font-bold text-gray-700 text-sm mb-3">📦 Devoluciones y Relanzamientos vs {mesPrevLabel2}</h4>
+                            <ResponsiveContainer width="100%" height={180}>
+                              <BarChart data={barData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                                <YAxis tick={{ fontSize: 10 }} />
+                                <Tooltip />
+                                <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                <Bar dataKey={mesActLabel} fill={PIBOX_PURPLE} radius={[4,4,0,0]} />
+                                <Bar dataKey={mesPrevLabel2} fill="#DDD6FE" radius={[4,4,0,0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-gray-700 text-sm mb-3">📊 % sobre servicios totales</h4>
+                            <ResponsiveContainer width="100%" height={180}>
+                              <BarChart data={pctData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                                <YAxis tick={{ fontSize: 10 }} unit="%" />
+                                <Tooltip formatter={v => `${v}%`} />
+                                <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                <Bar dataKey={mesActLabel} fill={SEM_ROJO} radius={[4,4,0,0]} />
+                                <Bar dataKey={mesPrevLabel2} fill="#FCA5A5" radius={[4,4,0,0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="px-6 py-5 border-t border-gray-100">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-bold text-gray-700 text-sm">🔄 Distribucion de relanzamientos</h4>
