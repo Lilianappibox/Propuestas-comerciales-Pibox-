@@ -634,6 +634,107 @@ export default function InformeEmpresa() {
                     );
                   })()}
 
+                  {/* Gráficas por usuario y sede: relanzamientos + devoluciones */}
+                  {empData && (empData.topUsuarios?.some(u => (u.relanzamientos||0) > 0 || (u.devueltos||0) > 0) || empData.topSedes?.some(s => (s.relanzamientos||0) > 0 || (s.devueltos||0) > 0)) && (
+                    <div className="px-6 py-5 border-t border-gray-100">
+                      <h4 className="font-bold text-gray-700 text-sm mb-4">📊 Relanzamientos y Devoluciones por Usuario y Sede</h4>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* Relanzamientos por usuario */}
+                        {(() => {
+                          const data = (empData.topUsuarios || []).filter(u => (u.relanzamientos||0) > 0)
+                            .map(u => ({ name: u.usuario.length > 18 ? u.usuario.slice(0,18)+"…" : u.usuario, Relanzamientos: u.relanzamientos, Servicios: u.total }))
+                            .sort((a,b) => b.Relanzamientos - a.Relanzamientos).slice(0, 10);
+                          if (!data.length) return null;
+                          return (
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs font-bold text-gray-600 mb-2">🔄 Relanzamientos por usuario (Top 10)</p>
+                              <ResponsiveContainer width="100%" height={Math.max(160, data.length * 28)}>
+                                <BarChart data={data} layout="vertical">
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                                  <XAxis type="number" tick={{ fontSize: 9 }} />
+                                  <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 8 }} />
+                                  <Tooltip />
+                                  <Legend iconSize={7} wrapperStyle={{ fontSize: 9 }} />
+                                  <Bar dataKey="Relanzamientos" fill={PIBOX_PURPLE} radius={[0,4,4,0]} />
+                                  <Bar dataKey="Servicios" fill="#DDD6FE" radius={[0,4,4,0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          );
+                        })()}
+                        {/* Devoluciones por usuario */}
+                        {(() => {
+                          const data = (empData.topUsuarios || []).filter(u => (u.devueltos||0) > 0)
+                            .map(u => ({ name: u.usuario.length > 18 ? u.usuario.slice(0,18)+"…" : u.usuario, Devueltos: u.devueltos, Paquetes: u.total }))
+                            .sort((a,b) => b.Devueltos - a.Devueltos).slice(0, 10);
+                          if (!data.length) return null;
+                          return (
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs font-bold text-gray-600 mb-2">📦 Devoluciones por usuario (Top 10)</p>
+                              <ResponsiveContainer width="100%" height={Math.max(160, data.length * 28)}>
+                                <BarChart data={data} layout="vertical">
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#FEE2E2" />
+                                  <XAxis type="number" tick={{ fontSize: 9 }} />
+                                  <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 8 }} />
+                                  <Tooltip />
+                                  <Legend iconSize={7} wrapperStyle={{ fontSize: 9 }} />
+                                  <Bar dataKey="Devueltos" fill={SEM_ROJO} radius={[0,4,4,0]} />
+                                  <Bar dataKey="Paquetes" fill="#FCA5A5" radius={[0,4,4,0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          );
+                        })()}
+                        {/* Relanzamientos por sede */}
+                        {(() => {
+                          const data = (empData.topSedes || []).filter(s => (s.relanzamientos||0) > 0)
+                            .map(s => ({ name: s.sede.length > 18 ? s.sede.slice(0,18)+"…" : s.sede, Relanzamientos: s.relanzamientos, Servicios: s.total }))
+                            .sort((a,b) => b.Relanzamientos - a.Relanzamientos).slice(0, 10);
+                          if (!data.length) return null;
+                          return (
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs font-bold text-gray-600 mb-2">🔄 Relanzamientos por sede (Top 10)</p>
+                              <ResponsiveContainer width="100%" height={Math.max(160, data.length * 28)}>
+                                <BarChart data={data} layout="vertical">
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                                  <XAxis type="number" tick={{ fontSize: 9 }} />
+                                  <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 8 }} />
+                                  <Tooltip />
+                                  <Legend iconSize={7} wrapperStyle={{ fontSize: 9 }} />
+                                  <Bar dataKey="Relanzamientos" fill={PIBOX_PINK} radius={[0,4,4,0]} />
+                                  <Bar dataKey="Servicios" fill="#F5D0FE" radius={[0,4,4,0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          );
+                        })()}
+                        {/* Devoluciones por sede */}
+                        {(() => {
+                          const data = (empData.topSedes || []).filter(s => (s.devueltos||0) > 0)
+                            .map(s => ({ name: s.sede.length > 18 ? s.sede.slice(0,18)+"…" : s.sede, Devueltos: s.devueltos, Paquetes: s.total }))
+                            .sort((a,b) => b.Devueltos - a.Devueltos).slice(0, 10);
+                          if (!data.length) return null;
+                          return (
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs font-bold text-gray-600 mb-2">📦 Devoluciones por sede (Top 10)</p>
+                              <ResponsiveContainer width="100%" height={Math.max(160, data.length * 28)}>
+                                <BarChart data={data} layout="vertical">
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#FEE2E2" />
+                                  <XAxis type="number" tick={{ fontSize: 9 }} />
+                                  <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 8 }} />
+                                  <Tooltip />
+                                  <Legend iconSize={7} wrapperStyle={{ fontSize: 9 }} />
+                                  <Bar dataKey="Devueltos" fill={SEM_AMARILLO} radius={[0,4,4,0]} />
+                                  <Bar dataKey="Paquetes" fill="#FEF3C7" radius={[0,4,4,0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="px-6 py-5 border-t border-gray-100">
                     <div className="flex items-center justify-between mb-1">
                       <h4 className="font-bold text-gray-700 text-sm">🔄 Distribucion de relanzamientos</h4>

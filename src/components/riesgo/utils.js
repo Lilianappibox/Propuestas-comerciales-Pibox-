@@ -157,13 +157,17 @@ export function procesarDatos(rows) {
     if (exec && exec !== "Sin asignar") e.ejecutivo = exec;
 
     // por usuario (passenger_name)
-    if (!e.usuarios[usuario]) e.usuarios[usuario] = {total:0,completados:0,gmv:0};
+    if (!e.usuarios[usuario]) e.usuarios[usuario] = {total:0,completados:0,gmv:0,relanzamientos:0,devueltos:0};
     e.usuarios[usuario].total++;
+    e.usuarios[usuario].relanzamientos += relaunched;
+    e.usuarios[usuario].devueltos += returnedPkgs;
     if (esCompletado) { e.usuarios[usuario].completados++; e.usuarios[usuario].gmv += gmv; }
 
     // por sede
-    if (!e.sedes[sede]) e.sedes[sede] = {total:0,completados:0,gmv:0};
+    if (!e.sedes[sede]) e.sedes[sede] = {total:0,completados:0,gmv:0,relanzamientos:0,devueltos:0};
     e.sedes[sede].total++;
+    e.sedes[sede].relanzamientos += relaunched;
+    e.sedes[sede].devueltos += returnedPkgs;
     if (esCompletado) { e.sedes[sede].completados++; e.sedes[sede].gmv += gmv; }
 
     // ciudades
