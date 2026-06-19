@@ -710,22 +710,6 @@ export default function AnalisisCiudad() {
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
-                      {topRelEmps.length > 0 && (
-                        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                          <h3 className="font-bold text-gray-700 text-sm mb-3">🔄 Relanzamientos por empresa</h3>
-                          <ResponsiveContainer width="100%" height={200}>
-                            <BarChart data={topRelEmps} layout="vertical">
-                              <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                              <XAxis type="number" tick={{ fontSize: 9 }} />
-                              <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 8 }} />
-                              <Tooltip />
-                              <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-                              <Bar dataKey={mesActLabel} fill={PIBOX_PURPLE} radius={[0,4,4,0]} />
-                              <Bar dataKey={mesPrevLabel} fill="#DDD6FE" radius={[0,4,4,0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
                     </div>
                   );
                 })()}
