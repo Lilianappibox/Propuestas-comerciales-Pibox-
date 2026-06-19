@@ -322,23 +322,30 @@ export default function MetricasRiesgo() {
           {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
           {(tot?.porStatus?.length > 0) ? (
             <>
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={Math.max(220, (tot.porStatus.length || 1) * 45)}>
                 <BarChart
                   data={(() => {
                     const prevStatus = dataPrev?.totales?.porStatus || [];
-                    return tot.porStatus.slice(0,8).map(d => ({
-                      ...d,
-                      totalPrev: prevStatus.find(p => p.name === d.name)?.total || 0,
-                    }));
+                    // Asegurar todos los estados visibles
+                    const allNames = new Set([...tot.porStatus.map(d=>d.name), ...prevStatus.map(d=>d.name)]);
+                    return [...allNames].map(name => ({
+                      name,
+                      total: tot.porStatus.find(d=>d.name===name)?.total || 0,
+                      totalPrev: prevStatus.find(p=>p.name===name)?.total || 0,
+                    })).sort((a,b) => b.total - a.total);
                   })()}
-                  layout="vertical" margin={{left:5,right:5}}>
+                  layout="vertical" margin={{left:5,right:10}}>
                   <XAxis type="number" tick={{fontSize:9}} tickFormatter={v=>v.toLocaleString()}/>
-                  <YAxis type="category" dataKey="name" tick={{fontSize:9}} width={80}/>
+                  <YAxis type="category" dataKey="name" tick={{fontSize:9}} width={120}/>
                   <Tooltip formatter={(v)=>[v.toLocaleString()+" servicios"]}/>
                   <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
                   <Bar dataKey="total" name={dataMes?.label||"Actual"} radius={[0,4,4,0]}>
-                    {tot.porStatus.slice(0,8).map((d,i)=>{
-                      const c = d.name==="Completed"?SEM_VERDE:d.name.startsWith("Canceled")?SEM_ROJO:d.name==="Expired"?SEM_AMARILLO:COLORS[i%COLORS.length];
+                    {[...new Set([...tot.porStatus.map(d=>d.name), ...(dataPrev?.totales?.porStatus||[]).map(d=>d.name)])].sort((a,b) => {
+                      const at = tot.porStatus.find(d=>d.name===a)?.total||0;
+                      const bt = tot.porStatus.find(d=>d.name===b)?.total||0;
+                      return bt - at;
+                    }).map((name,i)=>{
+                      const c = name==="Completed"?SEM_VERDE:name.startsWith("Canceled")?SEM_ROJO:name==="Expired"?SEM_AMARILLO:COLORS[i%COLORS.length];
                       return <Cell key={i} fill={c}/>;
                     })}
                   </Bar>
