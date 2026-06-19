@@ -108,25 +108,21 @@ export default function NotasTareas() {
       setTitulo(parsed.titulo);
       setFecha(parsed.fecha);
       setContenido(parsed.contenido);
-      // Auto-guardar nota
-      if (parsed.contenido.trim()) {
-        const nueva = { id: uid(), titulo: parsed.titulo, fecha: parsed.fecha, contenido: parsed.contenido.trim(), creadoEn: new Date().toISOString() };
-        const nextNotas = [nueva, ...notas];
-        setNotas(nextNotas);
-        saveNotas(nextNotas);
-      }
-      // Auto-agregar tareas extraídas
+      // Agregar tareas extraídas (mantiene pendientes anteriores)
       if (parsed.tareas.length > 0) {
         const newTareas = parsed.tareas.map(t => ({
           id: uid(), tarea: t.tarea, responsable: t.responsable,
           fechaLimite: "", completada: false, creadoEn: new Date().toISOString(),
         }));
-        const next = [...newTareas, ...tareas];
+        // Mantener tareas pendientes de documentos anteriores + nuevas
+        const pendientesAnteriores = tareas.filter(t => !t.completada);
+        const completadas = tareas.filter(t => t.completada);
+        const next = [...newTareas, ...pendientesAnteriores, ...completadas];
         setTareas(next);
         saveTareas(next);
-        setPdfMsg(`✅ Nota guardada + ${parsed.tareas.length} tareas extraídas al tablero.`);
+        setPdfMsg(`✅ ${parsed.tareas.length} tareas extraídas. Haz clic en "Guardar en historial" para conservar la nota.`);
       } else {
-        setPdfMsg("✅ Nota guardada. No se encontraron tareas con formato [Responsable].");
+        setPdfMsg("✅ Contenido extraído. Haz clic en \"Guardar en historial\" para conservar la nota.");
       }
       setPdfCargado(true);
     } catch (err) {
@@ -229,16 +225,17 @@ export default function NotasTareas() {
                 <input type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} disabled={pdfLoading} />
               </label>
             )}
+            {contenido.trim() && (
+              <button onClick={() => { guardarNota(); setPdfMsg("✅ Nota guardada en historial."); }}
+                className="px-5 py-2 rounded-lg text-white text-sm font-semibold shadow hover:shadow-md transition"
+                style={{ background: PIBOX_PURPLE }}>
+                💾 Guardar en historial
+              </button>
+            )}
             {pdfCargado && (
               <button onClick={limpiarDocumento}
                 className="px-4 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
-                🗑️ Eliminar documento y subir otro
-              </button>
-            )}
-            {!pdfCargado && (
-              <button onClick={guardarNota} disabled={!contenido.trim()}
-                className="px-4 py-2 rounded-lg text-xs font-semibold border-2 border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 transition disabled:opacity-40">
-                Guardar nota manual
+                🗑️ Eliminar y subir otro
               </button>
             )}
             {pdfMsg && <span className={`text-xs font-medium ${pdfMsg.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>{pdfMsg}</span>}
@@ -312,29 +309,36 @@ export default function NotasTareas() {
                     <th className="py-2 px-2 w-8">#</th>
                     <th className="py-2 px-2">Tarea</th>
                     <th className="py-2 px-2">Responsable</th>
-                    <th className="py-2 px-2">Fecha</th>
+                    <th className="py-2 px-2">Días</th>
                     <th className="py-2 px-2 text-center">Estado</th>
                     <th className="py-2 px-2 text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tareasFiltradas.map((t, i) => (
+                  {tareasFiltradas.map((t, i) => {
+                    const dias = t.creadoEn ? Math.floor((Date.now() - new Date(t.creadoEn).getTime()) / 86400000) : 0;
+                    return (
                     <tr key={t.id} className={`border-b border-gray-50 ${t.completada ? "opacity-60" : ""}`}>
                       <td className="py-2 px-2 text-gray-400">{i + 1}</td>
-                      <td className={`py-2 px-2 ${t.completada ? "line-through text-gray-400" : "text-gray-700"}`}>{t.tarea}</td>
-                      <td className="py-2 px-2 text-gray-500">{t.responsable || "—"}</td>
-                      <td className="py-2 px-2 text-gray-500">{t.fechaLimite}</td>
+                      <td className={`py-2 px-2 text-xs ${t.completada ? "line-through text-gray-400" : "text-gray-700"}`}>{t.tarea}</td>
+                      <td className="py-2 px-2 text-xs text-gray-500">{t.responsable || "—"}</td>
+                      <td className="py-2 px-2 text-xs">
+                        <span className={`font-bold ${dias > 7 ? "text-red-500" : dias > 3 ? "text-orange-500" : "text-green-600"}`}>
+                          {dias}d
+                        </span>
+                      </td>
                       <td className="py-2 px-2 text-center">
                         <input type="checkbox" checked={t.completada} onChange={() => toggleTarea(t.id)}
                           className="w-4 h-4 rounded cursor-pointer" style={{ accentColor: PIBOX_PURPLE }} />
                       </td>
                       <td className="py-2 px-2 text-center">
                         <button onClick={() => eliminarTarea(t.id)} className="text-red-400 hover:text-red-600 text-xs font-semibold transition">
-                          Eliminar
+                          ✕
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -353,24 +357,27 @@ export default function NotasTareas() {
           ) : (
             notas.map(n => {
               const expanded = expandedId === n.id;
+              const diasNota = Math.floor((Date.now() - new Date(n.creadoEn || n.fecha).getTime()) / 86400000);
               return (
                 <div key={n.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                  <button onClick={() => setExpandedId(expanded ? null : n.id)}
-                    className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-purple-50/50 transition">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-800 text-sm truncate">{n.titulo}</p>
-                      <p className="text-xs text-gray-400">{n.fecha}</p>
-                      {!expanded && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{n.contenido.slice(0, 150)}{n.contenido.length > 150 ? "..." : ""}</p>}
-                    </div>
-                    <span className="text-gray-400 text-xs ml-2 shrink-0">{expanded ? "▲" : "▼"}</span>
-                  </button>
+                  <div className="flex items-center">
+                    <button onClick={() => setExpandedId(expanded ? null : n.id)}
+                      className="flex-1 text-left px-4 py-3 flex items-center justify-between hover:bg-purple-50/50 transition">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 text-sm truncate">{n.titulo}</p>
+                        <p className="text-xs text-gray-400">{n.fecha} · hace {diasNota} días</p>
+                        {!expanded && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{n.contenido.slice(0, 150)}{n.contenido.length > 150 ? "..." : ""}</p>}
+                      </div>
+                      <span className="text-gray-400 text-xs ml-2 shrink-0">{expanded ? "▲" : "▼"}</span>
+                    </button>
+                    <button onClick={() => { if (confirm("¿Eliminar esta nota?")) eliminarNota(n.id); }}
+                      className="px-3 py-2 text-red-400 hover:text-red-600 text-xs font-semibold transition shrink-0">
+                      🗑️
+                    </button>
+                  </div>
                   {expanded && (
-                    <div className="px-4 pb-4 space-y-2">
+                    <div className="px-4 pb-4">
                       <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 rounded-lg p-3 max-h-96 overflow-y-auto">{n.contenido}</pre>
-                      <button onClick={() => eliminarNota(n.id)}
-                        className="text-red-400 hover:text-red-600 text-xs font-semibold transition">
-                        Eliminar nota
-                      </button>
                     </div>
                   )}
                 </div>
