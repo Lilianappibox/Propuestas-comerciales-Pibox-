@@ -3,6 +3,7 @@ import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, s
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
+const RankingRiesgo       = lazy(() => import("./riesgo/RankingRiesgo"));
 const InformeEmpresa      = lazy(() => import("./riesgo/InformeEmpresa"));
 const AnalisisCiudad      = lazy(() => import("./riesgo/AnalisisCiudad"));
 const AnalisisPilotos     = lazy(() => import("./riesgo/AnalisisPilotos"));
@@ -10,11 +11,12 @@ const AnalisisPilotos     = lazy(() => import("./riesgo/AnalisisPilotos"));
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 
 const TABS = [
-  { id:"config",   icon:"⚙️",  label:"Configuración"      },
   { id:"metricas", icon:"📊",  label:"Métricas"           },
+  { id:"ranking",  icon:"🗂️",  label:"Ranking"            },
   { id:"ciudad",   icon:"🏙️",  label:"Análisis por Ciudad" },
   { id:"informe",  icon:"📄",  label:"Informe por Empresa" },
   { id:"pilotos",  icon:"👤",  label:"Análisis Pilotos"    },
+  { id:"config",   icon:"⚙️",  label:"Configuración"      },
 ];
 
 export default function RiesgoComercial({ currentUser }) {
@@ -92,11 +94,12 @@ export default function RiesgoComercial({ currentUser }) {
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <Suspense fallback={<div className="text-center py-10 text-purple-400 text-sm">Cargando...</div>}>
-          {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
           {tab === "metricas" && <MetricasRiesgo />}
+          {tab === "ranking"  && <RankingRiesgo />}
           {tab === "ciudad"   && <AnalisisCiudad />}
           {tab === "informe"  && <InformeEmpresa />}
           {tab === "pilotos"  && <AnalisisPilotos />}
+          {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
         </Suspense>
       </div>
     </div>
