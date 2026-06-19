@@ -92,6 +92,13 @@ export function procesarDatos(rows) {
     const relaunched = toNum(row["num_total_relaunched_count"]);
     const distance = toNum(row["distance"]); // en metros
     const returnedPkgs = toNum(row["returned_packages"]);
+    // Tiempos (HH:MM:SS → minutos)
+    const parseTime = (v) => { const m = String(v||"").match(/^(\d+):(\d+):(\d+)/); return m ? Number(m[1])*60+Number(m[2])+Number(m[3])/60 : 0; };
+    const tAsignacion = parseTime(row["assignation_time"]);
+    const tLlegada = parseTime(row["arrival_duration"]);
+    const tRecogida = parseTime(row["picked-up_time"]);
+    const tRuta = parseTime(row["route_time"]);
+    const tTotal = parseTime(row["total_service_time"]);
     const driverId   = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
     const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
     const usuario  = toStr(row["passenger_name"]  || "Sin usuario");
@@ -136,10 +143,17 @@ export function procesarDatos(rows) {
     e.paquetes     += pkgs;
     e.relanzamientos += relaunched;
     e.devueltos    += returnedPkgs;
-    // Distancia en km
+    // Distancia en km con tiempos
     const distKm = distance > 0 ? distance / 1000 : 0;
     const dRng = distKm < 3 ? "0-3 km" : distKm < 5 ? "3-5 km" : distKm < 10 ? "5-10 km" : "Más de 10 km";
-    if (distKm > 0) { e.distancias[dRng] = (e.distancias[dRng] || 0) + 1; }
+    if (distKm > 0) {
+      if (!e.distancias[dRng]) e.distancias[dRng] = { total: 0, completados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0 };
+      const dr = e.distancias[dRng];
+      dr.total++;
+      if (esCompletado) dr.completados++;
+      dr.relanzamientos += relaunched;
+      if (tTotal > 0) { dr.tAsignacion += tAsignacion; dr.tLlegada += tLlegada; dr.tRecogida += tRecogida; dr.tRuta += tRuta; dr.tTotal += tTotal; dr.nTiempos++; }
+    }
     if (exec && exec !== "Sin asignar") e.ejecutivo = exec;
 
     // por usuario (passenger_name)

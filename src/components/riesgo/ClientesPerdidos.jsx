@@ -60,7 +60,10 @@ export default function ClientesPerdidos() {
     // Totals from prev month data
     let totalServPrev = 0, totalGmvPrev = 0, totalRelPrev = 0, totalDevPrev = 0;
     const distMap = { "0-3 km": 0, "3-5 km": 0, "5-10 km": 0, "Mas de 10 km": 0 };
+    const distTimes = {};
     let highCancelCount = 0, highExpiredCount = 0;
+
+    const fmtTime = (mins) => { if (!mins) return "—"; const h = Math.floor(mins/60); const m = Math.round(mins%60); return h > 0 ? `${h}h ${String(m).padStart(2,"0")}m` : `${m}m`; };
 
     for (const c of lost) {
       totalServPrev += c.total || 0;
@@ -69,13 +72,22 @@ export default function ClientesPerdidos() {
       totalDevPrev += c.devueltos || 0;
 
       if (c.distancias) {
-        for (const [rng, cnt] of Object.entries(c.distancias)) {
+        for (const [rng, val] of Object.entries(c.distancias)) {
           const k = rng === "Mas de 10 km" || rng === "Más de 10 km" ? "Mas de 10 km" : rng;
-          if (k in distMap) distMap[k] += cnt;
+          if (!(k in distMap)) continue;
+          if (typeof val === "number") { distMap[k] += val; continue; }
+          distMap[k] += val.total || 0;
+          if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
+          distTimes[k].completados += val.completados || 0;
+          distTimes[k].relanzamientos += val.relanzamientos || 0;
+          distTimes[k].tAsig += val.tAsignacion || 0;
+          distTimes[k].tLleg += val.tLlegada || 0;
+          distTimes[k].tRuta += val.tRuta || 0;
+          distTimes[k].tTotal += val.tTotal || 0;
+          distTimes[k].n += val.nTiempos || 0;
         }
       }
 
-      // Analysis: high cancellation (>20%) or high expiration (>15%)
       const cancRate = c.total > 0 ? c.cancelados / c.total : 0;
       const expRate = c.total > 0 ? c.expirados / c.total : 0;
       if (cancRate > 0.20) highCancelCount++;
@@ -86,9 +98,11 @@ export default function ClientesPerdidos() {
     const totalGmvAllPrev = dataPrev.empresas.reduce((s, e) => s + (e.gmv || 0), 0);
 
     const totalBookings = Object.values(distMap).reduce((s, v) => s + v, 0);
-    const distArr = Object.entries(distMap).map(([rng, cnt]) => ({
-      rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0,
-    }));
+    const distArr = Object.entries(distMap).map(([rng, cnt]) => {
+      const t = distTimes[rng] || {};
+      const n = t.n || 1;
+      return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
+    });
 
     const t5 = [...lost].sort((a, b) => (b.gmv || 0) - (a.gmv || 0)).slice(0, 5);
 
@@ -209,31 +223,39 @@ export default function ClientesPerdidos() {
       {/* Distance distribution */}
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
-          <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Distribucion por rango de distancia (mes anterior)</h4>
+          <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Cumplimiento por rango de distancia (mes anterior)</h4>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {["Rango", "Total bookings", "% del total"].map(h => (
-                  <th key={h} style={{ background: PIBOX_PURPLE, color: "#fff", padding: "8px 12px", textAlign: "left", fontWeight: 600, fontSize: 11 }}>{h}</th>
+                {["Rango", "Bookings", "Relanzamientos", "Efectividad", "T. Asignación", "T. Llegada", "T. Ruta", "T. Total", "% Bookings"].map(h => (
+                  <th key={h} style={{ background: PIBOX_PURPLE, color: "#fff", padding: "7px 8px", textAlign: "center", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {distAgg.map((d, i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#faf5ff" }}>
-                  <td style={{ padding: "6px 12px", fontWeight: 600, color: "#374151" }}>{d.rango}</td>
-                  <td style={{ padding: "6px 12px", color: "#374151" }}>{d.bookings.toLocaleString()}</td>
-                  <td style={{ padding: "6px 12px", color: PIBOX_PURPLE }}>{fmtPct(d.pct)}</td>
+                  <td style={{ padding: "5px 8px", fontWeight: 600, color: "#374151" }}>{d.rango}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center" }}>{d.bookings.toLocaleString()}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center" }}>{d.relanzamientos.toLocaleString()}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 600, color: d.efectividad >= 0.9 ? SEM_VERDE : d.efectividad >= 0.75 ? SEM_AMARILLO : SEM_ROJO }}>{fmtPct(d.efectividad)}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", color: "#6b7280" }}>{d.avgAsig}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", color: "#6b7280" }}>{d.avgLleg}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", color: "#6b7280" }}>{d.avgRuta}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 600, color: "#374151" }}>{d.avgTotal}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", color: PIBOX_PURPLE }}>{fmtPct(d.pct)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr style={{ background: "#ede9fe", fontWeight: 700, borderTop: "2px solid #c4b5fd" }}>
-                <td style={{ padding: "8px 12px", color: "#1f2937" }}>Total</td>
-                <td style={{ padding: "8px 12px", color: "#1f2937" }}>{distAgg.reduce((s, d) => s + d.bookings, 0).toLocaleString()}</td>
-                <td style={{ padding: "8px 12px", color: "#1f2937" }}>100.0%</td>
+                <td style={{ padding: "7px 8px" }}>Total</td>
+                <td style={{ padding: "7px 8px", textAlign: "center" }}>{distAgg.reduce((s, d) => s + d.bookings, 0).toLocaleString()}</td>
+                <td style={{ padding: "7px 8px", textAlign: "center" }}>{distAgg.reduce((s, d) => s + d.relanzamientos, 0).toLocaleString()}</td>
+                <td style={{ padding: "7px 8px" }} colSpan={5}></td>
+                <td style={{ padding: "7px 8px", textAlign: "center" }}>100.0%</td>
               </tr>
             </tfoot>
           </table>
