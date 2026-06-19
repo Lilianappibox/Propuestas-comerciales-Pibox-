@@ -615,20 +615,29 @@ export default function MetricasRiesgo() {
                     </ResponsiveContainer>
                   </div>
 
-                  {/* % participación sobre servicios */}
+                  {/* % participación - tortas */}
                   <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                    <h3 className="font-bold text-gray-700 text-sm mb-3">📊 % sobre servicios totales</h3>
+                    <h3 className="font-bold text-gray-700 text-sm mb-3">📊 Participación sobre servicios — {mesActLabel}</h3>
                     <ResponsiveContainer width="100%" height={200}>
-                      <BarChart data={pctData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                        <YAxis tick={{ fontSize: 10 }} unit="%" />
-                        <Tooltip formatter={v => `${v}%`} />
-                        <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-                        <Bar dataKey={mesActLabel} fill={SEM_ROJO} radius={[4,4,0,0]} />
-                        <Bar dataKey={mesPrevLabel} fill="#FCA5A5" radius={[4,4,0,0]} />
-                      </BarChart>
+                      <PieChart>
+                        <Pie data={[
+                          { name: "Completados", value: totalServAct - totalDevAct - totalRelAct > 0 ? totalServAct - totalDevAct - totalRelAct : totalServAct },
+                          { name: "Devoluciones", value: totalDevAct },
+                          { name: "Relanzamientos", value: totalRelAct },
+                        ].filter(d => d.value > 0)} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={75}
+                          label={({name, percent}) => `${name.split(" ")[0]} ${(percent*100).toFixed(1)}%`} labelLine={false}>
+                          <Cell fill={SEM_VERDE} />
+                          <Cell fill={SEM_ROJO} />
+                          <Cell fill={SEM_AMARILLO} />
+                        </Pie>
+                        <Tooltip formatter={v => v.toLocaleString()} />
+                      </PieChart>
                     </ResponsiveContainer>
+                    <div className="flex justify-center gap-4 mt-1 text-[10px] text-gray-500">
+                      <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{background:SEM_VERDE}}/>Completados</span>
+                      <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{background:SEM_ROJO}}/>Devoluciones {totalServAct>0?((totalDevAct/totalServAct)*100).toFixed(1):"0"}%</span>
+                      <span><span className="inline-block w-2.5 h-2.5 rounded-full mr-1" style={{background:SEM_AMARILLO}}/>Relanzamientos {totalServAct>0?((totalRelAct/totalServAct)*100).toFixed(1):"0"}%</span>
+                    </div>
                   </div>
 
                   {/* Relanzamientos por ciudad */}

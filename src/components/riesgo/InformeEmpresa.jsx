@@ -673,18 +673,25 @@ export default function InformeEmpresa() {
                             </ResponsiveContainer>
                           </div>
                           <div>
-                            <h4 className="font-bold text-gray-700 text-sm mb-3">📊 % sobre servicios totales</h4>
+                            <h4 className="font-bold text-gray-700 text-sm mb-3">📊 Participación sobre servicios</h4>
                             <ResponsiveContainer width="100%" height={180}>
-                              <BarChart data={pctData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                                <YAxis tick={{ fontSize: 10 }} unit="%" />
-                                <Tooltip formatter={v => `${v}%`} />
-                                <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-                                <Bar dataKey={mesActLabel} fill={SEM_ROJO} radius={[4,4,0,0]} />
-                                <Bar dataKey={mesPrevLabel2} fill="#FCA5A5" radius={[4,4,0,0]} />
-                              </BarChart>
+                              <PieChart>
+                                <Pie data={[
+                                  { name: "Completados", value: Math.max(totalServAct - totalDevAct - totalRelAct, 0) || totalServAct },
+                                  { name: "Devoluciones", value: totalDevAct },
+                                  { name: "Relanzamientos", value: totalRelAct },
+                                ].filter(d => d.value > 0)} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={35} outerRadius={65}
+                                  label={({name, percent}) => `${name.slice(0,6)} ${(percent*100).toFixed(1)}%`} labelLine={false}>
+                                  <Cell fill={SEM_VERDE} /><Cell fill={SEM_ROJO} /><Cell fill={SEM_AMARILLO} />
+                                </Pie>
+                                <Tooltip formatter={v => v.toLocaleString()} />
+                              </PieChart>
                             </ResponsiveContainer>
+                            <div className="flex justify-center gap-3 mt-1 text-[10px] text-gray-500">
+                              <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{background:SEM_VERDE}}/>Servicios</span>
+                              <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{background:SEM_ROJO}}/>Dev {totalServAct>0?((totalDevAct/totalServAct)*100).toFixed(1):"0"}%</span>
+                              <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{background:SEM_AMARILLO}}/>Rel {totalServAct>0?((totalRelAct/totalServAct)*100).toFixed(1):"0"}%</span>
+                            </div>
                           </div>
                         </div>
                       </div>
