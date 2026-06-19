@@ -243,10 +243,24 @@ export default function ClientesNuevos() {
       </div>
 
       {/* Relaunch distribution */}
+      {(() => {
+        const relaunchEmps = newClients.filter(c => (c.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0));
+        return (
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
-          <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Distribucion de relanzamientos</h4>
-          <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>Nota: el conteo de relanzamientos es agregado por empresa; la distribucion individual por servicio no esta disponible en los datos almacenados.</p>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Distribucion de relanzamientos</h4>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>Nota: el conteo de relanzamientos es agregado por empresa; la distribucion individual por servicio no esta disponible en los datos almacenados.</p>
+          </div>
+          {relaunchEmps.length > 0 && (
+            <button onClick={() => {
+              const csv = ["Empresa,Relanzamientos totales,Servicios,Promedio por servicio", ...relaunchEmps.map(c => `"${c.empresa}",${c.relanzamientos||0},${c.total},${c.total > 0 ? ((c.relanzamientos||0)/c.total).toFixed(2) : "0"}`)].join("\n");
+              const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+              const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "relanzamientos.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            }} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 10, fontWeight: 600, color: "#7C22D4", background: "#f5f3ff", border: "1px solid #ddd6fe", cursor: "pointer" }}>
+              📥 Descargar ({relaunchEmps.length})
+            </button>
+          )}
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
@@ -258,7 +272,9 @@ export default function ClientesNuevos() {
               </tr>
             </thead>
             <tbody>
-              {newClients.filter(c => (c.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0)).map((c, i) => (
+              {relaunchEmps.length === 0 ? (
+                <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#9ca3af" }}>Sin relanzamientos registrados.</td></tr>
+              ) : relaunchEmps.slice(0, 15).map((c, i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#faf5ff" }}>
                   <td style={{ padding: "6px 12px", fontWeight: 600, color: "#374151" }}>{c.empresa}</td>
                   <td style={{ padding: "6px 12px", color: "#374151" }}>{(c.relanzamientos || 0).toLocaleString()}</td>
@@ -266,13 +282,15 @@ export default function ClientesNuevos() {
                   <td style={{ padding: "6px 12px", color: PIBOX_PURPLE }}>{c.total > 0 ? ((c.relanzamientos || 0) / c.total).toFixed(2) : "0"}</td>
                 </tr>
               ))}
-              {newClients.filter(c => (c.relanzamientos || 0) > 0).length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#9ca3af" }}>Sin relanzamientos registrados.</td></tr>
-              )}
             </tbody>
           </table>
         </div>
+        {relaunchEmps.length > 15 && (
+          <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", padding: "8px 0" }}>Mostrando 15 de {relaunchEmps.length}. Descarga CSV para ver todos.</p>
+        )}
       </div>
+        );
+      })()}
 
       {/* Devoluciones por empresa */}
       {(() => {
@@ -285,8 +303,15 @@ export default function ClientesNuevos() {
         const totTasa = totPaq > 0 ? totDev/totPaq : 0;
         return (
           <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Devoluciones por empresa</h4>
+              <button onClick={() => {
+                const csv = ["Empresa,Paquetes,Devueltos,Tasa Devolucion", ...devolData.map(d => `"${d.empresa}",${d.paquetes},${d.devueltos},${(d.tasa*100).toFixed(1)}%`)].join("\n");
+                const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "devoluciones.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              }} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 10, fontWeight: 600, color: "#7C22D4", background: "#f5f3ff", border: "1px solid #ddd6fe", cursor: "pointer" }}>
+                📥 Descargar ({devolData.length})
+              </button>
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
@@ -298,7 +323,7 @@ export default function ClientesNuevos() {
                   </tr>
                 </thead>
                 <tbody>
-                  {devolData.map((d,i) => (
+                  {devolData.slice(0, 15).map((d,i) => (
                     <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#faf5ff" }}>
                       <td style={{ padding: "6px 12px", fontWeight: 600, color: "#374151" }}>{d.empresa}</td>
                       <td style={{ padding: "6px 12px", color: "#374151" }}>{d.paquetes.toLocaleString()}</td>
@@ -317,6 +342,9 @@ export default function ClientesNuevos() {
                 </tfoot>
               </table>
             </div>
+            {devolData.length > 15 && (
+              <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", padding: "8px 0" }}>Mostrando 15 de {devolData.length}. Descarga CSV para ver todos.</p>
+            )}
           </div>
         );
       })()}

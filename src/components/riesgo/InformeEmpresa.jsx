@@ -578,7 +578,18 @@ export default function InformeEmpresa() {
                   </div>
 
                   <div className="px-6 py-5 border-t border-gray-100">
-                    <h4 className="font-bold text-gray-700 text-sm mb-1">🔄 Distribucion de relanzamientos</h4>
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="font-bold text-gray-700 text-sm">🔄 Distribucion de relanzamientos</h4>
+                      {empWithRelaunch.length > 0 && (
+                        <button onClick={() => {
+                          const csv = ["Empresa,Relanzamientos totales,Servicios,Promedio por servicio", ...empWithRelaunch.map(c => `"${c.empresa}",${c.relanzamientos||0},${c.total},${c.total > 0 ? ((c.relanzamientos||0)/c.total).toFixed(2) : "0"}`)].join("\n");
+                          const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+                          const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "relanzamientos.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                        }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200">
+                          📥 Descargar ({empWithRelaunch.length})
+                        </button>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 mb-3">Nota: el conteo de relanzamientos es agregado por empresa; la distribucion individual por servicio no esta disponible en los datos almacenados.</p>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
@@ -592,7 +603,7 @@ export default function InformeEmpresa() {
                         <tbody>
                           {empWithRelaunch.length === 0 ? (
                             <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin relanzamientos registrados.</td></tr>
-                          ) : empWithRelaunch.map((c,i)=>(
+                          ) : empWithRelaunch.slice(0, 15).map((c,i)=>(
                             <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
                               <td className="px-3 py-2 font-semibold text-gray-700">{c.empresa}</td>
                               <td className="px-3 py-2">{(c.relanzamientos||0).toLocaleString()}</td>
@@ -603,6 +614,9 @@ export default function InformeEmpresa() {
                         </tbody>
                       </table>
                     </div>
+                    {empWithRelaunch.length > 15 && (
+                      <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {empWithRelaunch.length}. Descarga CSV para ver todos.</p>
+                    )}
                   </div>
 
                   {/* Devoluciones por empresa */}
@@ -616,7 +630,16 @@ export default function InformeEmpresa() {
                     const totTasa = totPaq > 0 ? totDev/totPaq : 0;
                     return (
                       <div className="px-6 py-5 border-t border-gray-100">
-                        <h4 className="font-bold text-gray-700 text-sm mb-3">📦 Devoluciones por empresa</h4>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-bold text-gray-700 text-sm">📦 Devoluciones por empresa</h4>
+                          <button onClick={() => {
+                            const csv = ["Empresa,Paquetes,Devueltos,Tasa Devolucion", ...devolData.map(d => `"${d.empresa}",${d.paquetes},${d.devueltos},${(d.tasa*100).toFixed(1)}%`)].join("\n");
+                            const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+                            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "devoluciones.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                          }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200">
+                            📥 Descargar ({devolData.length})
+                          </button>
+                        </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
                             <thead>
@@ -627,7 +650,7 @@ export default function InformeEmpresa() {
                               </tr>
                             </thead>
                             <tbody>
-                              {devolData.map((d,i)=>(
+                              {devolData.slice(0, 15).map((d,i)=>(
                                 <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
                                   <td className="px-3 py-2 font-semibold text-gray-700">{d.empresa}</td>
                                   <td className="px-3 py-2">{d.paquetes.toLocaleString()}</td>
@@ -646,6 +669,9 @@ export default function InformeEmpresa() {
                             </tfoot>
                           </table>
                         </div>
+                        {devolData.length > 15 && (
+                          <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {devolData.length}. Descarga CSV para ver todos.</p>
+                        )}
                       </div>
                     );
                   })()}

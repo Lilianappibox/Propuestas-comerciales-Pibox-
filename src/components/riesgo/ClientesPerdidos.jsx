@@ -273,8 +273,15 @@ export default function ClientesPerdidos() {
         const totTasa = totPaq > 0 ? totDev/totPaq : 0;
         return (
           <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Devoluciones por empresa (mes anterior)</h4>
+              <button onClick={() => {
+                const csv = ["Empresa,Paquetes,Devueltos,Tasa Devolucion", ...devolData.map(d => `"${d.empresa}",${d.paquetes},${d.devueltos},${(d.tasa*100).toFixed(1)}%`)].join("\n");
+                const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "devoluciones.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              }} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 10, fontWeight: 600, color: "#7C22D4", background: "#f5f3ff", border: "1px solid #ddd6fe", cursor: "pointer" }}>
+                📥 Descargar ({devolData.length})
+              </button>
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
@@ -286,7 +293,7 @@ export default function ClientesPerdidos() {
                   </tr>
                 </thead>
                 <tbody>
-                  {devolData.map((d,i) => (
+                  {devolData.slice(0, 15).map((d,i) => (
                     <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#faf5ff" }}>
                       <td style={{ padding: "6px 12px", fontWeight: 600, color: "#374151" }}>{d.empresa}</td>
                       <td style={{ padding: "6px 12px", color: "#374151" }}>{d.paquetes.toLocaleString()}</td>
@@ -305,6 +312,9 @@ export default function ClientesPerdidos() {
                 </tfoot>
               </table>
             </div>
+            {devolData.length > 15 && (
+              <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", padding: "8px 0" }}>Mostrando 15 de {devolData.length}. Descarga CSV para ver todos.</p>
+            )}
           </div>
         );
       })()}
