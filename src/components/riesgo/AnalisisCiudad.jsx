@@ -406,26 +406,32 @@ export default function AnalisisCiudad() {
                   📋 Por estado del booking
                   {cityPrev && <span className="ml-2 text-xs font-normal text-gray-400">🟣 vs 🩷 mes anterior</span>}
                 </h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={cityData.estados.map(e=>({
-                      ...e,
-                      totalPrev: cityPrev?.estados?.find(p=>p.estado===e.estado)?.total || 0,
-                    }))}
-                    margin={{top:0,right:8,left:0,bottom:40}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
-                    <XAxis dataKey="estado" tick={{fontSize:9}} angle={-30} textAnchor="end" height={50}/>
-                    <YAxis tick={{fontSize:9}}/>
-                    <Tooltip content={<TT/>}/>
-                    <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
-                    <Bar dataKey="total" name={dataMes?.label||"Actual"} radius={[3,3,0,0]}>
-                      {cityData.estados.map((e,i)=>(
-                        <Cell key={i} fill={STATUS_COLORS[e.estado]||COLORS[i%COLORS.length]}/>
-                      ))}
-                    </Bar>
-                    {cityPrev && <Bar dataKey="totalPrev" name={mesPrevMeta?.label} fill={PIBOX_PINK} radius={[3,3,0,0]} fillOpacity={0.55}/>}
-                  </BarChart>
-                </ResponsiveContainer>
+                {(() => {
+                  const prevEstados = cityPrev?.estados || [];
+                  const allNames = new Set([...cityData.estados.map(e=>e.estado), ...prevEstados.map(e=>e.estado)]);
+                  const merged = [...allNames].map(name => ({
+                    estado: name,
+                    total: cityData.estados.find(e=>e.estado===name)?.total || 0,
+                    totalPrev: prevEstados.find(e=>e.estado===name)?.total || 0,
+                  })).sort((a,b) => b.total - a.total);
+                  return (
+                    <ResponsiveContainer width="100%" height={Math.max(220, merged.length * 45)}>
+                      <BarChart data={merged} layout="vertical" margin={{left:5,right:10}}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                        <XAxis type="number" tick={{fontSize:9}} tickFormatter={v=>v.toLocaleString()}/>
+                        <YAxis type="category" dataKey="estado" tick={{fontSize:9}} width={120}/>
+                        <Tooltip formatter={v=>[v.toLocaleString()+" servicios"]}/>
+                        <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                        <Bar dataKey="total" name={dataMes?.label||"Actual"} radius={[0,4,4,0]}>
+                          {merged.map((e,i)=>(
+                            <Cell key={i} fill={STATUS_COLORS[e.estado]||COLORS[i%COLORS.length]}/>
+                          ))}
+                        </Bar>
+                        {cityPrev && <Bar dataKey="totalPrev" name={mesPrevMeta?.label} fill={PIBOX_PINK} fillOpacity={0.45} radius={[0,4,4,0]}/>}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  );
+                })()}
               </div>
             )}
           </div>
