@@ -6,6 +6,17 @@ const PIBOX_PURPLE = "#7C22D4";
 const SK_NOTAS = "pibox_tada_notas";
 const SK_TAREAS = "pibox_tada_tareas";
 
+const CLIENT_EMAILS = [
+  "jgonzalez@bogotabeercompany.com",
+  "echoconta@tiendasya.com.co",
+  "jonathan.garibello@ab-inbev.com",
+  "alejandro.choconta-ext@ab-inbev.com",
+  "camilo.mosquera-ext@ab-inbev.com",
+  "jesus.gonzalezr@ab-inbev.com",
+  "johanna.alvarez-ext@ab-inbev.com",
+  "xiomara.sanchez-ext@ab-inbev.com",
+];
+
 function loadNotas() { try { return JSON.parse(localStorage.getItem(SK_NOTAS) || "[]"); } catch { return []; } }
 function saveNotas(n) { localStorage.setItem(SK_NOTAS, JSON.stringify(n)); }
 function loadTareas() { try { return JSON.parse(localStorage.getItem(SK_TAREAS) || "[]"); } catch { return []; } }
@@ -190,6 +201,40 @@ export default function NotasTareas() {
 
   const tareasFiltradas = filtro === "todas" ? tareas : tareas.filter(t => filtro === "completadas" ? t.completada : !t.completada);
 
+  function enviarReporte() {
+    const pendientes = tareas.filter(t => !t.completada);
+    const completadas = tareas.filter(t => t.completada);
+    const fechaHoy = new Date().toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric" });
+
+    let cuerpo = `Reporte de tareas - Tráfico TaDa / Pibox\nFecha: ${fechaHoy}\n`;
+
+    if (pendientes.length > 0) {
+      cuerpo += `\nTAREAS PENDIENTES (${pendientes.length}):\n`;
+      pendientes.forEach((t, i) => {
+        const dias = t.creadoEn ? Math.floor((Date.now() - new Date(t.creadoEn).getTime()) / 86400000) : 0;
+        cuerpo += `${i + 1}. ${t.tarea}`;
+        if (t.responsable) cuerpo += ` — Responsable: ${t.responsable}`;
+        cuerpo += ` (${dias} día${dias !== 1 ? "s" : ""} abierta)\n`;
+      });
+    } else {
+      cuerpo += `\nNo hay tareas pendientes.\n`;
+    }
+
+    if (completadas.length > 0) {
+      cuerpo += `\nTAREAS COMPLETADAS (${completadas.length}):\n`;
+      completadas.forEach((t, i) => {
+        cuerpo += `${i + 1}. ✓ ${t.tarea}`;
+        if (t.responsable) cuerpo += ` — ${t.responsable}`;
+        cuerpo += `\n`;
+      });
+    }
+
+    const to = CLIENT_EMAILS.join(",");
+    const subject = encodeURIComponent(`Reporte de tareas - Tráfico TaDa / Pibox - ${fechaHoy}`);
+    const body = encodeURIComponent(cuerpo);
+    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  }
+
   /* ── Render ─────────────────────────────────────────────────────────── */
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
@@ -247,10 +292,17 @@ export default function NotasTareas() {
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm flex items-center justify-between" style={{ background: BRAND_GRADIENT }}>
           <span>✅ Tablero de Tareas</span>
-          <button onClick={() => setShowNewTask(v => !v)}
-            className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition">
-            + Nueva tarea
-          </button>
+          <div className="flex gap-2">
+            <button onClick={enviarReporte} disabled={tareas.length === 0}
+              className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition disabled:opacity-40"
+              title="Enviar reporte por email a los clientes de TaDa">
+              📧 Enviar reporte
+            </button>
+            <button onClick={() => setShowNewTask(v => !v)}
+              className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition">
+              + Nueva tarea
+            </button>
+          </div>
         </div>
         <div className="p-5 space-y-4">
           {/* New task form */}

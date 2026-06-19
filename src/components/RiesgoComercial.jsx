@@ -71,15 +71,13 @@ export default function RiesgoComercial({ currentUser }) {
               <p className="text-xs text-gray-500">Monitoreo automático de clientes · Detección de fuga y deterioro</p>
             </div>
             {currentUser?.rol === "Administrativo" && (
-              <button onClick={() => {
+              <button onClick={async () => {
                 const idx = loadIndex();
                 const allData = { index: idx, meses: {} };
-                for (const key of Object.keys(idx)) {
-                  try {
-                    const d = localStorage.getItem(SK_MES(key));
-                    if (d) allData.meses[key] = JSON.parse(d);
-                  } catch {}
-                }
+                await Promise.all(Object.keys(idx).map(async (key) => {
+                  const d = await loadMesDataAsync(key);
+                  if (d) allData.meses[key] = d;
+                }));
                 const blob = new Blob([JSON.stringify(allData)], { type: "application/json" });
                 const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
                 a.download = "riesgo-export.json"; a.click();
