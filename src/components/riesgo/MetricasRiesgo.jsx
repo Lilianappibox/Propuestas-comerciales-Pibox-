@@ -466,6 +466,112 @@ export default function MetricasRiesgo() {
         </div>
       )}
 
+      {/* Cumplimiento por rango de distancia (agregado global) */}
+      {(() => {
+        const distMap = { "0-3 km": 0, "3-5 km": 0, "5-10 km": 0, "Mas de 10 km": 0 };
+        const distTimes = {};
+        let totalRelaunch = 0;
+        for (const e of empresasConScore) {
+          totalRelaunch += e.relanzamientos || 0;
+          if (!e.distancias) continue;
+          for (const [rng, val] of Object.entries(e.distancias)) {
+            const k = rng === "Más de 10 km" || rng === "Mas de 10 km" ? "Mas de 10 km" : rng;
+            if (!(k in distMap)) continue;
+            if (typeof val === "number") { distMap[k] += val; continue; }
+            distMap[k] += val.total || 0;
+            if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
+            distTimes[k].completados += val.completados || 0;
+            distTimes[k].relanzamientos += val.relanzamientos || 0;
+            distTimes[k].tAsig += val.tAsignacion || 0;
+            distTimes[k].tLleg += val.tLlegada || 0;
+            distTimes[k].tRuta += val.tRuta || 0;
+            distTimes[k].tTotal += val.tTotal || 0;
+            distTimes[k].n += val.nTiempos || 0;
+          }
+        }
+        const totalBookings = Object.values(distMap).reduce((s, v) => s + v, 0);
+        const fmtTime = (mins) => { if (!mins) return "\u2014"; const h = Math.floor(mins/60); const m = Math.round(mins%60); return h > 0 ? `${h}h ${String(m).padStart(2,"0")}m` : `${m}m`; };
+        const distAgg = Object.entries(distMap).map(([rng, cnt]) => {
+          const t = distTimes[rng] || {};
+          const n = t.n || 1;
+          return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
+        });
+        const hasData = totalBookings > 0;
+        const empWithRelaunch = empresasConScore.filter(e => (e.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0));
+
+        return hasData ? (
+          <>
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="font-bold text-gray-700 text-sm mb-4">📏 Cumplimiento por rango de distancia</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
+                  <thead>
+                    <tr style={{background:PIBOX_PURPLE}} className="text-white">
+                      {["Rango","Bookings","Relanzamientos","Efectividad","T. Asignacion","T. Llegada","T. Ruta","T. Total","% Bookings"].map(h=>(
+                        <th key={h} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {distAgg.map((d,i)=>(
+                      <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
+                        <td className="px-3 py-2 font-semibold text-gray-700">{d.rango}</td>
+                        <td className="px-3 py-2 text-center">{d.bookings.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-center">{d.relanzamientos.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-center font-semibold" style={{color: d.efectividad >= 0.9 ? SEM_VERDE : d.efectividad >= 0.75 ? SEM_AMARILLO : SEM_ROJO}}>{fmtPct(d.efectividad)}</td>
+                        <td className="px-3 py-2 text-center text-gray-500">{d.avgAsig}</td>
+                        <td className="px-3 py-2 text-center text-gray-500">{d.avgLleg}</td>
+                        <td className="px-3 py-2 text-center text-gray-500">{d.avgRuta}</td>
+                        <td className="px-3 py-2 text-center font-semibold text-gray-700">{d.avgTotal}</td>
+                        <td className="px-3 py-2 text-center" style={{color:PIBOX_PURPLE}}>{fmtPct(d.pct)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-purple-300 bg-purple-50 font-bold">
+                      <td className="px-3 py-2 text-gray-800">Total</td>
+                      <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.bookings,0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.relanzamientos,0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center" colSpan={5}></td>
+                      <td className="px-3 py-2 text-center">100.0%</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* Relanzamientos por empresa */}
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="font-bold text-gray-700 text-sm mb-1">🔄 Distribucion de relanzamientos</h3>
+              <p className="text-xs text-gray-400 mb-3">Nota: el conteo de relanzamientos es agregado por empresa; la distribucion individual por servicio no esta disponible en los datos almacenados.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
+                  <thead>
+                    <tr style={{background:PIBOX_PURPLE}} className="text-white">
+                      {["Empresa","Relanzamientos totales","Servicios","Promedio por servicio"].map(h=>(
+                        <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {empWithRelaunch.length === 0 ? (
+                      <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin relanzamientos registrados.</td></tr>
+                    ) : empWithRelaunch.map((c,i)=>(
+                      <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
+                        <td className="px-3 py-2 font-semibold text-gray-700">{c.empresa}</td>
+                        <td className="px-3 py-2">{(c.relanzamientos||0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-gray-500">{c.total}</td>
+                        <td className="px-3 py-2" style={{color:PIBOX_PURPLE}}>{c.total > 0 ? ((c.relanzamientos||0)/c.total).toFixed(2) : "0"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : null;
+      })()}
+
       {/* Evolución semanal */}
       {tot?.weekly?.length > 0 && (
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
