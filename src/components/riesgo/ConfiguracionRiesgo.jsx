@@ -45,13 +45,15 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
         totales: processed.totales,
       };
 
-      // Guardar índice
+      // Guardar data procesada PRIMERO (puede fallar por quota)
+      saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades });
+
+      // Solo guardar índice si el save fue exitoso
       const idx = loadIndex();
       idx[key] = entry;
       saveIndex(idx);
 
-      // Guardar data procesada (empresas + ciudades en localStorage, drivers en IndexedDB)
-      saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades });
+      // Drivers en IndexedDB (sin límite de espacio)
       if (processed.drivers) idbSaveDrivers(key, processed.drivers);
 
       const fresh = mesesDisponibles();
@@ -93,6 +95,27 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
         El sistema lo procesa en tu navegador y guarda los datos comprimidos de forma persistente.
         Cada mes nuevo se compara automáticamente con el mes anterior en las <b>Métricas</b>.
       </div>
+
+      {/* Indicador de espacio */}
+      {(() => {
+        let totalBytes = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("pibox_")) totalBytes += (localStorage.getItem(k) || "").length * 2;
+        }
+        const usedMB = (totalBytes / 1024 / 1024).toFixed(1);
+        const pct = Math.min((totalBytes / (5 * 1024 * 1024)) * 100, 100);
+        const color = pct > 80 ? "#DC2626" : pct > 60 ? "#D97706" : "#16A34A";
+        return (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-3">
+            <span className="text-xs text-gray-500">Almacenamiento:</span>
+            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+            </div>
+            <span className="text-xs font-semibold" style={{ color }}>{usedMB} MB / ~5 MB</span>
+          </div>
+        );
+      })()}
 
       {/* Formulario de carga */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">

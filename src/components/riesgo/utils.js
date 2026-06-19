@@ -54,7 +54,14 @@ export function loadMesData(key) {
   catch { return null; }
 }
 export function saveMesData(key, data) {
-  localStorage.setItem(SK_MES(key), JSON.stringify(data));
+  const json = JSON.stringify(data);
+  try {
+    localStorage.setItem(SK_MES(key), json);
+  } catch (e) {
+    // Quota exceeded - intentar liberar espacio y reintentar
+    console.warn("localStorage quota exceeded, size:", (json.length/1024).toFixed(0), "KB");
+    throw new Error(`No hay espacio en el navegador para guardar ${(json.length/1024).toFixed(0)}KB. Elimina meses antiguos antes de subir nuevos.`);
+  }
 }
 export function deleteMes(key) {
   const idx = loadIndex();
@@ -279,12 +286,13 @@ export function procesarDatos(rows) {
 
     const topUsuarios = Object.entries(e.usuarios)
       .map(([u,v])=>({usuario:u, ...v}))
-      .sort((a,b)=>b.gmv-a.gmv)
-      .slice(0,30);
+      .sort((a,b)=>b.total-a.total)
+      .slice(0,20);
 
     const topSedes = Object.entries(e.sedes)
       .map(([s,v])=>({sede:s, ...v}))
-      .sort((a,b)=>b.gmv-a.gmv);
+      .sort((a,b)=>b.total-a.total)
+      .slice(0,20);
 
     // Drivers por operación en esta empresa
     const empDriversPorOp = Object.entries(e.driversPorOp)
