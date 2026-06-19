@@ -2325,9 +2325,20 @@ export default function InformeTada({ isAdmin }) {
               <button onClick={() => {
                 const hdr = ["#","Piloto","ID","Ciudad","Turnos",...estadosNuevos,"% Efectividad","% Puntualidad","Puntos"];
                 const csvRows = [hdr.join(",")];
+                const ESTADOS_EFECTIVOS = ["adicional", "confirmado", "reemplazo", "adicional tada"];
+                const ESTADOS_CANCELA_PIL = ["piloto cancela", "adicional cancela"];
+                const calcEfect = (estados) => {
+                  let ef = 0, ca = 0;
+                  for (const [k, v] of Object.entries(estados || {})) {
+                    const kl = k.toLowerCase();
+                    if (ESTADOS_EFECTIVOS.some(e => kl === e)) ef += v;
+                    else if (ESTADOS_CANCELA_PIL.some(e => kl === e)) ca += v;
+                  }
+                  const tot = ef + ca;
+                  return tot > 0 ? (ef / tot * 100) : 0;
+                };
                 pilotosNuevos.forEach((p, i) => {
-                  const confirmados = p.estados["Confirmado"] || 0;
-                  const efect = p.turnos > 0 ? (confirmados / p.turnos * 100).toFixed(1) : "0";
+                  const efect = calcEfect(p.estados).toFixed(1);
                   const punt = p.pctPunt !== null ? p.pctPunt.toFixed(1) : "";
                   const row = [
                     i+1,
@@ -2388,8 +2399,15 @@ export default function InformeTada({ isAdmin }) {
                       ))}
                       <td className="px-3 py-2 text-center">
                         {(() => {
-                          const confirmados = p.estados["Confirmado"] || 0;
-                          const efect = p.turnos > 0 ? (confirmados / p.turnos * 100) : 0;
+                          const EFECT_ST = ["adicional", "confirmado", "reemplazo", "adicional tada"];
+                          const CANCEL_ST = ["piloto cancela", "adicional cancela"];
+                          let ef = 0, ca = 0;
+                          for (const [k, v] of Object.entries(p.estados || {})) {
+                            const kl = k.toLowerCase();
+                            if (EFECT_ST.some(e => kl === e)) ef += v;
+                            else if (CANCEL_ST.some(e => kl === e)) ca += v;
+                          }
+                          const efect = (ef + ca) > 0 ? (ef / (ef + ca) * 100) : 0;
                           return <span className={`font-bold ${efect >= 90 ? "text-green-600" : efect >= 70 ? "text-yellow-600" : "text-red-600"}`}>{efect.toFixed(0)}%</span>;
                         })()}
                       </td>
