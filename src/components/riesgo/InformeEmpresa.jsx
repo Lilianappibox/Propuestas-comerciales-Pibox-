@@ -329,9 +329,6 @@ export default function InformeEmpresa() {
 
       {empData && score && (
         <>
-          {/* ── Tablas Usuario / Sede ── siempre visibles ─────────────────── */}
-          <TablaUsuariosSedes empData={empData} prevData={prevData}
-            mesLabel={dataMes?.label} prevLabel={mesPrevMeta?.label}/>
 
           {/* Score + Info empresa */}
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
@@ -893,106 +890,6 @@ export default function InformeEmpresa() {
                       </table>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
-
-            {/* Servicios completados por usuario */}
-            {empData.topUsuarios?.length > 0 && (
-              <div className="px-6 py-5 border-t border-gray-100">
-                <h4 className="font-bold text-gray-700 text-sm mb-3">👤 Servicios completados y costo por usuario</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                        <th className="px-3 py-2.5 text-left">Usuario</th>
-                        <th className="px-3 py-2.5 text-right">Completados</th>
-                        <th className="px-3 py-2.5 text-right">Total servicios</th>
-                        <th className="px-3 py-2.5 text-right">% Completado</th>
-                        <th className="px-3 py-2.5 text-right">GMV</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {empData.topUsuarios.map((u,i)=>(
-                        <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
-                          <td className="px-3 py-2 font-medium text-gray-700 max-w-[180px] truncate">{u.usuario}</td>
-                          <td className="px-3 py-2 text-right font-bold" style={{color:SEM_VERDE}}>{u.completados.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{u.total.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right font-semibold" style={{color:SEM_VERDE}}>
-                            {u.total>0 ? fmtPct(u.completados/u.total) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(u.gmv)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-purple-50 font-bold border-t border-purple-200">
-                        <td className="px-3 py-2 text-gray-700">Total</td>
-                        <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>
-                          {empData.topUsuarios.reduce((s,u)=>s+u.completados,0).toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-600">
-                          {empData.topUsuarios.reduce((s,u)=>s+u.total,0).toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>
-                          {fmtPct(empData.completados / Math.max(empData.total,1))}
-                        </td>
-                        <td className="px-3 py-2 text-right" style={{color:PIBOX_PURPLE}}>
-                          {fmtFull(empData.topUsuarios.reduce((s,u)=>s+u.gmv,0))}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Servicios completados por sede */}
-            {empData.topSedes?.length > 0 && (
-              <div className="px-6 py-5 border-t border-gray-100">
-                <h4 className="font-bold text-gray-700 text-sm mb-3">🏢 Servicios completados y costo por sede</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                        <th className="px-3 py-2.5 text-left">Sede</th>
-                        <th className="px-3 py-2.5 text-right">Completados</th>
-                        <th className="px-3 py-2.5 text-right">Total servicios</th>
-                        <th className="px-3 py-2.5 text-right">% Completado</th>
-                        <th className="px-3 py-2.5 text-right">GMV</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {empData.topSedes.map((s,i)=>(
-                        <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
-                          <td className="px-3 py-2 font-medium text-gray-700 max-w-[200px] truncate">{s.sede}</td>
-                          <td className="px-3 py-2 text-right font-bold" style={{color:SEM_VERDE}}>{s.completados.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-gray-600">{s.total.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right font-semibold" style={{color:SEM_VERDE}}>
-                            {s.total>0 ? fmtPct(s.completados/s.total) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-right font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(s.gmv)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-purple-50 font-bold border-t border-purple-200">
-                        <td className="px-3 py-2 text-gray-700">Total</td>
-                        <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>
-                          {empData.topSedes.reduce((s,r)=>s+r.completados,0).toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-600">
-                          {empData.topSedes.reduce((s,r)=>s+r.total,0).toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 text-right" style={{color:SEM_VERDE}}>
-                          {fmtPct(empData.completados / Math.max(empData.total,1))}
-                        </td>
-                        <td className="px-3 py-2 text-right" style={{color:PIBOX_PURPLE}}>
-                          {fmtFull(empData.topSedes.reduce((s,r)=>s+r.gmv,0))}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
                 </div>
               </div>
             )}
