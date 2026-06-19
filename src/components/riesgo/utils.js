@@ -80,6 +80,7 @@ export function procesarDatos(rows) {
 
   for (const row of rows) {
     const empresa  = toStr(row["company"] || row["Company"] || "Sin empresa");
+    const companyId = toStr(row["company_id"] || row["Company_id"] || "");
     const city     = toStr(row["city"]    || row["City"]    || "Sin ciudad");
     const sede     = toStr(row["sede"]    || "Sin sede");
     const op       = toStr(row["operation_type"] || "Otro");
@@ -88,6 +89,9 @@ export function procesarDatos(rows) {
     const cost     = toNum(row["service_cost"]);
     const pkgs     = toNum(row["packages"]);
     const exec     = toStr(row["account_manager"] || "Sin asignar");
+    const relaunched = toNum(row["num_total_relaunched_count"]);
+    const distance = toNum(row["distance"]); // en metros
+    const returnedPkgs = toNum(row["returned_packages"]);
     const driverId   = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
     const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
     const usuario  = toStr(row["passenger_name"]  || "Sin usuario");
@@ -115,12 +119,14 @@ export function procesarDatos(rows) {
 
     if (!empMap[empresa]) {
       empMap[empresa] = {
-        empresa, total:0, completados:0, cancelados:0, expirados:0,
+        empresa, companyId: companyId, total:0, completados:0, cancelados:0, expirados:0,
         gmv:0, paquetes:0, service_cost:0, ejecutivo: exec,
+        relanzamientos:0, devueltos:0, distancias:{},
         ciudades: {}, ops: {}, weekly: {}, usuarios: {}, sedes: {}, driversPorOp: {},
       };
     }
     const e = empMap[empresa];
+    if (companyId && !e.companyId) e.companyId = companyId;
     e.total++;
     if (esCompletado) e.completados++;
     if (esCancelado)  e.cancelados++;
@@ -128,6 +134,12 @@ export function procesarDatos(rows) {
     e.gmv          += gmv;
     e.service_cost += cost;
     e.paquetes     += pkgs;
+    e.relanzamientos += relaunched;
+    e.devueltos    += returnedPkgs;
+    // Distancia en km
+    const distKm = distance > 0 ? distance / 1000 : 0;
+    const dRng = distKm < 3 ? "0-3 km" : distKm < 5 ? "3-5 km" : distKm < 10 ? "5-10 km" : "Más de 10 km";
+    if (distKm > 0) { e.distancias[dRng] = (e.distancias[dRng] || 0) + 1; }
     if (exec && exec !== "Sin asignar") e.ejecutivo = exec;
 
     // por usuario (passenger_name)
@@ -264,10 +276,11 @@ export function procesarDatos(rows) {
     Object.values(e.driversPorOp).forEach(v => v.drivers.forEach(d => empTotalDrivers.add(d)));
 
     return {
-      empresa: e.empresa, total: e.total,
+      empresa: e.empresa, companyId: e.companyId, total: e.total,
       completados: e.completados, cancelados: e.cancelados, expirados: e.expirados,
       gmv: e.gmv, service_cost: e.service_cost, paquetes: e.paquetes,
       ciudad: ciudadTop, ejecutivo: e.ejecutivo,
+      relanzamientos: e.relanzamientos, devueltos: e.devueltos, distancias: e.distancias,
       tasa_completado: tc, tasa_cancelacion: tca, tasa_expirado: te,
       topCiudades, topOps, weekly, topUsuarios, topSedes,
       driversPorOp: empDriversPorOp, totalDrivers: empTotalDrivers.size,
