@@ -381,9 +381,43 @@ export function procesarDatos(rows) {
     };
   }).sort((a,b)=>b.paquetes-a.paquetes);
 
+  // ── Detalle por piloto (para análisis de pilotos) ───────────────────────
+  const pilotoDetalle = {};
+  for (const row of rows) {
+    const dId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
+    const dNm = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
+    const dk = dId || dNm;
+    if (!dk) continue;
+    const city = toStr(row["city"] || row["City"] || "");
+    const st = toStr(row["service_status"] || "");
+    const op = toStr(row["operation_type"] || "");
+    const vh = toStr(row["vehicle_type"] || row["vehicleType"] || row["Vehicle Type"] || row["tipo_vehiculo"] || "");
+    const gmv = toNum(row["gmv"]);
+    let hora = -1;
+    try { const d = new Date(row["date"]); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {}
+    if (!pilotoDetalle[dk]) pilotoDetalle[dk] = { id: dId, nombre: dNm, ciudad: city, servicios: 0, completados: 0, cancelados: 0, expirados: 0, gmv: 0, ops: {}, vehiculos: {}, horas: {} };
+    const p = pilotoDetalle[dk];
+    p.servicios++;
+    if (st === "Completed") p.completados++;
+    if (st.startsWith("Canceled")) p.cancelados++;
+    if (st === "Expired") p.expirados++;
+    p.gmv += gmv;
+    if (op) p.ops[op] = (p.ops[op] || 0) + 1;
+    if (vh) p.vehiculos[vh] = (p.vehiculos[vh] || 0) + 1;
+    if (hora >= 0) p.horas[hora] = (p.horas[hora] || 0) + 1;
+    if (dNm && dNm.length > (p.nombre || "").length) p.nombre = dNm;
+    if (city) p.ciudad = city;
+  }
+  const drivers = Object.values(pilotoDetalle).map(p => ({
+    ...p,
+    tasaCompletado: p.servicios > 0 ? p.completados / p.servicios : 0,
+    tasaCancelacion: p.servicios > 0 ? p.cancelados / p.servicios : 0,
+  }));
+
   return {
     empresas,
     ciudades,
+    drivers,
     totales: {
       servicios: rows.length,
       gmv: totalGmv,
