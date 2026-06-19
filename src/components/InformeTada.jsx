@@ -14,6 +14,7 @@ const SEM_AMARILLO = "#D97706";
 const PIE_COLORS   = [SEM_VERDE, SEM_ROJO];
 const BAR_COLORS   = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7", "#6366F1", "#EC4899", "#8B5CF6", "#F59E0B", "#10B981"];
 import tadaInicial from "../data/tadaInicial.json";
+import NotasTareas from "./NotasTareas";
 
 /* ── Tráfico storage (por mes) ──────────────────────────────────────────── */
 const SK_TRAF_IDX = "pibox_tada_traf_index";
@@ -1543,6 +1544,7 @@ export default function InformeTada({ isAdmin }) {
     { id: "trafico", label: "📊 Tráfico Pilotos" },
     { id: "facturacion", label: "💰 Facturación" },
     { id: "insights", label: "💡 Insights" },
+    { id: "notas", label: "📝 Notas y Tareas" },
   ];
 
   return (
@@ -1820,6 +1822,9 @@ export default function InformeTada({ isAdmin }) {
 
       {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
       {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} importedData={importedData} />}
+
+      {/* ── TAB: NOTAS Y TAREAS ──────────────────────────────────────── */}
+      {tab === "notas" && <NotasTareas />}
 
       {/* ── TAB: TRÁFICO ─────────────────────────────────────────────── */}
       {tab === "trafico" && (
