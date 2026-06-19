@@ -287,7 +287,10 @@ function processRows(rows) {
     }
   }
 
-  const cancelaciones = (estadoMap["Cancelado"] || 0) + (estadoMap["CANCELADO"] || 0);
+  const cancelaciones = Object.entries(estadoMap).reduce((sum, [k, v]) => {
+    const kl = k.toLowerCase();
+    return (kl === "piloto cancela" || kl === "adicional cancela") ? sum + v : sum;
+  }, 0);
 
   // Pilotos impuntuales (todos, sin limitar)
   const pilotosImpuntuales = Object.values(pilotoMap)
