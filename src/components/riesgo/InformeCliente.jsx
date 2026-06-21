@@ -142,19 +142,27 @@ function processServicios(rows) {
 // ── Process servicios por horas ─────────────────────────────────────────────
 function processHoras(rows) {
   function parseDate(v) {
-    if (!v) return "";
+    if (!v && v !== 0) return "";
+    // Número serial de Excel (ej: 46144) → convertir a fecha UTC
+    if (typeof v === "number") {
+      const d = new Date((v - 25569) * 86400 * 1000);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      return `${day}/${m}/${y}`;
+    }
+    // Objeto Date de XLSX con cellDates:true
     if (v instanceof Date) {
-      // Usar UTC para evitar desfase de zona horaria (Colombia UTC-5)
       const y = v.getUTCFullYear();
       const m = String(v.getUTCMonth() + 1).padStart(2, "0");
       const d = String(v.getUTCDate()).padStart(2, "0");
       return `${d}/${m}/${y}`;
     }
+    // String "2026-05-20 00:00:00" o "2026-05-20T00:00:00"
     const s = String(v).trim();
-    // Extraer YYYY-MM-DD de strings como "2026-05-20 00:00:00"
     const match = s.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (match) return `${match[3]}/${match[2]}/${match[1]}`;
-    return s.split("T")[0];
+    return s;
   }
   function isCompletado(r) {
     const s = String(r["estado_booking"] || r["service_status"] || "").toLowerCase().trim();
