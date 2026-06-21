@@ -143,9 +143,18 @@ function processServicios(rows) {
 function processHoras(rows) {
   function parseDate(v) {
     if (!v) return "";
-    if (v instanceof Date) return v.toLocaleDateString("es-CO");
-    const d = new Date(v);
-    return isNaN(d) ? String(v).split("T")[0] : d.toLocaleDateString("es-CO");
+    if (v instanceof Date) {
+      // Usar UTC para evitar desfase de zona horaria (Colombia UTC-5)
+      const y = v.getUTCFullYear();
+      const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(v.getUTCDate()).padStart(2, "0");
+      return `${d}/${m}/${y}`;
+    }
+    const s = String(v).trim();
+    // Extraer YYYY-MM-DD de strings como "2026-05-20 00:00:00"
+    const match = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+    return s.split("T")[0];
   }
   function isCompletado(r) {
     const s = String(r["estado_booking"] || r["service_status"] || "").toLowerCase().trim();
