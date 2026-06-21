@@ -147,9 +147,14 @@ function processHoras(rows) {
     const d = new Date(v);
     return isNaN(d) ? String(v).split("T")[0] : d.toLocaleDateString("es-CO");
   }
+  function isCompletado(r) {
+    const s = String(r["estado_booking"] || r["service_status"] || "").toLowerCase().trim();
+    return s === "completado" || s === "completed";
+  }
 
-  const serviciosHoras = []; // is_per_hour === "true"
-  const paquetesEnHoras = []; // is_per_hour === "false"
+  // Separar por is_per_hour Y por estado completado
+  const horasComp = [], horasNoComp = [];   // is_per_hour=true
+  const paqComp = [], paqNoComp = [];        // is_per_hour=false
 
   for (const r of rows) {
     const isPerHour = String(r["is_per_hour"] || "").toLowerCase().trim() === "true";
@@ -157,45 +162,41 @@ function processHoras(rows) {
     const sede = String(r["passenger_name"] || "Sin sede").trim();
     const driver = String(r["driver_name"] || "Sin conductor").trim();
     const gmv = parseFloat(r["gmv"]) || 0;
-    const packages = parseInt(r["packages"]) || 0;
-    const cantStops = parseInt(r["cant_stops"]) || 0;
+    const packages = parseInt(r["packages"]) || parseInt(r["cant_stops"]) || 0;
     const bookingId = String(r["booking_id"] || "");
     const city = String(r["city"] || "");
-    const status = String(r["service_status"] || r["estado_booking"] || "").toLowerCase();
-    const serviceCost = parseFloat(r["service_cost"]) || 0;
-    const totalValuePkgs = parseFloat(r["total_value_packages"]) || 0;
-    const completedPkgValue = parseFloat(r["completed_package_value"]) || 0;
-    const returnedPkgs = parseInt(r["returned_packages"]) || 0;
-    const canceledPkgs = parseInt(r["canceled_packages"]) || 0;
+    const estadoRaw = String(r["estado_booking"] || r["service_status"] || "").trim();
+    const cancelacion = String(r["cancelation"] || r["cancelacion"] || "").trim();
     const timeMin = parseFloat(r["time(min)"]) || 0;
 
-    const entry = {
-      date, sede, driver, gmv, packages: packages || cantStops,
-      bookingId, city, status, serviceCost, totalValuePkgs,
-      completedPkgValue, returnedPkgs, canceledPkgs, timeMin,
-    };
-    if (isPerHour) serviciosHoras.push(entry);
-    else paquetesEnHoras.push(entry);
+    const entry = { date, sede, driver, gmv, packages, bookingId, city, estadoRaw, cancelacion, timeMin };
+
+    if (isPerHour) {
+      if (isCompletado(r)) horasComp.push(entry);
+      else horasNoComp.push(entry);
+    } else {
+      if (isCompletado(r)) paqComp.push(entry);
+      else paqNoComp.push(entry);
+    }
   }
 
-  // === Por fecha + sede: conductores y paquetes ===
+  // === PRODUCTIVIDAD: solo completados ===
+  // Por fecha + sede
   const byDateSede = {};
-  for (const r of serviciosHoras) {
+  for (const r of horasComp) {
     const key = `${r.date}||${r.sede}`;
     if (!byDateSede[key]) byDateSede[key] = { date: r.date, sede: r.sede, drivers: {}, gmvTotal: 0, packagesTotal: 0, serviciosCount: 0 };
     const e = byDateSede[key];
-    e.gmvTotal += r.gmv;
-    e.packagesTotal += r.packages;
-    e.serviciosCount++;
+    e.gmvTotal += r.gmv; e.packagesTotal += r.packages; e.serviciosCount++;
     if (!e.drivers[r.driver]) e.drivers[r.driver] = { packages: 0, gmv: 0, servicios: 0 };
     e.drivers[r.driver].packages += r.packages;
     e.drivers[r.driver].gmv += r.gmv;
     e.drivers[r.driver].servicios++;
   }
 
-  // === Productividad por conductor ===
+  // Productividad por conductor (horas completadas)
   const driverStats = {};
-  for (const r of serviciosHoras) {
+  for (const r of horasComp) {
     if (!driverStats[r.driver]) driverStats[r.driver] = { driver: r.driver, servicios: 0, packagesTotal: 0, gmvTotal: 0, timeMin: 0 };
     driverStats[r.driver].servicios++;
     driverStats[r.driver].packagesTotal += r.packages;
@@ -203,28 +204,38 @@ function processHoras(rows) {
     driverStats[r.driver].timeMin += r.timeMin;
   }
 
-  // === Paquetes dentro del servicio por horas (is_per_hour=false) ===
-  const paqByBooking = {};
-  for (const r of paquetesEnHoras) {
-    const key = r.bookingId || `${r.date}||${r.driver}`;
-    if (!paqByBooking[key]) paqByBooking[key] = { packages: 0, returnedPkgs: 0, canceledPkgs: 0, completedPkgValue: 0 };
-    paqByBooking[key].packages += r.packages;
-    paqByBooking[key].returnedPkgs += r.returnedPkgs;
-    paqByBooking[key].canceledPkgs += r.canceledPkgs;
-    paqByBooking[key].completedPkgValue += r.completedPkgValue;
+  // === NO COMPLETADOS: agrupados por estado y tipo ===
+  const noCompHorasPorEstado = {};
+  for (const r of horasNoComp) {
+    const key = r.estadoRaw || "Sin estado";
+    if (!noCompHorasPorEstado[key]) noCompHorasPorEstado[key] = { count: 0, gmv: 0, rows: [] };
+    noCompHorasPorEstado[key].count++;
+    noCompHorasPorEstado[key].gmv += r.gmv;
+    noCompHorasPorEstado[key].rows.push(r);
+  }
+  const noCompPaqPorEstado = {};
+  for (const r of paqNoComp) {
+    const key = r.estadoRaw || "Sin estado";
+    if (!noCompPaqPorEstado[key]) noCompPaqPorEstado[key] = { count: 0, packages: 0, rows: [] };
+    noCompPaqPorEstado[key].count++;
+    noCompPaqPorEstado[key].packages += r.packages;
+    noCompPaqPorEstado[key].rows.push(r);
   }
 
-  const totalGMV = serviciosHoras.reduce((s, r) => s + r.gmv, 0);
-  const totalPackages = serviciosHoras.reduce((s, r) => s + r.packages, 0);
-  const totalServicios = serviciosHoras.length;
-  const totalPaquetesFalse = paquetesEnHoras.reduce((s, r) => s + r.packages, 0);
+  const totalGMV = horasComp.reduce((s, r) => s + r.gmv, 0);
+  const totalPackages = horasComp.reduce((s, r) => s + r.packages, 0);
+  const totalServicios = horasComp.length;
+  const totalPaqComp = paqComp.reduce((s, r) => s + r.packages, 0);
   const costoPorPaquete = totalPackages > 0 ? totalGMV / totalPackages : 0;
-  const costoPorPaqueteFalse = totalPaquetesFalse > 0 ? totalGMV / totalPaquetesFalse : 0;
 
   return {
-    serviciosHoras, paquetesEnHoras, byDateSede, driverStats,
-    totalGMV, totalPackages, totalServicios, totalPaquetesFalse,
-    costoPorPaquete, costoPorPaqueteFalse,
+    horasComp, horasNoComp, paqComp, paqNoComp,
+    byDateSede, driverStats,
+    noCompHorasPorEstado, noCompPaqPorEstado,
+    totalGMV, totalPackages, totalServicios, totalPaqComp,
+    costoPorPaquete,
+    totalNoCompHoras: horasNoComp.length,
+    totalNoCompPaq: paqNoComp.length,
   };
 }
 
@@ -647,28 +658,24 @@ export default function InformeCliente({ currentUser }) {
             </>
           )}
 
-          {/* F. Analisis Servicios por Horas */}
+          {/* F. Analisis Servicios por Horas — COMPLETADOS */}
           {horasData && (
             <>
               <div style={{ height: 8 }} />
-              <SectionHeader>Analisis de Servicios por Horas</SectionHeader>
+              <SectionHeader>Analisis de Servicios por Horas — Productividad (Completados)</SectionHeader>
 
-              {/* KPIs generales */}
+              {/* KPIs solo completados */}
               <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
-                <KpiCard label="Servicios por horas" value={fmtNum(horasData.totalServicios)} />
+                <KpiCard label="Servicios por horas completados" value={fmtNum(horasData.totalServicios)} color="#16a34a" />
                 <KpiCard label="Paquetes gestionados" value={fmtNum(horasData.totalPackages)} color="#7C22D4" />
-                <KpiCard label="GMV total (servicios horas)" value={fmtCOP(horasData.totalGMV)} color="#16a34a" />
-                <KpiCard label="Costo por paquete" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
-                {horasData.totalPaquetesFalse > 0 && (
-                  <KpiCard label="Paquetes On Demand en horas" value={fmtNum(horasData.totalPaquetesFalse)} color="#6366f1" />
-                )}
-                {horasData.totalPaquetesFalse > 0 && (
-                  <KpiCard label="Costo/paquete (On Demand)" value={fmtCOP(horasData.costoPorPaqueteFalse)} color="#ec4899" />
-                )}
+                <KpiCard label="GMV total" value={fmtCOP(horasData.totalGMV)} color="#16a34a" />
+                <KpiCard label="Costo por paquete (GMV/paq)" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
+                {horasData.totalNoCompHoras > 0 && <KpiCard label="Servicios horas no completados" value={fmtNum(horasData.totalNoCompHoras)} color="#dc2626" />}
+                {horasData.totalNoCompPaq > 0 && <KpiCard label="Paquetes no completados" value={fmtNum(horasData.totalNoCompPaq)} color="#dc2626" />}
               </div>
 
-              {/* Por fecha y sede */}
-              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — conductores y paquetes</p>
+              {/* Por fecha y sede — solo completados */}
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — conductores y paquetes (completados)</p>
               <DataTable
                 headers={["Fecha", "Sede / Cliente", "Conductor", "Servicios", "Paquetes", "GMV", "Costo/Paq"]}
                 rows={Object.entries(horasData.byDateSede)
@@ -677,12 +684,8 @@ export default function InformeCliente({ currentUser }) {
                     Object.entries(e.drivers)
                       .sort((a, b) => b[1].packages - a[1].packages)
                       .map(([driver, d]) => [
-                        e.date,
-                        e.sede,
-                        driver,
-                        fmtNum(d.servicios),
-                        fmtNum(d.packages),
-                        fmtCOP(d.gmv),
+                        e.date, e.sede, driver,
+                        fmtNum(d.servicios), fmtNum(d.packages), fmtCOP(d.gmv),
                         fmtCOP(d.packages > 0 ? d.gmv / d.packages : 0),
                       ])
                   )}
@@ -691,21 +694,76 @@ export default function InformeCliente({ currentUser }) {
 
               {/* Productividad por conductor */}
               <div style={{ height: 14 }} />
-              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Productividad por conductor (servicios por horas)</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Productividad por conductor (servicios por horas completados)</p>
               <DataTable
-                headers={["Conductor", "Servicios", "Paquetes totales", "Paq/servicio", "GMV total", "Costo/paquete"]}
+                headers={["Conductor", "Servicios", "Paquetes", "Paq/servicio", "GMV", "Costo/paquete"]}
                 rows={Object.values(horasData.driverStats)
                   .sort((a, b) => b.packagesTotal - a.packagesTotal)
                   .map(d => [
-                    d.driver,
-                    fmtNum(d.servicios),
-                    fmtNum(d.packagesTotal),
+                    d.driver, fmtNum(d.servicios), fmtNum(d.packagesTotal),
                     (d.servicios > 0 ? (d.packagesTotal / d.servicios).toFixed(1) : "0"),
                     fmtCOP(d.gmvTotal),
                     fmtCOP(d.packagesTotal > 0 ? d.gmvTotal / d.packagesTotal : 0),
                   ])}
                 footer={["Total", fmtNum(horasData.totalServicios), fmtNum(horasData.totalPackages), (horasData.totalServicios > 0 ? (horasData.totalPackages / horasData.totalServicios).toFixed(1) : "0"), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
               />
+
+              {/* NO COMPLETADOS */}
+              {(horasData.totalNoCompHoras > 0 || horasData.totalNoCompPaq > 0) && (
+                <>
+                  <div style={{ height: 20 }} />
+                  <div style={{ background: "linear-gradient(135deg,#dc2626 0%,#b91c1c 100%)", borderRadius: 10, padding: "8px 16px", marginBottom: 12 }}>
+                    <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>Servicios No Completados</h3>
+                  </div>
+
+                  {/* Horas no completadas */}
+                  {horasData.totalNoCompHoras > 0 && (
+                    <>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>
+                        Servicios por horas no completados ({fmtNum(horasData.totalNoCompHoras)})
+                      </p>
+                      <DataTable
+                        headers={["Estado", "Cantidad", "GMV"]}
+                        rows={Object.entries(horasData.noCompHorasPorEstado)
+                          .sort((a, b) => b[1].count - a[1].count)
+                          .map(([estado, d]) => [estado, fmtNum(d.count), fmtCOP(d.gmv)])}
+                        footer={["Total", fmtNum(horasData.totalNoCompHoras), fmtCOP(Object.values(horasData.noCompHorasPorEstado).reduce((s, d) => s + d.gmv, 0))]}
+                      />
+                      <div style={{ height: 10 }} />
+                      <DataTable
+                        headers={["Fecha", "Sede", "Conductor", "Estado"]}
+                        rows={horasData.horasNoComp
+                          .sort((a, b) => a.date.localeCompare(b.date))
+                          .map(r => [r.date, r.sede, r.driver, r.estadoRaw])}
+                      />
+                    </>
+                  )}
+
+                  {/* Paquetes no completados */}
+                  {horasData.totalNoCompPaq > 0 && (
+                    <>
+                      <div style={{ height: 14 }} />
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>
+                        Paquetes (On Demand) no completados ({fmtNum(horasData.totalNoCompPaq)})
+                      </p>
+                      <DataTable
+                        headers={["Estado", "Registros", "Paquetes"]}
+                        rows={Object.entries(horasData.noCompPaqPorEstado)
+                          .sort((a, b) => b[1].count - a[1].count)
+                          .map(([estado, d]) => [estado, fmtNum(d.count), fmtNum(d.packages)])}
+                        footer={["Total", fmtNum(horasData.totalNoCompPaq), fmtNum(horasData.paqNoComp.reduce((s, r) => s + r.packages, 0))]}
+                      />
+                      <div style={{ height: 10 }} />
+                      <DataTable
+                        headers={["Fecha", "Sede", "Conductor", "Paquetes", "Estado"]}
+                        rows={horasData.paqNoComp
+                          .sort((a, b) => a.date.localeCompare(b.date))
+                          .map(r => [r.date, r.sede, r.driver, fmtNum(r.packages), r.estadoRaw])}
+                      />
+                    </>
+                  )}
+                </>
+              )}
             </>
           )}
 
