@@ -139,6 +139,95 @@ function processServicios(rows) {
   return { totalServicios, completados, cancelados, expirados, costoTotal, efectividad: totalServicios > 0 ? completados / totalServicios : 0, porSede, porCentro, porTipoServicio, porTipoVehiculo, porTipoCobro, porDistancia };
 }
 
+// ── Process servicios por horas ─────────────────────────────────────────────
+function processHoras(rows) {
+  function parseDate(v) {
+    if (!v) return "";
+    if (v instanceof Date) return v.toLocaleDateString("es-CO");
+    const d = new Date(v);
+    return isNaN(d) ? String(v).split("T")[0] : d.toLocaleDateString("es-CO");
+  }
+
+  const serviciosHoras = []; // is_per_hour === "true"
+  const paquetesEnHoras = []; // is_per_hour === "false"
+
+  for (const r of rows) {
+    const isPerHour = String(r["is_per_hour"] || "").toLowerCase().trim() === "true";
+    const date = parseDate(r["date"]);
+    const sede = String(r["passenger_name"] || "Sin sede").trim();
+    const driver = String(r["driver_name"] || "Sin conductor").trim();
+    const gmv = parseFloat(r["gmv"]) || 0;
+    const packages = parseInt(r["packages"]) || 0;
+    const cantStops = parseInt(r["cant_stops"]) || 0;
+    const bookingId = String(r["booking_id"] || "");
+    const city = String(r["city"] || "");
+    const status = String(r["service_status"] || r["estado_booking"] || "").toLowerCase();
+    const serviceCost = parseFloat(r["service_cost"]) || 0;
+    const totalValuePkgs = parseFloat(r["total_value_packages"]) || 0;
+    const completedPkgValue = parseFloat(r["completed_package_value"]) || 0;
+    const returnedPkgs = parseInt(r["returned_packages"]) || 0;
+    const canceledPkgs = parseInt(r["canceled_packages"]) || 0;
+    const timeMin = parseFloat(r["time(min)"]) || 0;
+
+    const entry = {
+      date, sede, driver, gmv, packages: packages || cantStops,
+      bookingId, city, status, serviceCost, totalValuePkgs,
+      completedPkgValue, returnedPkgs, canceledPkgs, timeMin,
+    };
+    if (isPerHour) serviciosHoras.push(entry);
+    else paquetesEnHoras.push(entry);
+  }
+
+  // === Por fecha + sede: conductores y paquetes ===
+  const byDateSede = {};
+  for (const r of serviciosHoras) {
+    const key = `${r.date}||${r.sede}`;
+    if (!byDateSede[key]) byDateSede[key] = { date: r.date, sede: r.sede, drivers: {}, gmvTotal: 0, packagesTotal: 0, serviciosCount: 0 };
+    const e = byDateSede[key];
+    e.gmvTotal += r.gmv;
+    e.packagesTotal += r.packages;
+    e.serviciosCount++;
+    if (!e.drivers[r.driver]) e.drivers[r.driver] = { packages: 0, gmv: 0, servicios: 0 };
+    e.drivers[r.driver].packages += r.packages;
+    e.drivers[r.driver].gmv += r.gmv;
+    e.drivers[r.driver].servicios++;
+  }
+
+  // === Productividad por conductor ===
+  const driverStats = {};
+  for (const r of serviciosHoras) {
+    if (!driverStats[r.driver]) driverStats[r.driver] = { driver: r.driver, servicios: 0, packagesTotal: 0, gmvTotal: 0, timeMin: 0 };
+    driverStats[r.driver].servicios++;
+    driverStats[r.driver].packagesTotal += r.packages;
+    driverStats[r.driver].gmvTotal += r.gmv;
+    driverStats[r.driver].timeMin += r.timeMin;
+  }
+
+  // === Paquetes dentro del servicio por horas (is_per_hour=false) ===
+  const paqByBooking = {};
+  for (const r of paquetesEnHoras) {
+    const key = r.bookingId || `${r.date}||${r.driver}`;
+    if (!paqByBooking[key]) paqByBooking[key] = { packages: 0, returnedPkgs: 0, canceledPkgs: 0, completedPkgValue: 0 };
+    paqByBooking[key].packages += r.packages;
+    paqByBooking[key].returnedPkgs += r.returnedPkgs;
+    paqByBooking[key].canceledPkgs += r.canceledPkgs;
+    paqByBooking[key].completedPkgValue += r.completedPkgValue;
+  }
+
+  const totalGMV = serviciosHoras.reduce((s, r) => s + r.gmv, 0);
+  const totalPackages = serviciosHoras.reduce((s, r) => s + r.packages, 0);
+  const totalServicios = serviciosHoras.length;
+  const totalPaquetesFalse = paquetesEnHoras.reduce((s, r) => s + r.packages, 0);
+  const costoPorPaquete = totalPackages > 0 ? totalGMV / totalPackages : 0;
+  const costoPorPaqueteFalse = totalPaquetesFalse > 0 ? totalGMV / totalPaquetesFalse : 0;
+
+  return {
+    serviciosHoras, paquetesEnHoras, byDateSede, driverStats,
+    totalGMV, totalPackages, totalServicios, totalPaquetesFalse,
+    costoPorPaquete, costoPorPaqueteFalse,
+  };
+}
+
 // ── Process paquetes ────────────────────────────────────────────────────────
 function processPaquetes(rows) {
   const total = rows.length;
@@ -242,35 +331,40 @@ export default function InformeCliente({ currentUser }) {
   const [razonSocial, setRazonSocial] = useState(RAZONES_SOCIALES[0]);
   const [serviciosFile, setServiciosFile] = useState(null);
   const [paquetesFile, setPaquetesFile] = useState(null);
+  const [horasFile, setHorasFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [svcData, setSvcData] = useState(null);
   const [paqData, setPaqData] = useState(null);
+  const [horasData, setHorasData] = useState(null);
   const [histOpen, setHistOpen] = useState(false);
   const [history, setHistory] = useState(() => loadHistory());
   const reportRef = useRef(null);
   const svcFileRef = useRef(null);
   const paqFileRef = useRef(null);
+  const horasFileRef = useRef(null);
 
   const insights = useMemo(() => (svcData || paqData) ? generateInsights(svcData, paqData) : null, [svcData, paqData]);
-  const hasReport = svcData || paqData;
+  const hasReport = svcData || paqData || horasData;
 
   const handleGenerar = async () => {
     if (!cliente.trim()) { setError("Ingresa el nombre del cliente."); return; }
-    if (!serviciosFile && !paquetesFile) { setError("Sube al menos un archivo (servicios o paquetes)."); return; }
-    setError(""); setLoading(true); setSvcData(null); setPaqData(null);
+    if (!serviciosFile && !paquetesFile && !horasFile) { setError("Sube al menos un archivo (servicios, paquetes o servicios por horas)."); return; }
+    setError(""); setLoading(true); setSvcData(null); setPaqData(null); setHorasData(null);
     try {
       if (serviciosFile) setSvcData(processServicios(await readFile(serviciosFile)));
       if (paquetesFile) setPaqData(processPaquetes(await readFile(paquetesFile)));
+      if (horasFile) setHorasData(processHoras(await readFile(horasFile)));
     } catch (err) { setError("Error al procesar archivos: " + err.message); } finally { setLoading(false); }
   };
 
   const handleLimpiar = () => {
     setCliente(""); setFechaInforme(""); setPeriodo(""); setRazonSocial(RAZONES_SOCIALES[0]);
-    setServiciosFile(null); setPaquetesFile(null);
-    setSvcData(null); setPaqData(null); setError("");
+    setServiciosFile(null); setPaquetesFile(null); setHorasFile(null);
+    setSvcData(null); setPaqData(null); setHorasData(null); setError("");
     if (svcFileRef.current) svcFileRef.current.value = "";
     if (paqFileRef.current) paqFileRef.current.value = "";
+    if (horasFileRef.current) horasFileRef.current.value = "";
   };
 
   const handleGuardar = () => {
@@ -283,7 +377,8 @@ export default function InformeCliente({ currentUser }) {
       timestamp: new Date().toISOString(),
       svcSummary: svcData ? { total: svcData.totalServicios, completados: svcData.completados, costoTotal: svcData.costoTotal, efectividad: svcData.efectividad } : null,
       paqSummary: paqData ? { total: paqData.total, entregados: paqData.entregados, efectividad: paqData.efectividad, tasaDevolucion: paqData.tasaDevolucion } : null,
-      svcData, paqData,
+      horasSummary: horasData ? { totalServicios: horasData.totalServicios, totalPackages: horasData.totalPackages, totalGMV: horasData.totalGMV, costoPorPaquete: horasData.costoPorPaquete } : null,
+      svcData, paqData, horasData,
     };
     setHistory(saveToHistory(entry));
   };
@@ -292,9 +387,11 @@ export default function InformeCliente({ currentUser }) {
     setCliente(entry.cliente || ""); setFechaInforme(entry.fecha || ""); setPeriodo(entry.periodo || "");
     if (entry.svcData) setSvcData(entry.svcData); else setSvcData(null);
     if (entry.paqData) setPaqData(entry.paqData); else setPaqData(null);
-    setServiciosFile(null); setPaquetesFile(null);
+    if (entry.horasData) setHorasData(entry.horasData); else setHorasData(null);
+    setServiciosFile(null); setPaquetesFile(null); setHorasFile(null);
     if (svcFileRef.current) svcFileRef.current.value = "";
     if (paqFileRef.current) paqFileRef.current.value = "";
+    if (horasFileRef.current) horasFileRef.current.value = "";
   };
 
   return (
@@ -347,6 +444,19 @@ export default function InformeCliente({ currentUser }) {
             <input ref={paqFileRef} type="file" accept=".xlsx,.xls" onChange={e => setPaquetesFile(e.target.files?.[0] || null)}
               className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
           </div>
+        </div>
+
+        {/* Horas file */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <div style={{ width: 20, height: 20, borderRadius: 4, background: "#7C22D4", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700 }}>H</div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "#7C22D4", display: "block", margin: 0 }}>
+              Analisis Servicios por Horas (.xlsx) — reporte con columna <code style={{ background: "#f3e8ff", padding: "1px 4px", borderRadius: 3 }}>is_per_hour</code>
+            </label>
+          </div>
+          <input ref={horasFileRef} type="file" accept=".xlsx,.xls" onChange={e => setHorasFile(e.target.files?.[0] || null)}
+            className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
+          {horasFile && <p style={{ fontSize: 11, color: "#16a34a", marginTop: 4 }}>Archivo cargado: {horasFile.name}</p>}
         </div>
 
         {error && <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>{error}</p>}
@@ -537,7 +647,69 @@ export default function InformeCliente({ currentUser }) {
             </>
           )}
 
-          {/* F. Insights (positive only) */}
+          {/* F. Analisis Servicios por Horas */}
+          {horasData && (
+            <>
+              <div style={{ height: 8 }} />
+              <SectionHeader>Analisis de Servicios por Horas</SectionHeader>
+
+              {/* KPIs generales */}
+              <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
+                <KpiCard label="Servicios por horas" value={fmtNum(horasData.totalServicios)} />
+                <KpiCard label="Paquetes gestionados" value={fmtNum(horasData.totalPackages)} color="#7C22D4" />
+                <KpiCard label="GMV total (servicios horas)" value={fmtCOP(horasData.totalGMV)} color="#16a34a" />
+                <KpiCard label="Costo por paquete" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
+                {horasData.totalPaquetesFalse > 0 && (
+                  <KpiCard label="Paquetes On Demand en horas" value={fmtNum(horasData.totalPaquetesFalse)} color="#6366f1" />
+                )}
+                {horasData.totalPaquetesFalse > 0 && (
+                  <KpiCard label="Costo/paquete (On Demand)" value={fmtCOP(horasData.costoPorPaqueteFalse)} color="#ec4899" />
+                )}
+              </div>
+
+              {/* Por fecha y sede */}
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — conductores y paquetes</p>
+              <DataTable
+                headers={["Fecha", "Sede / Cliente", "Conductor", "Servicios", "Paquetes", "GMV", "Costo/Paq"]}
+                rows={Object.entries(horasData.byDateSede)
+                  .sort((a, b) => a[0].localeCompare(b[0]))
+                  .flatMap(([, e]) =>
+                    Object.entries(e.drivers)
+                      .sort((a, b) => b[1].packages - a[1].packages)
+                      .map(([driver, d]) => [
+                        e.date,
+                        e.sede,
+                        driver,
+                        fmtNum(d.servicios),
+                        fmtNum(d.packages),
+                        fmtCOP(d.gmv),
+                        fmtCOP(d.packages > 0 ? d.gmv / d.packages : 0),
+                      ])
+                  )}
+                footer={["Total", "", "", fmtNum(horasData.totalServicios), fmtNum(horasData.totalPackages), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
+              />
+
+              {/* Productividad por conductor */}
+              <div style={{ height: 14 }} />
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Productividad por conductor (servicios por horas)</p>
+              <DataTable
+                headers={["Conductor", "Servicios", "Paquetes totales", "Paq/servicio", "GMV total", "Costo/paquete"]}
+                rows={Object.values(horasData.driverStats)
+                  .sort((a, b) => b.packagesTotal - a.packagesTotal)
+                  .map(d => [
+                    d.driver,
+                    fmtNum(d.servicios),
+                    fmtNum(d.packagesTotal),
+                    (d.servicios > 0 ? (d.packagesTotal / d.servicios).toFixed(1) : "0"),
+                    fmtCOP(d.gmvTotal),
+                    fmtCOP(d.packagesTotal > 0 ? d.gmvTotal / d.packagesTotal : 0),
+                  ])}
+                footer={["Total", fmtNum(horasData.totalServicios), fmtNum(horasData.totalPackages), (horasData.totalServicios > 0 ? (horasData.totalPackages / horasData.totalServicios).toFixed(1) : "0"), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
+              />
+            </>
+          )}
+
+          {/* G. Insights (positive only) */}
           {insights && (
             <>
               <div style={{ height: 8 }} />
