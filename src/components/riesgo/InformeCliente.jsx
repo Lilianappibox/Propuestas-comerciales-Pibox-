@@ -239,12 +239,64 @@ function processHoras(rows) {
   const totalHoras = horasComp.reduce((s, r) => s + r.horasTrabajadas, 0);
   const valorPorHora = totalHoras > 0 ? totalGMV / totalHoras : 0;
 
+  // === Análisis por passenger_name (sede) ===
+  const sedeStats = {};
+  for (const r of horasComp) {
+    if (!sedeStats[r.sede]) sedeStats[r.sede] = { sede: r.sede, serviciosHoras: 0, packagesHoras: 0, gmv: 0, horas: 0, soloHoras: true };
+    sedeStats[r.sede].serviciosHoras++;
+    sedeStats[r.sede].packagesHoras += r.packages;
+    sedeStats[r.sede].gmv += r.gmv;
+    sedeStats[r.sede].horas += r.horasTrabajadas;
+  }
+  for (const r of paqComp) {
+    if (!sedeStats[r.sede]) sedeStats[r.sede] = { sede: r.sede, serviciosHoras: 0, packagesHoras: 0, gmv: 0, horas: 0, soloHoras: false };
+    sedeStats[r.sede].soloHoras = false; // tiene On Demand también
+  }
+  // Añadir sedes que solo aparecen en no completados (para tracking)
+  const sedeArr = Object.values(sedeStats);
+
+  // Insights por sede
+  const insightsSede = [];
+  if (sedeArr.length > 0) {
+    // Más productiva: mayor paquetes/hora
+    const conHoras = sedeArr.filter(s => s.horas > 0);
+    if (conHoras.length > 0) {
+      const masProductiva = conHoras.reduce((a, b) => (b.packagesHoras / b.horas > a.packagesHoras / a.horas ? b : a));
+      insightsSede.push({ tipo: "top", texto: `La sede más productiva es "${masProductiva.sede}" con ${(masProductiva.packagesHoras / masProductiva.horas).toFixed(1)} paquetes/hora.` });
+    }
+    // Mayor GMV
+    const mayorGMV = sedeArr.reduce((a, b) => (b.gmv > a.gmv ? b : a));
+    insightsSede.push({ tipo: "gmv", texto: `"${mayorGMV.sede}" genera el mayor GMV: ${fmtCOP(mayorGMV.gmv)} con ${fmtNum(mayorGMV.serviciosHoras)} servicios por horas.` });
+    // Solo servicios por horas (no tienen On Demand)
+    const soloHorasSedes = sedeArr.filter(s => s.soloHoras && s.serviciosHoras > 0);
+    if (soloHorasSedes.length > 0)
+      insightsSede.push({ tipo: "info", texto: `${soloHorasSedes.length === 1 ? `La sede "${soloHorasSedes[0].sede}" usa` : `${soloHorasSedes.length} sedes usan`} exclusivamente servicios por horas: ${soloHorasSedes.map(s => s.sede).join(", ")}.` });
+    // Sedes con On Demand adicional
+    const mixtas = sedeArr.filter(s => !s.soloHoras && s.serviciosHoras > 0);
+    if (mixtas.length > 0)
+      insightsSede.push({ tipo: "info", texto: `${mixtas.length === 1 ? `"${mixtas[0].sede}" combina` : `${mixtas.length} sedes combinan`} servicios por horas con paquetes On Demand: ${mixtas.map(s => s.sede).join(", ")}.` });
+    // Mayor cantidad de servicios
+    const masSvc = sedeArr.reduce((a, b) => (b.serviciosHoras > a.serviciosHoras ? b : a));
+    insightsSede.push({ tipo: "top", texto: `"${masSvc.sede}" tiene el mayor número de servicios por horas: ${fmtNum(masSvc.serviciosHoras)}.` });
+    // Mejor costo por paquete (menor = más eficiente)
+    const conPaq = sedeArr.filter(s => s.packagesHoras > 0);
+    if (conPaq.length > 1) {
+      const mejorCosto = conPaq.reduce((a, b) => (b.gmv / b.packagesHoras < a.gmv / a.packagesHoras ? b : a));
+      insightsSede.push({ tipo: "eficiencia", texto: `Mejor costo por paquete: "${mejorCosto.sede}" con ${fmtCOP(mejorCosto.gmv / mejorCosto.packagesHoras)}/paquete.` });
+    }
+    // Sede con más horas acumuladas
+    const masHoras = sedeArr.reduce((a, b) => (b.horas > a.horas ? b : a));
+    if (masHoras.horas > 0)
+      insightsSede.push({ tipo: "info", texto: `"${masHoras.sede}" acumula más horas de servicio: ${masHoras.horas.toFixed(1)} h en ${fmtNum(masHoras.serviciosHoras)} servicios.` });
+  }
+
   return {
     horasComp, horasNoComp, paqComp, paqNoComp,
     byDateSede, driverStats,
     noCompHorasPorEstado, noCompPaqPorEstado,
     totalGMV, totalPackages, totalServicios, totalPaqComp,
     costoPorPaquete, totalHoras, valorPorHora,
+    sedeStats, sedeArr, insightsSede,
     totalNoCompHoras: horasNoComp.length,
     totalNoCompPaq: paqNoComp.length,
   };
@@ -720,6 +772,49 @@ export default function InformeCliente({ currentUser }) {
                   ])}
                 footer={["Total", fmtNum(horasData.totalServicios), fmtNum(horasData.totalPackages), (horasData.totalServicios > 0 ? (horasData.totalPackages / horasData.totalServicios).toFixed(1) : "0"), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
               />
+
+              {/* Insights por sede */}
+              {horasData.insightsSede?.length > 0 && (
+                <>
+                  <div style={{ height: 20 }} />
+                  <div style={{ background: "linear-gradient(135deg,#0891b2 0%,#6366f1 100%)", borderRadius: 10, padding: "8px 16px", marginBottom: 12 }}>
+                    <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>Comportamiento por Sede / Cliente</h3>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10, marginBottom: 8 }}>
+                    {horasData.insightsSede.map((ins, i) => {
+                      const colors = { top: { bg: "#eff6ff", border: "#bfdbfe", left: "#2563eb", text: "#1d4ed8", icon: "★" }, gmv: { bg: "#f0fdf4", border: "#bbf7d0", left: "#16a34a", text: "#15803d", icon: "$" }, eficiencia: { bg: "#fefce8", border: "#fde68a", left: "#d97706", text: "#92400e", icon: "⚡" }, info: { bg: "#faf5ff", border: "#e9d5ff", left: "#7C22D4", text: "#6b21a8", icon: "●" } };
+                      const c = colors[ins.tipo] || colors.info;
+                      return (
+                        <div key={i} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${c.left}` }}>
+                          <p style={{ fontSize: 12, color: c.text, margin: 0, lineHeight: 1.5 }}>
+                            <span style={{ fontWeight: 700, marginRight: 6 }}>{c.icon}</span>{ins.texto}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Tabla resumen por sede */}
+                  <div style={{ height: 10 }} />
+                  <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Resumen por sede</p>
+                  <DataTable
+                    headers={["Sede / Cliente", "Servicios h", "Paquetes", "Horas", "Paq/hora", "GMV", "Costo/paq", "Tipo"]}
+                    rows={horasData.sedeArr
+                      .filter(s => s.serviciosHoras > 0)
+                      .sort((a, b) => b.gmv - a.gmv)
+                      .map(s => [
+                        s.sede,
+                        fmtNum(s.serviciosHoras),
+                        fmtNum(s.packagesHoras),
+                        s.horas.toFixed(1) + " h",
+                        s.horas > 0 ? (s.packagesHoras / s.horas).toFixed(1) : "—",
+                        fmtCOP(s.gmv),
+                        s.packagesHoras > 0 ? fmtCOP(s.gmv / s.packagesHoras) : "—",
+                        s.soloHoras ? "Solo horas" : "Horas + OD",
+                      ])}
+                  />
+                </>
+              )}
 
               {/* NO COMPLETADOS */}
               {(horasData.totalNoCompHoras > 0 || horasData.totalNoCompPaq > 0) && (
