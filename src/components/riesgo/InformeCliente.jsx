@@ -306,32 +306,32 @@ function processHoras(rows) {
     const conHoras = sedeArr.filter(s => s.horas > 0);
     if (conHoras.length > 0) {
       const masProductiva = conHoras.reduce((a, b) => (b.packagesHoras / b.horas > a.packagesHoras / a.horas ? b : a));
-      insightsSede.push({ tipo: "top", texto: `La sede más productiva es "${masProductiva.sede}" con ${(masProductiva.packagesHoras / masProductiva.horas).toFixed(1)} paquetes/hora.` });
+      insightsSede.push({ tipo: "top", texto: `La sede más productiva es "${masProductiva.sede}" con ${(masProductiva.packagesHoras / masProductiva.horas).toFixed(1)} tareas On Demand por hora de turno.` });
     }
     // Mayor GMV
     const mayorGMV = sedeArr.reduce((a, b) => (b.gmv > a.gmv ? b : a));
-    insightsSede.push({ tipo: "gmv", texto: `"${mayorGMV.sede}" genera el mayor GMV: ${fmtCOP(mayorGMV.gmv)} con ${fmtNum(mayorGMV.serviciosHoras)} servicios por horas.` });
+    insightsSede.push({ tipo: "gmv", texto: `"${mayorGMV.sede}" genera el mayor GMV: ${fmtCOP(mayorGMV.gmv)} con ${fmtNum(mayorGMV.serviciosHoras)} turnos y ${fmtNum(mayorGMV.packagesHoras)} tareas OD.` });
     // Solo turnos (no tienen tareas On Demand)
     const soloHorasSedes = sedeArr.filter(s => s.soloHoras && s.serviciosHoras > 0);
     if (soloHorasSedes.length > 0)
-      insightsSede.push({ tipo: "info", texto: `${soloHorasSedes.length === 1 ? `La sede "${soloHorasSedes[0].sede}" opera` : `${soloHorasSedes.length} sedes operan`} exclusivamente con turnos por horas (sin tareas On Demand): ${soloHorasSedes.map(s => s.sede).join(", ")}.` });
+      insightsSede.push({ tipo: "info", texto: `${soloHorasSedes.length === 1 ? `La sede "${soloHorasSedes[0].sede}" opera` : `${soloHorasSedes.length} sedes operan`} solo con turnos por horas, sin tareas On Demand registradas: ${soloHorasSedes.map(s => s.sede).join(", ")}.` });
     // Sedes con turnos + tareas On Demand
     const mixtas = sedeArr.filter(s => !s.soloHoras && s.serviciosHoras > 0);
     if (mixtas.length > 0)
       insightsSede.push({ tipo: "info", texto: `${mixtas.length === 1 ? `"${mixtas[0].sede}" combina` : `${mixtas.length} sedes combinan`} turnos por horas con tareas On Demand: ${mixtas.map(s => s.sede).join(", ")}.` });
-    // Mayor cantidad de servicios
+    // Mayor cantidad de turnos
     const masSvc = sedeArr.reduce((a, b) => (b.serviciosHoras > a.serviciosHoras ? b : a));
-    insightsSede.push({ tipo: "top", texto: `"${masSvc.sede}" tiene el mayor número de servicios por horas: ${fmtNum(masSvc.serviciosHoras)}.` });
-    // Mejor costo por paquete (menor = más eficiente)
+    insightsSede.push({ tipo: "top", texto: `"${masSvc.sede}" tiene el mayor número de turnos: ${fmtNum(masSvc.serviciosHoras)} turnos con ${fmtNum(masSvc.packagesHoras)} tareas OD.` });
+    // Mejor costo por tarea OD (menor = más eficiente)
     const conPaq = sedeArr.filter(s => s.packagesHoras > 0);
     if (conPaq.length > 1) {
       const mejorCosto = conPaq.reduce((a, b) => (b.gmv / b.packagesHoras < a.gmv / a.packagesHoras ? b : a));
-      insightsSede.push({ tipo: "eficiencia", texto: `Mejor costo por paquete: "${mejorCosto.sede}" con ${fmtCOP(mejorCosto.gmv / mejorCosto.packagesHoras)}/paquete.` });
+      insightsSede.push({ tipo: "eficiencia", texto: `Mejor costo por tarea OD: "${mejorCosto.sede}" con ${fmtCOP(mejorCosto.gmv / mejorCosto.packagesHoras)}/tarea.` });
     }
     // Sede con más horas acumuladas
     const masHoras = sedeArr.reduce((a, b) => (b.horas > a.horas ? b : a));
     if (masHoras.horas > 0)
-      insightsSede.push({ tipo: "info", texto: `"${masHoras.sede}" acumula más horas de servicio: ${masHoras.horas.toFixed(1)} h en ${fmtNum(masHoras.serviciosHoras)} servicios.` });
+      insightsSede.push({ tipo: "info", texto: `"${masHoras.sede}" acumula más horas de turno: ${masHoras.horas.toFixed(1)} h en ${fmtNum(masHoras.serviciosHoras)} turnos.` });
   }
 
   return {
@@ -773,20 +773,20 @@ export default function InformeCliente({ currentUser }) {
 
               {/* KPIs solo completados */}
               <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
-                <KpiCard label="Servicios por horas completados" value={fmtNum(horasData.totalServicios)} color="#16a34a" />
-                <KpiCard label="Paquetes gestionados" value={fmtNum(horasData.totalPackages)} color="#7C22D4" />
-                <KpiCard label="GMV total" value={fmtCOP(horasData.totalGMV)} color="#16a34a" />
+                <KpiCard label="Turnos completados (Horas)" value={fmtNum(horasData.totalServicios)} color="#16a34a" />
+                <KpiCard label="Tareas On Demand entregadas" value={fmtNum(horasData.totalPackages)} color="#7C22D4" />
+                <KpiCard label="GMV total (turnos)" value={fmtCOP(horasData.totalGMV)} color="#16a34a" />
                 <KpiCard label="Horas trabajadas" value={horasData.totalHoras.toFixed(1) + " h"} color="#6366f1" />
                 <KpiCard label="Valor por hora (GMV/hora)" value={fmtCOP(horasData.valorPorHora)} color="#0891b2" />
-                <KpiCard label="Costo por paquete (GMV/paq)" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
-                {horasData.totalNoCompHoras > 0 && <KpiCard label="Servicios horas no completados" value={fmtNum(horasData.totalNoCompHoras)} color="#dc2626" />}
-                {horasData.totalNoCompPaq > 0 && <KpiCard label="Paquetes no completados" value={fmtNum(horasData.totalNoCompPaq)} color="#dc2626" />}
+                <KpiCard label="Costo por tarea OD (GMV/tarea)" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
+                {horasData.totalNoCompHoras > 0 && <KpiCard label="Turnos no completados" value={fmtNum(horasData.totalNoCompHoras)} color="#dc2626" />}
+                {horasData.totalNoCompPaq > 0 && <KpiCard label="Tareas OD no completadas" value={fmtNum(horasData.totalNoCompPaq)} color="#dc2626" />}
               </div>
 
               {/* Por fecha y sede — solo completados */}
-              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — conductores y paquetes (completados)</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — turnos y tareas On Demand (completados)</p>
               <DataTable
-                headers={["Fecha", "Sede / Cliente", "Conductor", "Servicios", "Paquetes", "GMV", "Costo/Paq"]}
+                headers={["Fecha", "Sede / Cliente", "Conductor", "Turnos", "Tareas OD", "GMV", "Costo/Tarea"]}
                 rows={Object.entries(horasData.byDateSede)
                   .sort((a, b) => a[0].localeCompare(b[0]))
                   .flatMap(([, e]) =>
@@ -803,9 +803,9 @@ export default function InformeCliente({ currentUser }) {
 
               {/* Productividad por conductor */}
               <div style={{ height: 14 }} />
-              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Productividad por conductor (servicios por horas completados)</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Productividad por conductor</p>
               <DataTable
-                headers={["Conductor", "Servicios", "Paquetes", "Paq/servicio", "GMV", "Costo/paquete"]}
+                headers={["Conductor", "Turnos", "Tareas OD", "Tareas/turno", "GMV", "Costo/tarea"]}
                 rows={Object.values(horasData.driverStats)
                   .sort((a, b) => b.packagesTotal - a.packagesTotal)
                   .map(d => [
@@ -842,7 +842,7 @@ export default function InformeCliente({ currentUser }) {
                   <div style={{ height: 10 }} />
                   <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Resumen por sede</p>
                   <DataTable
-                    headers={["Sede / Cliente", "Servicios h", "Paquetes", "Horas", "Paq/hora", "GMV", "Costo/paq", "Tipo"]}
+                    headers={["Sede / Cliente", "Turnos", "Tareas OD", "Horas turno", "OD/hora", "GMV", "Costo/tarea", "Tipo"]}
                     rows={horasData.sedeArr
                       .filter(s => s.serviciosHoras > 0)
                       .sort((a, b) => b.gmv - a.gmv)
