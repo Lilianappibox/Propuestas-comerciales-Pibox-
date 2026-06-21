@@ -213,13 +213,15 @@ function processHoras(rows) {
   }
 
   // === PRODUCTIVIDAD: solo completados ===
-  // Paso 1: contar tareas On Demand (completadas) por date+driver
-  // Cada fila On Demand = 1 tarea entregada dentro del turno
+  // Paso 1: acumular tareas y paquetes On Demand por date+driver
+  // - tareas  = cantidad de filas On Demand (cada fila = 1 tarea/servicio)
+  // - paquetes = suma del campo "packages" de esas filas (paquetes físicos entregados)
   const odByDateDriver = {};
   for (const r of paqComp) {
     const key = `${r.date}||${r.driver}`;
-    if (!odByDateDriver[key]) odByDateDriver[key] = 0;
-    odByDateDriver[key]++;   // cada fila On Demand = 1 tarea
+    if (!odByDateDriver[key]) odByDateDriver[key] = { tareas: 0, paquetes: 0 };
+    odByDateDriver[key].tareas++;
+    odByDateDriver[key].paquetes += r.packages;
   }
 
   // Paso 2: agregar turnos (Horas) por date+driver+sede (evitar duplicados)
@@ -232,18 +234,20 @@ function processHoras(rows) {
     turnosByKey[key].horasTrabajadas += r.horasTrabajadas;
   }
 
-  // Paso 3: byDateSede — paquetes = On Demand del mismo date+driver
+  // Paso 3: byDateSede — tareas y paquetes = On Demand del mismo date+driver
   const byDateSede = {};
   for (const t of Object.values(turnosByKey)) {
     const sedKey = `${t.date}||${t.sede}`;
-    const paquetes = odByDateDriver[`${t.date}||${t.driver}`] || 0;
-    if (!byDateSede[sedKey]) byDateSede[sedKey] = { date: t.date, sede: t.sede, drivers: {}, gmvTotal: 0, packagesTotal: 0, serviciosCount: 0 };
+    const od = odByDateDriver[`${t.date}||${t.driver}`] || { tareas: 0, paquetes: 0 };
+    if (!byDateSede[sedKey]) byDateSede[sedKey] = { date: t.date, sede: t.sede, drivers: {}, gmvTotal: 0, tareasTotal: 0, paquetesTotal: 0, serviciosCount: 0 };
     const e = byDateSede[sedKey];
     e.gmvTotal += t.gmv;
-    e.packagesTotal += paquetes;
+    e.tareasTotal += od.tareas;
+    e.paquetesTotal += od.paquetes;
     e.serviciosCount += t.servicios;
-    if (!e.drivers[t.driver]) e.drivers[t.driver] = { packages: 0, gmv: 0, servicios: 0 };
-    e.drivers[t.driver].packages += paquetes;
+    if (!e.drivers[t.driver]) e.drivers[t.driver] = { tareas: 0, paquetes: 0, gmv: 0, servicios: 0 };
+    e.drivers[t.driver].tareas += od.tareas;
+    e.drivers[t.driver].paquetes += od.paquetes;
     e.drivers[t.driver].gmv += t.gmv;
     e.drivers[t.driver].servicios += t.servicios;
   }
@@ -251,10 +255,11 @@ function processHoras(rows) {
   // Productividad por conductor
   const driverStats = {};
   for (const t of Object.values(turnosByKey)) {
-    const paquetes = odByDateDriver[`${t.date}||${t.driver}`] || 0;
-    if (!driverStats[t.driver]) driverStats[t.driver] = { driver: t.driver, servicios: 0, packagesTotal: 0, gmvTotal: 0, horasTrabajadas: 0 };
+    const od = odByDateDriver[`${t.date}||${t.driver}`] || { tareas: 0, paquetes: 0 };
+    if (!driverStats[t.driver]) driverStats[t.driver] = { driver: t.driver, servicios: 0, tareas: 0, paquetes: 0, gmvTotal: 0, horasTrabajadas: 0 };
     driverStats[t.driver].servicios += t.servicios;
-    driverStats[t.driver].packagesTotal += paquetes;
+    driverStats[t.driver].tareas += od.tareas;
+    driverStats[t.driver].paquetes += od.paquetes;
     driverStats[t.driver].gmvTotal += t.gmv;
     driverStats[t.driver].horasTrabajadas += t.horasTrabajadas;
   }
@@ -279,7 +284,8 @@ function processHoras(rows) {
 
   const totalGMV = horasComp.reduce((s, r) => s + r.gmv, 0);
   const totalServicios = horasComp.length;
-  const totalPackages = paqComp.length;              // cada fila On Demand = 1 tarea entregada
+  const totalTareas = paqComp.length;                               // filas On Demand = tareas
+  const totalPackages = paqComp.reduce((s, r) => s + r.packages, 0); // suma campo packages = paquetes físicos
   const totalPaqComp = totalPackages;
   const costoPorPaquete = totalPackages > 0 ? totalGMV / totalPackages : 0;
   const totalHoras = horasComp.reduce((s, r) => s + r.horasTrabajadas, 0);
@@ -288,13 +294,14 @@ function processHoras(rows) {
   // === Análisis por passenger_name (sede) — basado en turnosByKey + odByDateDriver ===
   const sedeStats = {};
   for (const t of Object.values(turnosByKey)) {
-    const paquetes = odByDateDriver[`${t.date}||${t.driver}`] || 0;
-    if (!sedeStats[t.sede]) sedeStats[t.sede] = { sede: t.sede, serviciosHoras: 0, packagesHoras: 0, gmv: 0, horas: 0, soloHoras: true };
+    const od = odByDateDriver[`${t.date}||${t.driver}`] || { tareas: 0, paquetes: 0 };
+    if (!sedeStats[t.sede]) sedeStats[t.sede] = { sede: t.sede, serviciosHoras: 0, tareas: 0, packagesHoras: 0, gmv: 0, horas: 0, soloHoras: true };
     sedeStats[t.sede].serviciosHoras += t.servicios;
-    sedeStats[t.sede].packagesHoras += paquetes;
+    sedeStats[t.sede].tareas += od.tareas;
+    sedeStats[t.sede].packagesHoras += od.paquetes;
     sedeStats[t.sede].gmv += t.gmv;
     sedeStats[t.sede].horas += t.horasTrabajadas;
-    if (paquetes > 0) sedeStats[t.sede].soloHoras = false;
+    if (od.tareas > 0) sedeStats[t.sede].soloHoras = false;
   }
   // Añadir sedes que solo aparecen en no completados (para tracking)
   const sedeArr = Object.values(sedeStats);
@@ -339,7 +346,7 @@ function processHoras(rows) {
     byDateSede, driverStats,
     noCompHorasPorEstado, noCompPaqPorEstado,
     totalGMV, totalPackages, totalServicios, totalPaqComp,
-    costoPorPaquete, totalHoras, valorPorHora,
+    costoPorPaquete, totalHoras, valorPorHora, totalTareas,
     sedeStats, sedeArr, insightsSede,
     totalNoCompHoras: horasNoComp.length,
     totalNoCompPaq: paqNoComp.length,
@@ -774,47 +781,48 @@ export default function InformeCliente({ currentUser }) {
               {/* KPIs solo completados */}
               <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
                 <KpiCard label="Turnos completados (Horas)" value={fmtNum(horasData.totalServicios)} color="#16a34a" />
-                <KpiCard label="Tareas On Demand entregadas" value={fmtNum(horasData.totalPackages)} color="#7C22D4" />
+                <KpiCard label="Tareas On Demand" value={fmtNum(horasData.totalTareas)} color="#7C22D4" />
+                <KpiCard label="Paquetes entregados" value={fmtNum(horasData.totalPackages)} color="#6366f1" />
                 <KpiCard label="GMV total (turnos)" value={fmtCOP(horasData.totalGMV)} color="#16a34a" />
-                <KpiCard label="Horas trabajadas" value={horasData.totalHoras.toFixed(1) + " h"} color="#6366f1" />
+                <KpiCard label="Horas trabajadas" value={horasData.totalHoras.toFixed(1) + " h"} color="#0891b2" />
                 <KpiCard label="Valor por hora (GMV/hora)" value={fmtCOP(horasData.valorPorHora)} color="#0891b2" />
-                <KpiCard label="Costo por tarea OD (GMV/tarea)" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
+                <KpiCard label="Costo por paquete (GMV/paq)" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
                 {horasData.totalNoCompHoras > 0 && <KpiCard label="Turnos no completados" value={fmtNum(horasData.totalNoCompHoras)} color="#dc2626" />}
                 {horasData.totalNoCompPaq > 0 && <KpiCard label="Tareas OD no completadas" value={fmtNum(horasData.totalNoCompPaq)} color="#dc2626" />}
               </div>
 
               {/* Por fecha y sede — solo completados */}
-              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — turnos y tareas On Demand (completados)</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — turnos, tareas On Demand y paquetes (completados)</p>
               <DataTable
-                headers={["Fecha", "Sede / Cliente", "Conductor", "Turnos", "Tareas OD", "GMV", "Costo/Tarea"]}
+                headers={["Fecha", "Sede / Cliente", "Conductor", "Turnos", "Tareas OD", "Paquetes", "GMV", "Costo/Paq"]}
                 rows={Object.entries(horasData.byDateSede)
                   .sort((a, b) => a[0].localeCompare(b[0]))
                   .flatMap(([, e]) =>
                     Object.entries(e.drivers)
-                      .sort((a, b) => b[1].packages - a[1].packages)
+                      .sort((a, b) => b[1].paquetes - a[1].paquetes)
                       .map(([driver, d]) => [
                         e.date, e.sede, driver,
-                        fmtNum(d.servicios), fmtNum(d.packages), fmtCOP(d.gmv),
-                        fmtCOP(d.packages > 0 ? d.gmv / d.packages : 0),
+                        fmtNum(d.servicios), fmtNum(d.tareas), fmtNum(d.paquetes), fmtCOP(d.gmv),
+                        fmtCOP(d.paquetes > 0 ? d.gmv / d.paquetes : 0),
                       ])
                   )}
-                footer={["Total", "", "", fmtNum(horasData.totalServicios), fmtNum(horasData.totalPackages), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
+                footer={["Total", "", "", fmtNum(horasData.totalServicios), fmtNum(horasData.totalTareas), fmtNum(horasData.totalPackages), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
               />
 
               {/* Productividad por conductor */}
               <div style={{ height: 14 }} />
               <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Productividad por conductor</p>
               <DataTable
-                headers={["Conductor", "Turnos", "Tareas OD", "Tareas/turno", "GMV", "Costo/tarea"]}
+                headers={["Conductor", "Turnos", "Tareas OD", "Paquetes", "Paq/turno", "GMV", "Costo/paq"]}
                 rows={Object.values(horasData.driverStats)
-                  .sort((a, b) => b.packagesTotal - a.packagesTotal)
+                  .sort((a, b) => b.paquetes - a.paquetes)
                   .map(d => [
-                    d.driver, fmtNum(d.servicios), fmtNum(d.packagesTotal),
-                    (d.servicios > 0 ? (d.packagesTotal / d.servicios).toFixed(1) : "0"),
+                    d.driver, fmtNum(d.servicios), fmtNum(d.tareas), fmtNum(d.paquetes),
+                    (d.servicios > 0 ? (d.paquetes / d.servicios).toFixed(1) : "0"),
                     fmtCOP(d.gmvTotal),
-                    fmtCOP(d.packagesTotal > 0 ? d.gmvTotal / d.packagesTotal : 0),
+                    fmtCOP(d.paquetes > 0 ? d.gmvTotal / d.paquetes : 0),
                   ])}
-                footer={["Total", fmtNum(horasData.totalServicios), fmtNum(horasData.totalPackages), (horasData.totalServicios > 0 ? (horasData.totalPackages / horasData.totalServicios).toFixed(1) : "0"), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
+                footer={["Total", fmtNum(horasData.totalServicios), fmtNum(horasData.totalTareas), fmtNum(horasData.totalPackages), (horasData.totalServicios > 0 ? (horasData.totalPackages / horasData.totalServicios).toFixed(1) : "0"), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
               />
 
               {/* Insights por sede */}
@@ -842,15 +850,15 @@ export default function InformeCliente({ currentUser }) {
                   <div style={{ height: 10 }} />
                   <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Resumen por sede</p>
                   <DataTable
-                    headers={["Sede / Cliente", "Turnos", "Tareas OD", "Horas turno", "OD/hora", "GMV", "Costo/tarea", "Tipo"]}
+                    headers={["Sede / Cliente", "Turnos", "Tareas OD", "Paquetes", "Paq/hora", "GMV", "Costo/paq", "Tipo"]}
                     rows={horasData.sedeArr
                       .filter(s => s.serviciosHoras > 0)
                       .sort((a, b) => b.gmv - a.gmv)
                       .map(s => [
                         s.sede,
                         fmtNum(s.serviciosHoras),
+                        fmtNum(s.tareas),
                         fmtNum(s.packagesHoras),
-                        s.horas.toFixed(1) + " h",
                         s.horas > 0 ? (s.packagesHoras / s.horas).toFixed(1) : "—",
                         fmtCOP(s.gmv),
                         s.packagesHoras > 0 ? fmtCOP(s.gmv / s.packagesHoras) : "—",
