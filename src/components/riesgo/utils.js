@@ -55,11 +55,12 @@ const IDB_STORE_MES = "mesData";
 
 function idbOpenMes() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 2);
+    const req = indexedDB.open(IDB_NAME, 3);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains("drivers")) db.createObjectStore("drivers");
       if (!db.objectStoreNames.contains(IDB_STORE_MES)) db.createObjectStore(IDB_STORE_MES);
+      if (!db.objectStoreNames.contains("horasRows")) db.createObjectStore("horasRows");
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -536,6 +537,17 @@ export async function idbLoadDrivers(mesKey) {
 }
 export async function idbDeleteDrivers(mesKey) {
   try { const db = await idbOpenMes(); const tx = db.transaction("drivers", "readwrite"); tx.objectStore("drivers").delete(mesKey); } catch {}
+}
+
+// ── IndexedDB para filas crudas Horas/OnDemand ─────────────────────────────
+export async function idbSaveHorasRows(key, rows) {
+  try { const db = await idbOpenMes(); const tx = db.transaction("horasRows", "readwrite"); tx.objectStore("horasRows").put(rows, key); await new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; }); } catch (e) { console.warn("IDB save horasRows:", e); }
+}
+export async function idbLoadHorasRows(key) {
+  try { const db = await idbOpenMes(); const tx = db.transaction("horasRows", "readonly"); const req = tx.objectStore("horasRows").get(key); return new Promise(r => { req.onsuccess = () => r(req.result || null); req.onerror = () => r(null); }); } catch { return null; }
+}
+export async function idbDeleteHorasRows(key) {
+  try { const db = await idbOpenMes(); const tx = db.transaction("horasRows", "readwrite"); tx.objectStore("horasRows").delete(key); } catch {}
 }
 
 // ── Score de riesgo ───────────────────────────────────────────────────────────

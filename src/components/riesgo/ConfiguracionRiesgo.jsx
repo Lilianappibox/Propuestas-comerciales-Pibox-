@@ -3,7 +3,7 @@ import XLSX from "../../utils/xlsxHelper";
 import {
   procesarDatos, deleteMes, mesesDisponibles,
   saveIndex, loadIndex, mesKey, labelMes, MESES_ES, PIBOX_PURPLE, idbSaveDrivers, idbDeleteDrivers,
-  saveMesData,
+  saveMesData, idbSaveHorasRows, idbDeleteHorasRows,
 } from "./utils";
 
 const MESES_NUM = Array.from({length:12},(_,i)=>i+1);
@@ -56,6 +56,13 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
       // Drivers en IndexedDB
       if (processed.drivers) idbSaveDrivers(key, processed.drivers);
 
+      // Filas crudas Horas+OD para la pestaña "Empresas por Horas"
+      const horasOdRows = rows.filter(r => {
+        const op = String(r["operation_type"] || "").trim().toLowerCase();
+        return op === "horas" || op === "on demand";
+      });
+      if (horasOdRows.length > 0) await idbSaveHorasRows(key, horasOdRows);
+
       const fresh = mesesDisponibles();
       setMeses(fresh);
       onMesesChange?.(fresh);
@@ -72,6 +79,7 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
     if (!confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`)) return;
     await deleteMes(key);
     idbDeleteDrivers(key);
+    idbDeleteHorasRows(key);
     const fresh = mesesDisponibles();
     setMeses(fresh);
     onMesesChange?.(fresh);

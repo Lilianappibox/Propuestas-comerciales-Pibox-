@@ -1,6 +1,6 @@
-import React, { useState, useRef, useMemo } from "react";
-import XLSX from "../../utils/xlsxHelper";
+import React, { useState, useRef, useEffect } from "react";
 import logoSrc from "../../assets/pibox-logo.png";
+import { mesesDisponibles, idbLoadHorasRows } from "./utils";
 
 const BRAND = "#7C22D4";
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
@@ -87,34 +87,13 @@ function abrevCiudad(nombre) {
 
 const fmtCOP = (v) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(v);
-const fmtPct = (v) => (v * 100).toFixed(1) + "%";
 const fmtNum = (v) => new Intl.NumberFormat("es-CO").format(v);
-
-function readFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        resolve(XLSX.utils.sheet_to_json(ws, { defval: "" }));
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
-}
 
 // ── Print ────────────────────────────────────────────────────────────────────
 function printSection(ref, title) {
   if (!ref?.current) return;
   const content = ref.current.cloneNode(true);
   for (const btn of content.querySelectorAll("button")) btn.remove();
-  for (const lbl of content.querySelectorAll("label")) {
-    if (lbl.querySelector('input[type="file"]')) lbl.remove();
-  }
   const win = window.open("", "_blank");
   if (!win) { alert("Permite ventanas emergentes para descargar el PDF"); return; }
   const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')]
@@ -178,7 +157,6 @@ function processHoras(rows) {
     }
   }
 
-  // On Demand por date+driver
   const odByDateDriver = {};
   for (const r of paqComp) {
     const key = `${r.date}||${r.driver}`;
@@ -187,7 +165,6 @@ function processHoras(rows) {
     odByDateDriver[key].paquetes += r.packages;
   }
 
-  // Turnos Horas por date+driver+sede
   const turnosByKey = {};
   for (const r of horasComp) {
     const key = `${r.date}||${r.driver}||${r.sede}`;
@@ -197,7 +174,6 @@ function processHoras(rows) {
     turnosByKey[key].horasTrabajadas += r.horasTrabajadas;
   }
 
-  // byDateSede
   const byDateSede = {};
   for (const t of Object.values(turnosByKey)) {
     const sedKey = `${t.date}||${t.sede}`;
@@ -215,7 +191,6 @@ function processHoras(rows) {
     e.drivers[t.driver].servicios += t.servicios;
   }
 
-  // Productividad por conductor
   const driverStats = {};
   for (const t of Object.values(turnosByKey)) {
     const od = odByDateDriver[`${t.date}||${t.driver}`] || { tareas: 0, paquetes: 0 };
@@ -227,7 +202,6 @@ function processHoras(rows) {
     driverStats[t.driver].horasTrabajadas += t.horasTrabajadas;
   }
 
-  // No completados por estado
   const noCompHorasPorEstado = {};
   for (const r of horasNoComp) {
     const key = r.estadoRaw || "Sin estado";
@@ -253,7 +227,6 @@ function processHoras(rows) {
   const totalHoras = horasComp.reduce((s, r) => s + r.horasTrabajadas, 0);
   const valorPorHora = totalHoras > 0 ? totalGMV / totalHoras : 0;
 
-  // Estadísticas por sede
   const sedeStats = {};
   for (const t of Object.values(turnosByKey)) {
     const od = odByDateDriver[`${t.date}||${t.driver}`] || { tareas: 0, paquetes: 0 };
@@ -267,7 +240,6 @@ function processHoras(rows) {
   }
   const sedeArr = Object.values(sedeStats);
 
-  // Insights por sede
   const insightsSede = [];
   if (sedeArr.length > 0) {
     const conHoras = sedeArr.filter((s) => s.horas > 0);
@@ -275,49 +247,28 @@ function processHoras(rows) {
       const masProductiva = conHoras.reduce((a, b) =>
         b.packagesHoras / b.horas > a.packagesHoras / a.horas ? b : a
       );
-      insightsSede.push({
-        tipo: "top",
-        texto: `La sede más productiva es "${masProductiva.sede}" con ${(masProductiva.packagesHoras / masProductiva.horas).toFixed(1)} tareas On Demand por hora de turno.`,
-      });
+      insightsSede.push({ tipo: "top", texto: `La sede más productiva es "${masProductiva.sede}" con ${(masProductiva.packagesHoras / masProductiva.horas).toFixed(1)} tareas On Demand por hora de turno.` });
     }
     const mayorGMV = sedeArr.reduce((a, b) => (b.gmv > a.gmv ? b : a));
-    insightsSede.push({
-      tipo: "gmv",
-      texto: `"${mayorGMV.sede}" genera el mayor GMV: ${fmtCOP(mayorGMV.gmv)} con ${fmtNum(mayorGMV.serviciosHoras)} turnos y ${fmtNum(mayorGMV.packagesHoras)} tareas OD.`,
-    });
+    insightsSede.push({ tipo: "gmv", texto: `"${mayorGMV.sede}" genera el mayor GMV: ${fmtCOP(mayorGMV.gmv)} con ${fmtNum(mayorGMV.serviciosHoras)} turnos y ${fmtNum(mayorGMV.packagesHoras)} tareas OD.` });
     const soloHorasSedes = sedeArr.filter((s) => s.soloHoras && s.serviciosHoras > 0);
     if (soloHorasSedes.length > 0)
-      insightsSede.push({
-        tipo: "info",
-        texto: `${soloHorasSedes.length === 1 ? `La sede "${soloHorasSedes[0].sede}" opera` : `${soloHorasSedes.length} sedes operan`} solo con turnos por horas, sin tareas On Demand registradas: ${soloHorasSedes.map((s) => s.sede).join(", ")}.`,
-      });
+      insightsSede.push({ tipo: "info", texto: `${soloHorasSedes.length === 1 ? `La sede "${soloHorasSedes[0].sede}" opera` : `${soloHorasSedes.length} sedes operan`} solo con turnos por horas, sin tareas On Demand registradas: ${soloHorasSedes.map((s) => s.sede).join(", ")}.` });
     const mixtas = sedeArr.filter((s) => !s.soloHoras && s.serviciosHoras > 0);
     if (mixtas.length > 0)
-      insightsSede.push({
-        tipo: "info",
-        texto: `${mixtas.length === 1 ? `"${mixtas[0].sede}" combina` : `${mixtas.length} sedes combinan`} turnos por horas con tareas On Demand: ${mixtas.map((s) => s.sede).join(", ")}.`,
-      });
+      insightsSede.push({ tipo: "info", texto: `${mixtas.length === 1 ? `"${mixtas[0].sede}" combina` : `${mixtas.length} sedes combinan`} turnos por horas con tareas On Demand: ${mixtas.map((s) => s.sede).join(", ")}.` });
     const masSvc = sedeArr.reduce((a, b) => (b.serviciosHoras > a.serviciosHoras ? b : a));
-    insightsSede.push({
-      tipo: "top",
-      texto: `"${masSvc.sede}" tiene el mayor número de turnos: ${fmtNum(masSvc.serviciosHoras)} turnos con ${fmtNum(masSvc.packagesHoras)} tareas OD.`,
-    });
+    insightsSede.push({ tipo: "top", texto: `"${masSvc.sede}" tiene el mayor número de turnos: ${fmtNum(masSvc.serviciosHoras)} turnos con ${fmtNum(masSvc.packagesHoras)} tareas OD.` });
     const conPaq = sedeArr.filter((s) => s.packagesHoras > 0);
     if (conPaq.length > 1) {
       const mejorCosto = conPaq.reduce((a, b) =>
         b.gmv / b.packagesHoras < a.gmv / a.packagesHoras ? b : a
       );
-      insightsSede.push({
-        tipo: "eficiencia",
-        texto: `Mejor costo por tarea OD: "${mejorCosto.sede}" con ${fmtCOP(mejorCosto.gmv / mejorCosto.packagesHoras)}/tarea.`,
-      });
+      insightsSede.push({ tipo: "eficiencia", texto: `Mejor costo por tarea OD: "${mejorCosto.sede}" con ${fmtCOP(mejorCosto.gmv / mejorCosto.packagesHoras)}/tarea.` });
     }
     const masHoras = sedeArr.reduce((a, b) => (b.horas > a.horas ? b : a));
     if (masHoras.horas > 0)
-      insightsSede.push({
-        tipo: "info",
-        texto: `"${masHoras.sede}" acumula más horas de turno: ${masHoras.horas.toFixed(1)} h en ${fmtNum(masHoras.serviciosHoras)} turnos.`,
-      });
+      insightsSede.push({ tipo: "info", texto: `"${masHoras.sede}" acumula más horas de turno: ${masHoras.horas.toFixed(1)} h en ${fmtNum(masHoras.serviciosHoras)} turnos.` });
   }
 
   return {
@@ -336,10 +287,7 @@ function processHoras(rows) {
 function SectionHeader({ children, color }) {
   const bg = color || BRAND_GRADIENT;
   return (
-    <div
-      className="section-card"
-      style={{ background: bg, borderRadius: 10, padding: "8px 16px", marginBottom: 12 }}
-    >
+    <div className="section-card" style={{ background: bg, borderRadius: 10, padding: "8px 16px", marginBottom: 12 }}>
       <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>{children}</h3>
     </div>
   );
@@ -347,15 +295,7 @@ function SectionHeader({ children, color }) {
 
 function KpiCard({ label, value, color = BRAND }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 10,
-        border: "1px solid #e5e7eb",
-        borderLeft: `5px solid ${color}`,
-        padding: "14px 16px",
-      }}
-    >
+    <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", borderLeft: `5px solid ${color}`, padding: "14px 16px" }}>
       <p style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, margin: 0 }}>{label}</p>
       <p style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", margin: "4px 0 0" }}>{value}</p>
     </div>
@@ -364,27 +304,12 @@ function KpiCard({ label, value, color = BRAND }) {
 
 function DataTable({ headers, rows, footer }) {
   return (
-    <div
-      className="overflow-x-auto section-card"
-      style={{ borderRadius: 10, border: "1px solid #e5e7eb", overflow: "hidden" }}
-    >
-      <table
-        style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", tableLayout: "fixed" }}
-      >
+    <div className="overflow-x-auto section-card" style={{ borderRadius: 10, border: "1px solid #e5e7eb", overflow: "hidden" }}>
+      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", tableLayout: "fixed" }}>
         <thead>
           <tr>
             {headers.map((h, i) => (
-              <th
-                key={i}
-                style={{
-                  background: BRAND,
-                  color: "#fff",
-                  padding: "8px 10px",
-                  textAlign: "left",
-                  fontWeight: 600,
-                  fontSize: 11,
-                }}
-              >
+              <th key={i} style={{ background: BRAND, color: "#fff", padding: "8px 10px", textAlign: "left", fontWeight: 600, fontSize: 11 }}>
                 {h}
               </th>
             ))}
@@ -394,14 +319,10 @@ function DataTable({ headers, rows, footer }) {
           {rows.map((row, ri) => (
             <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#faf5ff" }}>
               {row.map((cell, ci) => {
-                const isCls =
-                  cell && typeof cell === "object" && !React.isValidElement(cell) && "v" in cell;
+                const isCls = cell && typeof cell === "object" && !React.isValidElement(cell) && "v" in cell;
                 return (
-                  <td
-                    key={ci}
-                    className={isCls ? cell.cls : undefined}
-                    style={{ padding: "6px 10px", color: "#374151", borderBottom: "1px solid #f3f4f6" }}
-                  >
+                  <td key={ci} className={isCls ? cell.cls : undefined}
+                    style={{ padding: "6px 10px", color: "#374151", borderBottom: "1px solid #f3f4f6" }}>
                     {isCls ? cell.v : cell}
                   </td>
                 );
@@ -413,9 +334,7 @@ function DataTable({ headers, rows, footer }) {
           <tfoot>
             <tr style={{ background: "#ede9fe", fontWeight: 700, borderTop: "2px solid #c4b5fd" }}>
               {footer.map((cell, ci) => (
-                <td key={ci} style={{ padding: "8px 10px", color: "#1f2937" }}>
-                  {cell}
-                </td>
+                <td key={ci} style={{ padding: "8px 10px", color: "#1f2937" }}>{cell}</td>
               ))}
             </tr>
           </tfoot>
@@ -427,25 +346,39 @@ function DataTable({ headers, rows, footer }) {
 
 // ── Componente principal ─────────────────────────────────────────────────────
 export default function EmpresasHoras() {
-  const [file, setFile] = useState(null);
-  const [allRows, setAllRows] = useState(null); // todas las filas del xlsx
-  const [empresasConHoras, setEmpresasConHoras] = useState([]); // [{name, turnos}]
-  const [empresaSeleccionada, setEmpresaSeleccionada] = useState(""); // nombre empresa o "" = Todas
+  const [meses, setMeses] = useState([]);
+  const [mesSeleccionado, setMesSeleccionado] = useState(""); // key del mes
+  const [allRows, setAllRows] = useState(null);
+  const [empresasConHoras, setEmpresasConHoras] = useState([]);
+  const [empresaSeleccionada, setEmpresaSeleccionada] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [reportData, setReportData] = useState(null);
-  const fileRef = useRef(null);
   const reportRef = useRef(null);
 
-  // Cargar el archivo e identificar empresas con Horas
-  const handleCargar = async () => {
-    if (!file) { setError("Selecciona un archivo .xlsx primero."); return; }
-    setError(""); setLoading(true); setAllRows(null); setEmpresasConHoras([]); setReportData(null);
-    try {
-      const rows = await readFile(file);
+  // Cargar lista de meses disponibles al montar
+  useEffect(() => {
+    const lista = mesesDisponibles();
+    setMeses(lista);
+    if (lista.length === 1) setMesSeleccionado(lista[0].key);
+  }, []);
 
-      // Identificar empresas que tienen AL MENOS UN registro con operation_type = "Horas"
-      const empresasTurnosMap = {}; // company -> cantidad de turnos Horas
+  // Cargar filas del mes seleccionado
+  const handleCargarMes = async (key) => {
+    setMesSeleccionado(key);
+    setAllRows(null); setEmpresasConHoras([]); setEmpresaSeleccionada(""); setReportData(null); setError("");
+    if (!key) return;
+    setLoading(true);
+    try {
+      const rows = await idbLoadHorasRows(key);
+      if (!rows || rows.length === 0) {
+        setError("Este mes no tiene datos de servicios por Horas. Vuelve a subir el archivo en Configuración para que se guarden los datos de horas.");
+        setLoading(false);
+        return;
+      }
+
+      // Identificar empresas con AL MENOS UN turno Horas
+      const empresasTurnosMap = {};
       for (const r of rows) {
         const opType = String(r["operation_type"] || "").trim().toLowerCase();
         const company = String(r["company"] || "Sin empresa").trim();
@@ -461,240 +394,181 @@ export default function EmpresasHoras() {
 
       setAllRows(rows);
       setEmpresasConHoras(lista);
-
-      // Si solo hay una empresa, seleccionarla automáticamente
-      if (lista.length === 1) {
-        setEmpresaSeleccionada(lista[0].name);
-      } else {
-        setEmpresaSeleccionada("");
-      }
+      if (lista.length === 1) setEmpresaSeleccionada(lista[0].name);
+      else setEmpresaSeleccionada("");
     } catch (err) {
-      setError("Error al leer el archivo: " + err.message);
+      setError("Error al cargar datos: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGenerar = () => {
-    if (!allRows) { setError("Primero carga un archivo."); return; }
+    if (!allRows) { setError("Selecciona un mes primero."); return; }
     setError("");
-
-    // Filtrar filas por empresa seleccionada (o todas las empresas con horas)
     let rowsFiltradas;
     if (empresaSeleccionada) {
-      rowsFiltradas = allRows.filter(
-        (r) => String(r["company"] || "Sin empresa").trim() === empresaSeleccionada
-      );
+      rowsFiltradas = allRows.filter((r) => String(r["company"] || "Sin empresa").trim() === empresaSeleccionada);
     } else {
-      // Todas las empresas que tienen horas
       const nombresConHoras = new Set(empresasConHoras.map((e) => e.name));
-      rowsFiltradas = allRows.filter((r) =>
-        nombresConHoras.has(String(r["company"] || "Sin empresa").trim())
-      );
+      rowsFiltradas = allRows.filter((r) => nombresConHoras.has(String(r["company"] || "Sin empresa").trim()));
     }
-
-    const data = processHoras(rowsFiltradas);
-    setReportData(data);
+    setReportData(processHoras(rowsFiltradas));
   };
 
   const handleLimpiar = () => {
-    setFile(null); setAllRows(null); setEmpresasConHoras([]);
+    setMesSeleccionado(""); setAllRows(null); setEmpresasConHoras([]);
     setEmpresaSeleccionada(""); setReportData(null); setError("");
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   const tituloEmpresa = empresaSeleccionada || "Todas las empresas con Horas";
-  const hayDatos = !!reportData;
+  const mesLabel = meses.find((m) => m.key === mesSeleccionado)?.label || "";
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto" }}>
-      {/* ── Panel de carga ──────────────────────────────────────────────── */}
-      <div
-        className="no-print"
-        style={{
-          background: "#fff",
-          borderRadius: 14,
-          border: "1px solid #e5e7eb",
-          padding: 24,
-          marginBottom: 24,
-          boxShadow: "0 1px 3px rgba(0,0,0,.06)",
-        }}
-      >
+      {/* ── Panel de selección ──────────────────────────────────────────── */}
+      <div className="no-print" style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,.06)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <div
-            style={{
-              width: 32, height: 32, borderRadius: 8, background: BRAND_GRADIENT,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff", fontWeight: 700, fontSize: 14,
-            }}
-          >
-            EH
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14 }}>
+            ⏱️
           </div>
           <div>
             <h2 style={{ fontSize: 15, fontWeight: 700, color: "#1f2937", margin: 0 }}>
               Empresas con Servicios por Horas
             </h2>
             <p style={{ fontSize: 11, color: "#6b7280", margin: 0 }}>
-              Analiza empresas que tienen al menos un turno por horas registrado
+              Analiza los datos subidos en Configuración — empresas con al menos un turno por horas
             </p>
           </div>
         </div>
 
-        {/* Input de archivo */}
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>
-            Archivo de servicios (.xlsx) — columnas:{" "}
-            <code style={{ background: "#f3e8ff", padding: "1px 4px", borderRadius: 3, fontSize: 10 }}>
-              date, operation_type, company, passenger_name, driver_name, gmv, packages, route_time, estado_booking, booking_id, city
-            </code>
-          </label>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] || null);
-                setAllRows(null); setEmpresasConHoras([]); setReportData(null); setError("");
-              }}
-              className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-            />
-            <button
-              onClick={handleCargar}
-              disabled={!file || loading}
-              style={{
-                background: BRAND_GRADIENT, color: "#fff", border: "none", borderRadius: 8,
-                padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: !file || loading ? "not-allowed" : "pointer",
-                opacity: !file || loading ? 0.5 : 1, whiteSpace: "nowrap",
-              }}
-            >
-              {loading ? "Cargando..." : "Cargar archivo"}
-            </button>
+        {/* Selector de mes */}
+        {meses.length === 0 ? (
+          <div style={{ background: "#fef9c3", border: "1px solid #fde68a", borderRadius: 10, padding: "14px 18px", fontSize: 13, color: "#92400e" }}>
+            No hay meses cargados. Ve a la pestaña <strong>Configuración</strong> y sube un archivo de servicios primero.
           </div>
-          {file && !allRows && !loading && (
-            <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
-              Archivo seleccionado: <strong>{file.name}</strong>
-            </p>
-          )}
-        </div>
-
-        {/* Resultado de carga: empresas encontradas */}
-        {empresasConHoras.length > 0 && (
-          <div
-            style={{
-              background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10,
-              padding: "14px 18px", marginBottom: 16,
-            }}
-          >
-            <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 10 }}>
-              {empresasConHoras.length === 1
-                ? "1 empresa encontrada con servicios por Horas"
-                : `${empresasConHoras.length} empresas encontradas con servicios por Horas`}
-            </p>
-
-            {/* Selector de empresa */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {empresasConHoras.length > 1 && (
-                <button
-                  onClick={() => setEmpresaSeleccionada("")}
-                  style={{
-                    padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                    border: empresaSeleccionada === "" ? "2px solid #7C22D4" : "1px solid #d1d5db",
-                    background: empresaSeleccionada === "" ? "#ede9fe" : "#fff",
-                    color: empresaSeleccionada === "" ? "#7C22D4" : "#374151",
-                    cursor: "pointer",
-                  }}
-                >
-                  Todas ({empresasConHoras.reduce((s, e) => s + e.turnos, 0)} turnos)
-                </button>
-              )}
-              {empresasConHoras.map((emp) => (
-                <button
-                  key={emp.name}
-                  onClick={() => setEmpresaSeleccionada(emp.name)}
-                  style={{
-                    padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                    border: empresaSeleccionada === emp.name ? "2px solid #7C22D4" : "1px solid #d1d5db",
-                    background: empresaSeleccionada === emp.name ? "#ede9fe" : "#fff",
-                    color: empresaSeleccionada === emp.name ? "#7C22D4" : "#374151",
-                    cursor: "pointer",
-                    maxWidth: 280, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
-                  }}
-                  title={emp.name}
-                >
-                  {emp.name} ({fmtNum(emp.turnos)} turnos)
-                </button>
-              ))}
+        ) : (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 6 }}>
+                Selecciona el mes a analizar
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {meses.map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={() => handleCargarMes(m.key)}
+                    style={{
+                      padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                      border: mesSeleccionado === m.key ? "2px solid #7C22D4" : "1px solid #d1d5db",
+                      background: mesSeleccionado === m.key ? "#ede9fe" : "#fff",
+                      color: mesSeleccionado === m.key ? "#7C22D4" : "#374151",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
 
-        {error && (
-          <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>{error}</p>
-        )}
+            {loading && (
+              <p style={{ fontSize: 13, color: BRAND, marginBottom: 12 }}>Cargando datos del mes...</p>
+            )}
 
-        {/* Botones de acción */}
-        {empresasConHoras.length > 0 && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              onClick={handleGenerar}
-              style={{
-                background: BRAND_GRADIENT, color: "#fff", border: "none", borderRadius: 8,
-                padding: "10px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-              }}
-            >
-              Generar análisis
-            </button>
-            <button
-              onClick={handleLimpiar}
-              style={{
-                background: "#f3f4f6", color: "#374151", border: "1px solid #d1d5db",
-                borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-              }}
-            >
-              Limpiar
-            </button>
-          </div>
+            {/* Empresas encontradas */}
+            {empresasConHoras.length > 0 && (
+              <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 10 }}>
+                  {empresasConHoras.length === 1
+                    ? "1 empresa encontrada con servicios por Horas"
+                    : `${empresasConHoras.length} empresas encontradas con servicios por Horas`}
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {empresasConHoras.length > 1 && (
+                    <button
+                      onClick={() => setEmpresaSeleccionada("")}
+                      style={{
+                        padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        border: empresaSeleccionada === "" ? "2px solid #7C22D4" : "1px solid #d1d5db",
+                        background: empresaSeleccionada === "" ? "#ede9fe" : "#fff",
+                        color: empresaSeleccionada === "" ? "#7C22D4" : "#374151",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Todas ({empresasConHoras.reduce((s, e) => s + e.turnos, 0)} turnos)
+                    </button>
+                  )}
+                  {empresasConHoras.map((emp) => (
+                    <button
+                      key={emp.name}
+                      onClick={() => setEmpresaSeleccionada(emp.name)}
+                      style={{
+                        padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        border: empresaSeleccionada === emp.name ? "2px solid #7C22D4" : "1px solid #d1d5db",
+                        background: empresaSeleccionada === emp.name ? "#ede9fe" : "#fff",
+                        color: empresaSeleccionada === emp.name ? "#7C22D4" : "#374151",
+                        cursor: "pointer",
+                        maxWidth: 280, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
+                      }}
+                      title={emp.name}
+                    >
+                      {emp.name} ({fmtNum(emp.turnos)} turnos)
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", marginBottom: 12, fontSize: 13, color: "#dc2626" }}>
+                {error}
+              </div>
+            )}
+
+            {empresasConHoras.length > 0 && (
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  onClick={handleGenerar}
+                  style={{ background: BRAND_GRADIENT, color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Generar análisis
+                </button>
+                <button
+                  onClick={handleLimpiar}
+                  style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #d1d5db", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                >
+                  Limpiar
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* ── Reporte ─────────────────────────────────────────────────────── */}
-      {hayDatos && (
+      {reportData && (
         <div ref={reportRef} style={{ fontFamily: "'Segoe UI',system-ui,sans-serif" }}>
 
           {/* Header */}
-          <div
-            style={{
-              background: BRAND_GRADIENT, borderRadius: 14, padding: "28px 32px",
-              marginBottom: 20, position: "relative", overflow: "hidden",
-            }}
-          >
+          <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "28px 32px", marginBottom: 20, position: "relative", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
-                <img
-                  src={logoSrc} alt="Pibox"
-                  style={{ height: 36, marginBottom: 10, filter: "brightness(0) invert(1)" }}
-                />
+                <img src={logoSrc} alt="Pibox" style={{ height: 36, marginBottom: 10, filter: "brightness(0) invert(1)" }} />
                 <h1 style={{ color: "#fff", fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>
                   Análisis de Servicios por Horas
                 </h1>
-                <p style={{ color: "rgba(255,255,255,.85)", fontSize: 13, margin: "0 0 2px" }}>
-                  {tituloEmpresa}
-                </p>
+                <p style={{ color: "rgba(255,255,255,.85)", fontSize: 13, margin: "0 0 2px" }}>{tituloEmpresa}</p>
                 <p style={{ color: "rgba(255,255,255,.7)", fontSize: 11, margin: 0 }}>
-                  {empresaSeleccionada
-                    ? `Empresa · ${empresasConHoras.find((e) => e.name === empresaSeleccionada)?.turnos ?? ""} turnos`
+                  {mesLabel} · {empresaSeleccionada
+                    ? `${empresasConHoras.find((e) => e.name === empresaSeleccionada)?.turnos ?? ""} turnos`
                     : `${empresasConHoras.length} empresas · ${empresasConHoras.reduce((s, e) => s + e.turnos, 0)} turnos totales`}
                 </p>
               </div>
               <button
                 className="no-print"
-                onClick={() => printSection(reportRef, `Análisis Horas - ${tituloEmpresa}`)}
-                style={{
-                  background: "rgba(255,255,255,.2)", color: "#fff", border: "none",
-                  borderRadius: 8, padding: "10px 20px", fontSize: 12, fontWeight: 700,
-                  cursor: "pointer", backdropFilter: "blur(4px)",
-                }}
+                onClick={() => printSection(reportRef, `Análisis Horas - ${tituloEmpresa} - ${mesLabel}`)}
+                style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 12, fontWeight: 700, cursor: "pointer", backdropFilter: "blur(4px)" }}
               >
                 Descargar PDF
               </button>
@@ -703,13 +577,7 @@ export default function EmpresasHoras() {
 
           {/* KPIs */}
           <SectionHeader>Productividad — Solo completados</SectionHeader>
-          <div
-            className="kpi-grid"
-            style={{
-              display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
-              gap: 10, marginBottom: 14,
-            }}
-          >
+          <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
             <KpiCard label="Turnos completados (Horas)" value={fmtNum(reportData.totalServicios)} color="#16a34a" />
             <KpiCard label="Tareas On Demand" value={fmtNum(reportData.totalTareas)} color="#7C22D4" />
             <KpiCard label="Paquetes entregados" value={fmtNum(reportData.totalPackages)} color="#6366f1" />
@@ -747,21 +615,12 @@ export default function EmpresasHoras() {
                     fmtCOP(d.paquetes > 0 ? d.gmv / d.paquetes : 0),
                   ])
               )}
-            footer={[
-              "Total", "", "",
-              fmtNum(reportData.totalServicios),
-              fmtNum(reportData.totalTareas),
-              fmtNum(reportData.totalPackages),
-              fmtCOP(reportData.totalGMV),
-              fmtCOP(reportData.costoPorPaquete),
-            ]}
+            footer={["Total", "", "", fmtNum(reportData.totalServicios), fmtNum(reportData.totalTareas), fmtNum(reportData.totalPackages), fmtCOP(reportData.totalGMV), fmtCOP(reportData.costoPorPaquete)]}
           />
 
           {/* Productividad por conductor */}
           <div style={{ height: 14 }} />
-          <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>
-            Productividad por conductor
-          </p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Productividad por conductor</p>
           <DataTable
             headers={["Conductor", "Turnos", "Tareas OD", "Paquetes", "Paq/turno", "GMV", "Costo/paq"]}
             rows={Object.values(reportData.driverStats)
@@ -775,56 +634,27 @@ export default function EmpresasHoras() {
                 fmtCOP(d.gmvTotal),
                 fmtCOP(d.paquetes > 0 ? d.gmvTotal / d.paquetes : 0),
               ])}
-            footer={[
-              "Total",
-              fmtNum(reportData.totalServicios),
-              fmtNum(reportData.totalTareas),
-              fmtNum(reportData.totalPackages),
-              reportData.totalServicios > 0
-                ? (reportData.totalPackages / reportData.totalServicios).toFixed(1)
-                : "0",
-              fmtCOP(reportData.totalGMV),
-              fmtCOP(reportData.costoPorPaquete),
-            ]}
+            footer={["Total", fmtNum(reportData.totalServicios), fmtNum(reportData.totalTareas), fmtNum(reportData.totalPackages), reportData.totalServicios > 0 ? (reportData.totalPackages / reportData.totalServicios).toFixed(1) : "0", fmtCOP(reportData.totalGMV), fmtCOP(reportData.costoPorPaquete)]}
           />
 
           {/* Comportamiento por Sede */}
           {reportData.insightsSede?.length > 0 && (
             <>
               <div style={{ height: 20 }} />
-              <div
-                style={{
-                  background: "linear-gradient(135deg,#0891b2 0%,#6366f1 100%)",
-                  borderRadius: 10, padding: "8px 16px", marginBottom: 12,
-                }}
-              >
-                <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>
-                  Comportamiento por Sede / Cliente
-                </h3>
+              <div style={{ background: "linear-gradient(135deg,#0891b2 0%,#6366f1 100%)", borderRadius: 10, padding: "8px 16px", marginBottom: 12 }}>
+                <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>Comportamiento por Sede / Cliente</h3>
               </div>
-
-              <div
-                style={{
-                  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))",
-                  gap: 10, marginBottom: 8,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10, marginBottom: 8 }}>
                 {reportData.insightsSede.map((ins, i) => {
                   const colors = {
-                    top:       { bg: "#eff6ff", border: "#bfdbfe", left: "#2563eb", text: "#1d4ed8", icon: "★" },
-                    gmv:       { bg: "#f0fdf4", border: "#bbf7d0", left: "#16a34a", text: "#15803d", icon: "$" },
-                    eficiencia:{ bg: "#fefce8", border: "#fde68a", left: "#d97706", text: "#92400e", icon: "⚡" },
-                    info:      { bg: "#faf5ff", border: "#e9d5ff", left: "#7C22D4", text: "#6b21a8", icon: "●" },
+                    top:        { bg: "#eff6ff", border: "#bfdbfe", left: "#2563eb", text: "#1d4ed8", icon: "★" },
+                    gmv:        { bg: "#f0fdf4", border: "#bbf7d0", left: "#16a34a", text: "#15803d", icon: "$" },
+                    eficiencia: { bg: "#fefce8", border: "#fde68a", left: "#d97706", text: "#92400e", icon: "⚡" },
+                    info:       { bg: "#faf5ff", border: "#e9d5ff", left: "#7C22D4", text: "#6b21a8", icon: "●" },
                   };
                   const c = colors[ins.tipo] || colors.info;
                   return (
-                    <div
-                      key={i}
-                      style={{
-                        background: c.bg, border: `1px solid ${c.border}`,
-                        borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${c.left}`,
-                      }}
-                    >
+                    <div key={i} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 10, padding: "12px 16px", borderLeft: `4px solid ${c.left}` }}>
                       <p style={{ fontSize: 12, color: c.text, margin: 0, lineHeight: 1.5 }}>
                         <span style={{ fontWeight: 700, marginRight: 6 }}>{c.icon}</span>
                         {ins.texto}
@@ -834,11 +664,8 @@ export default function EmpresasHoras() {
                 })}
               </div>
 
-              {/* Tabla resumen por sede */}
               <div style={{ height: 10 }} />
-              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>
-                Resumen por sede
-              </p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Resumen por sede</p>
               <DataTable
                 headers={["Sede / Cliente", "Turnos", "Tareas OD", "Paquetes", "Paq/hora", "GMV", "Costo/paq", "Tipo"]}
                 rows={reportData.sedeArr
@@ -862,18 +689,10 @@ export default function EmpresasHoras() {
           {(reportData.totalNoCompHoras > 0 || reportData.totalNoCompPaq > 0) && (
             <>
               <div style={{ height: 20 }} />
-              <div
-                style={{
-                  background: "linear-gradient(135deg,#dc2626 0%,#b91c1c 100%)",
-                  borderRadius: 10, padding: "8px 16px", marginBottom: 12,
-                }}
-              >
-                <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>
-                  Servicios No Completados
-                </h3>
+              <div style={{ background: "linear-gradient(135deg,#dc2626 0%,#b91c1c 100%)", borderRadius: 10, padding: "8px 16px", marginBottom: 12 }}>
+                <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>Servicios No Completados</h3>
               </div>
 
-              {/* Turnos no completados */}
               {reportData.totalNoCompHoras > 0 && (
                 <>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>
@@ -881,33 +700,17 @@ export default function EmpresasHoras() {
                   </p>
                   <DataTable
                     headers={["Estado", "Cantidad", "GMV"]}
-                    rows={Object.entries(reportData.noCompHorasPorEstado)
-                      .sort((a, b) => b[1].count - a[1].count)
-                      .map(([estado, d]) => [estado, fmtNum(d.count), fmtCOP(d.gmv)])}
-                    footer={[
-                      "Total",
-                      fmtNum(reportData.totalNoCompHoras),
-                      fmtCOP(
-                        Object.values(reportData.noCompHorasPorEstado).reduce((s, d) => s + d.gmv, 0)
-                      ),
-                    ]}
+                    rows={Object.entries(reportData.noCompHorasPorEstado).sort((a, b) => b[1].count - a[1].count).map(([estado, d]) => [estado, fmtNum(d.count), fmtCOP(d.gmv)])}
+                    footer={["Total", fmtNum(reportData.totalNoCompHoras), fmtCOP(Object.values(reportData.noCompHorasPorEstado).reduce((s, d) => s + d.gmv, 0))]}
                   />
                   <div style={{ height: 10 }} />
                   <DataTable
                     headers={["Fecha", "Sede", "Conductor", "Estado"]}
-                    rows={reportData.horasNoComp
-                      .sort((a, b) => a.date.localeCompare(b.date))
-                      .map((r) => [
-                        r.date,
-                        abrevCiudad(r.sede),
-                        { v: r.driver, cls: "cell-driver" },
-                        r.estadoRaw,
-                      ])}
+                    rows={reportData.horasNoComp.sort((a, b) => a.date.localeCompare(b.date)).map((r) => [r.date, abrevCiudad(r.sede), { v: r.driver, cls: "cell-driver" }, r.estadoRaw])}
                   />
                 </>
               )}
 
-              {/* Tareas OD no completadas */}
               {reportData.totalNoCompPaq > 0 && (
                 <>
                   <div style={{ height: 14 }} />
@@ -916,27 +719,13 @@ export default function EmpresasHoras() {
                   </p>
                   <DataTable
                     headers={["Estado", "Registros", "Paquetes"]}
-                    rows={Object.entries(reportData.noCompPaqPorEstado)
-                      .sort((a, b) => b[1].count - a[1].count)
-                      .map(([estado, d]) => [estado, fmtNum(d.count), fmtNum(d.packages)])}
-                    footer={[
-                      "Total",
-                      fmtNum(reportData.totalNoCompPaq),
-                      fmtNum(reportData.paqNoComp.reduce((s, r) => s + r.packages, 0)),
-                    ]}
+                    rows={Object.entries(reportData.noCompPaqPorEstado).sort((a, b) => b[1].count - a[1].count).map(([estado, d]) => [estado, fmtNum(d.count), fmtNum(d.packages)])}
+                    footer={["Total", fmtNum(reportData.totalNoCompPaq), fmtNum(reportData.paqNoComp.reduce((s, r) => s + r.packages, 0))]}
                   />
                   <div style={{ height: 10 }} />
                   <DataTable
                     headers={["Fecha", "Sede", "Conductor", "Paquetes", "Estado"]}
-                    rows={reportData.paqNoComp
-                      .sort((a, b) => a.date.localeCompare(b.date))
-                      .map((r) => [
-                        r.date,
-                        abrevCiudad(r.sede),
-                        { v: r.driver, cls: "cell-driver" },
-                        fmtNum(r.packages),
-                        r.estadoRaw,
-                      ])}
+                    rows={reportData.paqNoComp.sort((a, b) => a.date.localeCompare(b.date)).map((r) => [r.date, abrevCiudad(r.sede), { v: r.driver, cls: "cell-driver" }, fmtNum(r.packages), r.estadoRaw])}
                   />
                 </>
               )}
