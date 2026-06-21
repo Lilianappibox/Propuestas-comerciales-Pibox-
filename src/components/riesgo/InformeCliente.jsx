@@ -227,13 +227,16 @@ function processHoras(rows) {
   const totalServicios = horasComp.length;
   const totalPaqComp = paqComp.reduce((s, r) => s + r.packages, 0);
   const costoPorPaquete = totalPackages > 0 ? totalGMV / totalPackages : 0;
+  const totalMinutos = horasComp.reduce((s, r) => s + r.timeMin, 0);
+  const totalHoras = totalMinutos / 60;
+  const valorPorHora = totalHoras > 0 ? totalGMV / totalHoras : 0;
 
   return {
     horasComp, horasNoComp, paqComp, paqNoComp,
     byDateSede, driverStats,
     noCompHorasPorEstado, noCompPaqPorEstado,
     totalGMV, totalPackages, totalServicios, totalPaqComp,
-    costoPorPaquete,
+    costoPorPaquete, totalHoras, valorPorHora,
     totalNoCompHoras: horasNoComp.length,
     totalNoCompPaq: paqNoComp.length,
   };
@@ -669,6 +672,8 @@ export default function InformeCliente({ currentUser }) {
                 <KpiCard label="Servicios por horas completados" value={fmtNum(horasData.totalServicios)} color="#16a34a" />
                 <KpiCard label="Paquetes gestionados" value={fmtNum(horasData.totalPackages)} color="#7C22D4" />
                 <KpiCard label="GMV total" value={fmtCOP(horasData.totalGMV)} color="#16a34a" />
+                <KpiCard label="Horas trabajadas" value={horasData.totalHoras.toFixed(1) + " h"} color="#6366f1" />
+                <KpiCard label="Valor por hora (GMV/hora)" value={fmtCOP(horasData.valorPorHora)} color="#0891b2" />
                 <KpiCard label="Costo por paquete (GMV/paq)" value={fmtCOP(horasData.costoPorPaquete)} color="#f59e0b" />
                 {horasData.totalNoCompHoras > 0 && <KpiCard label="Servicios horas no completados" value={fmtNum(horasData.totalNoCompHoras)} color="#dc2626" />}
                 {horasData.totalNoCompPaq > 0 && <KpiCard label="Paquetes no completados" value={fmtNum(horasData.totalNoCompPaq)} color="#dc2626" />}
