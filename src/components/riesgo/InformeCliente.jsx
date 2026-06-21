@@ -51,6 +51,55 @@ function readFile(file) {
   });
 }
 
+const CITY_ABBR = {
+  "barranquilla": "B/QUILLA", "barranquilla d.e.": "B/QUILLA",
+  "bucaramanga": "B/MANGA",
+  "barrancabermeja": "B/BERMEJA",
+  "bogota": "BOGOTÁ", "bogotá": "BOGOTÁ", "bogotá d.c.": "BOGOTÁ",
+  "medellin": "MEDELLÍN", "medellín": "MEDELLÍN",
+  "cartagena": "C/GENA", "cartagena de indias": "C/GENA",
+  "villavicencio": "VILLAVO",
+  "santa marta": "STA MARTA",
+  "buenaventura": "B/VENTURA",
+  "san jose del guaviare": "SJG",
+  "florencia": "FLORENCIA",
+  "popayan": "POPAYÁN", "popayán": "POPAYÁN",
+  "cucuta": "CÚCUTA", "cúcuta": "CÚCUTA",
+  "manizales": "MANIZALES",
+  "pereira": "PEREIRA",
+  "armenia": "ARMENIA",
+  "ibague": "IBAGUÉ", "ibagué": "IBAGUÉ",
+  "neiva": "NEIVA",
+  "pasto": "PASTO",
+  "monteria": "MONTERÍA", "montería": "MONTERÍA",
+  "valledupar": "VALLEDUPAR",
+  "sincelejo": "SINCELEJO",
+  "riohacha": "RIOHACHA",
+  "quibdo": "QUIBDÓ", "quibdó": "QUIBDÓ",
+  "tunja": "TUNJA",
+  "yopal": "YOPAL",
+  "mocoa": "MOCOA",
+  "leticia": "LETICIA",
+  "mitu": "MITÚ",
+  "puerto carreno": "PTO CARREÑO",
+  "inirida": "INÍRIDA",
+  "san andres": "SAN ANDRÉS",
+  "chia": "CHÍA", "chía": "CHÍA",
+  "soacha": "SOACHA",
+  "bello": "BELLO",
+  "itagui": "ITAGÜÍ", "itagüí": "ITAGÜÍ",
+  "envigado": "ENVIGADO",
+  "soledad": "SOLEDAD",
+  "palmira": "PALMIRA",
+  "buga": "BUGA",
+  "tulua": "TULUÁ", "tuluá": "TULUÁ",
+};
+function abrevCiudad(nombre) {
+  if (!nombre) return nombre;
+  const lower = String(nombre).toLowerCase().trim();
+  return CITY_ABBR[lower] || nombre;
+}
+
 const fmtCOP = (v) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(v);
 const fmtPct = (v) => (v * 100).toFixed(1) + "%";
 const fmtNum = (v) => new Intl.NumberFormat("es-CO").format(v);
@@ -96,8 +145,9 @@ function printSection(ref, title) {
       body { margin: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .no-print { display: none !important; }
       .print-root { max-width: 100% !important; padding: 0 !important; }
-      table { table-layout: fixed; width: 100% !important; font-size: 9px; border-collapse: collapse; }
-      table th, table td { padding: 4px 6px; word-wrap: break-word; overflow-wrap: break-word; }
+      table { table-layout: fixed; width: 100% !important; font-size: 7.5px; border-collapse: collapse; }
+      table th { font-size: 7px !important; padding: 3px 5px !important; }
+      table td { padding: 3px 5px; word-wrap: break-word; overflow-wrap: break-word; }
       .kpi-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
       .section-card { break-inside: avoid; page-break-inside: avoid; margin-bottom: 10px; }
       .recharts-wrapper, .recharts-surface { width: 100% !important; max-width: 100% !important; }
@@ -801,7 +851,7 @@ export default function InformeCliente({ currentUser }) {
                     Object.entries(e.drivers)
                       .sort((a, b) => b[1].paquetes - a[1].paquetes)
                       .map(([driver, d]) => [
-                        e.date, e.sede, driver,
+                        e.date, abrevCiudad(e.sede), driver,
                         fmtNum(d.servicios), fmtNum(d.tareas), fmtNum(d.paquetes), fmtCOP(d.gmv),
                         fmtCOP(d.paquetes > 0 ? d.gmv / d.paquetes : 0),
                       ])
@@ -855,7 +905,7 @@ export default function InformeCliente({ currentUser }) {
                       .filter(s => s.serviciosHoras > 0)
                       .sort((a, b) => b.gmv - a.gmv)
                       .map(s => [
-                        s.sede,
+                        abrevCiudad(s.sede),
                         fmtNum(s.serviciosHoras),
                         fmtNum(s.tareas),
                         fmtNum(s.packagesHoras),
@@ -894,7 +944,7 @@ export default function InformeCliente({ currentUser }) {
                         headers={["Fecha", "Sede", "Conductor", "Estado"]}
                         rows={horasData.horasNoComp
                           .sort((a, b) => a.date.localeCompare(b.date))
-                          .map(r => [r.date, r.sede, r.driver, r.estadoRaw])}
+                          .map(r => [r.date, abrevCiudad(r.sede), r.driver, r.estadoRaw])}
                       />
                     </>
                   )}
@@ -918,7 +968,7 @@ export default function InformeCliente({ currentUser }) {
                         headers={["Fecha", "Sede", "Conductor", "Paquetes", "Estado"]}
                         rows={horasData.paqNoComp
                           .sort((a, b) => a.date.localeCompare(b.date))
-                          .map(r => [r.date, r.sede, r.driver, fmtNum(r.packages), r.estadoRaw])}
+                          .map(r => [r.date, abrevCiudad(r.sede), r.driver, fmtNum(r.packages), r.estadoRaw])}
                       />
                     </>
                   )}
