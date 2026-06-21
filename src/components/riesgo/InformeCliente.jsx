@@ -213,27 +213,50 @@ function processHoras(rows) {
   }
 
   // === PRODUCTIVIDAD: solo completados ===
-  // Por fecha + sede
-  const byDateSede = {};
-  for (const r of horasComp) {
-    const key = `${r.date}||${r.sede}`;
-    if (!byDateSede[key]) byDateSede[key] = { date: r.date, sede: r.sede, drivers: {}, gmvTotal: 0, packagesTotal: 0, serviciosCount: 0 };
-    const e = byDateSede[key];
-    e.gmvTotal += r.gmv; e.packagesTotal += r.packages; e.serviciosCount++;
-    if (!e.drivers[r.driver]) e.drivers[r.driver] = { packages: 0, gmv: 0, servicios: 0 };
-    e.drivers[r.driver].packages += r.packages;
-    e.drivers[r.driver].gmv += r.gmv;
-    e.drivers[r.driver].servicios++;
+  // Paso 1: contar tareas On Demand (completadas) por date+driver
+  // Cada fila On Demand = 1 tarea entregada dentro del turno
+  const odByDateDriver = {};
+  for (const r of paqComp) {
+    const key = `${r.date}||${r.driver}`;
+    if (!odByDateDriver[key]) odByDateDriver[key] = 0;
+    odByDateDriver[key]++;   // cada fila On Demand = 1 tarea
   }
 
-  // Productividad por conductor (horas completadas)
-  const driverStats = {};
+  // Paso 2: agregar turnos (Horas) por date+driver+sede (evitar duplicados)
+  const turnosByKey = {};
   for (const r of horasComp) {
-    if (!driverStats[r.driver]) driverStats[r.driver] = { driver: r.driver, servicios: 0, packagesTotal: 0, gmvTotal: 0, horasTrabajadas: 0 };
-    driverStats[r.driver].servicios++;
-    driverStats[r.driver].packagesTotal += r.packages;
-    driverStats[r.driver].gmvTotal += r.gmv;
-    driverStats[r.driver].horasTrabajadas += r.horasTrabajadas;
+    const key = `${r.date}||${r.driver}||${r.sede}`;
+    if (!turnosByKey[key]) turnosByKey[key] = { date: r.date, driver: r.driver, sede: r.sede, servicios: 0, gmv: 0, horasTrabajadas: 0 };
+    turnosByKey[key].servicios++;
+    turnosByKey[key].gmv += r.gmv;
+    turnosByKey[key].horasTrabajadas += r.horasTrabajadas;
+  }
+
+  // Paso 3: byDateSede — paquetes = On Demand del mismo date+driver
+  const byDateSede = {};
+  for (const t of Object.values(turnosByKey)) {
+    const sedKey = `${t.date}||${t.sede}`;
+    const paquetes = odByDateDriver[`${t.date}||${t.driver}`] || 0;
+    if (!byDateSede[sedKey]) byDateSede[sedKey] = { date: t.date, sede: t.sede, drivers: {}, gmvTotal: 0, packagesTotal: 0, serviciosCount: 0 };
+    const e = byDateSede[sedKey];
+    e.gmvTotal += t.gmv;
+    e.packagesTotal += paquetes;
+    e.serviciosCount += t.servicios;
+    if (!e.drivers[t.driver]) e.drivers[t.driver] = { packages: 0, gmv: 0, servicios: 0 };
+    e.drivers[t.driver].packages += paquetes;
+    e.drivers[t.driver].gmv += t.gmv;
+    e.drivers[t.driver].servicios += t.servicios;
+  }
+
+  // Productividad por conductor
+  const driverStats = {};
+  for (const t of Object.values(turnosByKey)) {
+    const paquetes = odByDateDriver[`${t.date}||${t.driver}`] || 0;
+    if (!driverStats[t.driver]) driverStats[t.driver] = { driver: t.driver, servicios: 0, packagesTotal: 0, gmvTotal: 0, horasTrabajadas: 0 };
+    driverStats[t.driver].servicios += t.servicios;
+    driverStats[t.driver].packagesTotal += paquetes;
+    driverStats[t.driver].gmvTotal += t.gmv;
+    driverStats[t.driver].horasTrabajadas += t.horasTrabajadas;
   }
 
   // === NO COMPLETADOS: agrupados por estado y tipo ===
@@ -255,25 +278,23 @@ function processHoras(rows) {
   }
 
   const totalGMV = horasComp.reduce((s, r) => s + r.gmv, 0);
-  const totalPackages = horasComp.reduce((s, r) => s + r.packages, 0);
   const totalServicios = horasComp.length;
-  const totalPaqComp = paqComp.reduce((s, r) => s + r.packages, 0);
+  const totalPackages = paqComp.length;              // cada fila On Demand = 1 tarea entregada
+  const totalPaqComp = totalPackages;
   const costoPorPaquete = totalPackages > 0 ? totalGMV / totalPackages : 0;
   const totalHoras = horasComp.reduce((s, r) => s + r.horasTrabajadas, 0);
   const valorPorHora = totalHoras > 0 ? totalGMV / totalHoras : 0;
 
-  // === Análisis por passenger_name (sede) ===
+  // === Análisis por passenger_name (sede) — basado en turnosByKey + odByDateDriver ===
   const sedeStats = {};
-  for (const r of horasComp) {
-    if (!sedeStats[r.sede]) sedeStats[r.sede] = { sede: r.sede, serviciosHoras: 0, packagesHoras: 0, gmv: 0, horas: 0, soloHoras: true };
-    sedeStats[r.sede].serviciosHoras++;
-    sedeStats[r.sede].packagesHoras += r.packages;
-    sedeStats[r.sede].gmv += r.gmv;
-    sedeStats[r.sede].horas += r.horasTrabajadas;
-  }
-  for (const r of paqComp) {
-    if (!sedeStats[r.sede]) sedeStats[r.sede] = { sede: r.sede, serviciosHoras: 0, packagesHoras: 0, gmv: 0, horas: 0, soloHoras: false };
-    sedeStats[r.sede].soloHoras = false; // tiene On Demand también
+  for (const t of Object.values(turnosByKey)) {
+    const paquetes = odByDateDriver[`${t.date}||${t.driver}`] || 0;
+    if (!sedeStats[t.sede]) sedeStats[t.sede] = { sede: t.sede, serviciosHoras: 0, packagesHoras: 0, gmv: 0, horas: 0, soloHoras: true };
+    sedeStats[t.sede].serviciosHoras += t.servicios;
+    sedeStats[t.sede].packagesHoras += paquetes;
+    sedeStats[t.sede].gmv += t.gmv;
+    sedeStats[t.sede].horas += t.horasTrabajadas;
+    if (paquetes > 0) sedeStats[t.sede].soloHoras = false;
   }
   // Añadir sedes que solo aparecen en no completados (para tracking)
   const sedeArr = Object.values(sedeStats);
