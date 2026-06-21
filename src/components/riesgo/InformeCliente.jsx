@@ -167,9 +167,18 @@ function processHoras(rows) {
     const city = String(r["city"] || "");
     const estadoRaw = String(r["estado_booking"] || r["service_status"] || "").trim();
     const cancelacion = String(r["cancelation"] || r["cancelacion"] || "").trim();
-    const timeMin = parseFloat(r["time(min)"]) || 0;
+    // route_time viene en HH:MM:SS → convertir a horas
+    function parseHHMMSS(v) {
+      if (!v) return 0;
+      const s = String(v).trim();
+      const parts = s.split(":").map(Number);
+      if (parts.length === 3) return parts[0] + parts[1] / 60 + parts[2] / 3600;
+      if (parts.length === 2) return parts[0] + parts[1] / 60;
+      return 0;
+    }
+    const horasTrabajadas = parseHHMMSS(r["route_time"]);
 
-    const entry = { date, sede, driver, gmv, packages, bookingId, city, estadoRaw, cancelacion, timeMin };
+    const entry = { date, sede, driver, gmv, packages, bookingId, city, estadoRaw, cancelacion, horasTrabajadas };
 
     if (isPerHour) {
       if (isCompletado(r)) horasComp.push(entry);
@@ -197,11 +206,11 @@ function processHoras(rows) {
   // Productividad por conductor (horas completadas)
   const driverStats = {};
   for (const r of horasComp) {
-    if (!driverStats[r.driver]) driverStats[r.driver] = { driver: r.driver, servicios: 0, packagesTotal: 0, gmvTotal: 0, timeMin: 0 };
+    if (!driverStats[r.driver]) driverStats[r.driver] = { driver: r.driver, servicios: 0, packagesTotal: 0, gmvTotal: 0, horasTrabajadas: 0 };
     driverStats[r.driver].servicios++;
     driverStats[r.driver].packagesTotal += r.packages;
     driverStats[r.driver].gmvTotal += r.gmv;
-    driverStats[r.driver].timeMin += r.timeMin;
+    driverStats[r.driver].horasTrabajadas += r.horasTrabajadas;
   }
 
   // === NO COMPLETADOS: agrupados por estado y tipo ===
@@ -227,8 +236,7 @@ function processHoras(rows) {
   const totalServicios = horasComp.length;
   const totalPaqComp = paqComp.reduce((s, r) => s + r.packages, 0);
   const costoPorPaquete = totalPackages > 0 ? totalGMV / totalPackages : 0;
-  const totalMinutos = horasComp.reduce((s, r) => s + r.timeMin, 0);
-  const totalHoras = totalMinutos / 60;
+  const totalHoras = horasComp.reduce((s, r) => s + r.horasTrabajadas, 0);
   const valorPorHora = totalHoras > 0 ? totalGMV / totalHoras : 0;
 
   return {
