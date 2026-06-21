@@ -169,12 +169,27 @@ function processHoras(rows) {
     return s === "completado" || s === "completed";
   }
 
-  // Separar por is_per_hour Y por estado completado
-  const horasComp = [], horasNoComp = [];   // is_per_hour=true
-  const paqComp = [], paqNoComp = [];        // is_per_hour=false
+  // Separar por operation_type Y por estado completado
+  // "Horas"     → turno por horas (reemplaza is_per_hour=true)
+  // "On Demand" → tareas dentro del turno (reemplaza is_per_hour=false)
+  const horasComp = [], horasNoComp = [];
+  const paqComp = [], paqNoComp = [];
+
+  function parseHHMMSS(v) {
+    if (!v) return 0;
+    const s = String(v).trim();
+    const parts = s.split(":").map(Number);
+    if (parts.length === 3) return parts[0] + parts[1] / 60 + parts[2] / 3600;
+    if (parts.length === 2) return parts[0] + parts[1] / 60;
+    return 0;
+  }
 
   for (const r of rows) {
-    const isPerHour = String(r["is_per_hour"] || "").toLowerCase().trim() === "true";
+    const opType = String(r["operation_type"] || "").trim().toLowerCase();
+    const esTurno = opType === "horas";           // turno por horas
+    const esTarea = opType === "on demand";        // tarea dentro del turno
+    if (!esTurno && !esTarea) continue;            // ignorar otros tipos
+
     const date = parseDate(r["date"]);
     const sede = String(r["passenger_name"] || "Sin sede").trim();
     const driver = String(r["driver_name"] || "Sin conductor").trim();
@@ -184,20 +199,11 @@ function processHoras(rows) {
     const city = String(r["city"] || "");
     const estadoRaw = String(r["estado_booking"] || r["service_status"] || "").trim();
     const cancelacion = String(r["cancelation"] || r["cancelacion"] || "").trim();
-    // route_time viene en HH:MM:SS → convertir a horas
-    function parseHHMMSS(v) {
-      if (!v) return 0;
-      const s = String(v).trim();
-      const parts = s.split(":").map(Number);
-      if (parts.length === 3) return parts[0] + parts[1] / 60 + parts[2] / 3600;
-      if (parts.length === 2) return parts[0] + parts[1] / 60;
-      return 0;
-    }
     const horasTrabajadas = parseHHMMSS(r["route_time"]);
 
     const entry = { date, sede, driver, gmv, packages, bookingId, city, estadoRaw, cancelacion, horasTrabajadas };
 
-    if (isPerHour) {
+    if (esTurno) {
       if (isCompletado(r)) horasComp.push(entry);
       else horasNoComp.push(entry);
     } else {
@@ -284,14 +290,14 @@ function processHoras(rows) {
     // Mayor GMV
     const mayorGMV = sedeArr.reduce((a, b) => (b.gmv > a.gmv ? b : a));
     insightsSede.push({ tipo: "gmv", texto: `"${mayorGMV.sede}" genera el mayor GMV: ${fmtCOP(mayorGMV.gmv)} con ${fmtNum(mayorGMV.serviciosHoras)} servicios por horas.` });
-    // Solo servicios por horas (no tienen On Demand)
+    // Solo turnos (no tienen tareas On Demand)
     const soloHorasSedes = sedeArr.filter(s => s.soloHoras && s.serviciosHoras > 0);
     if (soloHorasSedes.length > 0)
-      insightsSede.push({ tipo: "info", texto: `${soloHorasSedes.length === 1 ? `La sede "${soloHorasSedes[0].sede}" usa` : `${soloHorasSedes.length} sedes usan`} exclusivamente servicios por horas: ${soloHorasSedes.map(s => s.sede).join(", ")}.` });
-    // Sedes con On Demand adicional
+      insightsSede.push({ tipo: "info", texto: `${soloHorasSedes.length === 1 ? `La sede "${soloHorasSedes[0].sede}" opera` : `${soloHorasSedes.length} sedes operan`} exclusivamente con turnos por horas (sin tareas On Demand): ${soloHorasSedes.map(s => s.sede).join(", ")}.` });
+    // Sedes con turnos + tareas On Demand
     const mixtas = sedeArr.filter(s => !s.soloHoras && s.serviciosHoras > 0);
     if (mixtas.length > 0)
-      insightsSede.push({ tipo: "info", texto: `${mixtas.length === 1 ? `"${mixtas[0].sede}" combina` : `${mixtas.length} sedes combinan`} servicios por horas con paquetes On Demand: ${mixtas.map(s => s.sede).join(", ")}.` });
+      insightsSede.push({ tipo: "info", texto: `${mixtas.length === 1 ? `"${mixtas[0].sede}" combina` : `${mixtas.length} sedes combinan`} turnos por horas con tareas On Demand: ${mixtas.map(s => s.sede).join(", ")}.` });
     // Mayor cantidad de servicios
     const masSvc = sedeArr.reduce((a, b) => (b.serviciosHoras > a.serviciosHoras ? b : a));
     insightsSede.push({ tipo: "top", texto: `"${masSvc.sede}" tiene el mayor número de servicios por horas: ${fmtNum(masSvc.serviciosHoras)}.` });
@@ -542,7 +548,7 @@ export default function InformeCliente({ currentUser }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <div style={{ width: 20, height: 20, borderRadius: 4, background: "#7C22D4", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700 }}>H</div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "#7C22D4", display: "block", margin: 0 }}>
-              Analisis Servicios por Horas (.xlsx) — reporte con columna <code style={{ background: "#f3e8ff", padding: "1px 4px", borderRadius: 3 }}>is_per_hour</code>
+              Analisis Servicios por Horas (.xlsx) — reporte con columna <code style={{ background: "#f3e8ff", padding: "1px 4px", borderRadius: 3 }}>operation_type</code>
             </label>
           </div>
           <input ref={horasFileRef} type="file" accept=".xlsx,.xls" onChange={e => setHorasFile(e.target.files?.[0] || null)}
@@ -827,7 +833,7 @@ export default function InformeCliente({ currentUser }) {
                         s.horas > 0 ? (s.packagesHoras / s.horas).toFixed(1) : "—",
                         fmtCOP(s.gmv),
                         s.packagesHoras > 0 ? fmtCOP(s.gmv / s.packagesHoras) : "—",
-                        s.soloHoras ? "Solo horas" : "Horas + OD",
+                        s.soloHoras ? "Solo turnos" : "Turnos + OD",
                       ])}
                   />
                 </>
@@ -845,7 +851,7 @@ export default function InformeCliente({ currentUser }) {
                   {horasData.totalNoCompHoras > 0 && (
                     <>
                       <p style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>
-                        Servicios por horas no completados ({fmtNum(horasData.totalNoCompHoras)})
+                        Turnos (Horas) no completados ({fmtNum(horasData.totalNoCompHoras)})
                       </p>
                       <DataTable
                         headers={["Estado", "Cantidad", "GMV"]}
@@ -869,7 +875,7 @@ export default function InformeCliente({ currentUser }) {
                     <>
                       <div style={{ height: 14 }} />
                       <p style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", marginBottom: 6 }}>
-                        Paquetes (On Demand) no completados ({fmtNum(horasData.totalNoCompPaq)})
+                        Tareas On Demand no completadas ({fmtNum(horasData.totalNoCompPaq)})
                       </p>
                       <DataTable
                         headers={["Estado", "Registros", "Paquetes"]}
