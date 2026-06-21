@@ -10,6 +10,7 @@ const AnalisisPilotos     = lazy(() => import("./riesgo/AnalisisPilotos"));
 const ClientesNuevos      = lazy(() => import("./riesgo/ClientesNuevos"));
 const ClientesPerdidos    = lazy(() => import("./riesgo/ClientesPerdidos"));
 const InformeCliente      = lazy(() => import("./riesgo/InformeCliente"));
+const EmpresasHoras       = lazy(() => import("./riesgo/EmpresasHoras"));
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 
@@ -22,6 +23,7 @@ const TABS = [
   { id:"nuevos",   icon:"🆕",  label:"Clientes Nuevos"    },
   { id:"perdidos", icon:"📉",  label:"Clientes Perdidos"  },
   { id:"informeCliente", icon:"📋", label:"Informe Clientes" },
+  { id:"empresasHoras",  icon:"⏱️", label:"Empresas por Horas" },
   { id:"config",   icon:"⚙️",  label:"Configuración"      },
 ];
 
@@ -114,6 +116,7 @@ export default function RiesgoComercial({ currentUser }) {
           {tab === "nuevos"   && <ClientesNuevos />}
           {tab === "perdidos" && <ClientesPerdidos />}
           {tab === "informeCliente" && <InformeCliente currentUser={currentUser} />}
+          {tab === "empresasHoras"  && <EmpresasHoras currentUser={currentUser} />}
           {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
         </Suspense>
       </div>
