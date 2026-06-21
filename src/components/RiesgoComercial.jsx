@@ -19,11 +19,11 @@ const TABS = [
   { id:"ranking",  icon:"🗂️",  label:"Ranking"            },
   { id:"ciudad",   icon:"🏙️",  label:"Análisis por Ciudad" },
   { id:"informe",  icon:"📄",  label:"Análisis por Empresa" },
+  { id:"empresasHoras",  icon:"⏱️", label:"Empresas por Horas" },
   { id:"pilotos",  icon:"👤",  label:"Análisis Pilotos"    },
   { id:"nuevos",   icon:"🆕",  label:"Clientes Nuevos"    },
   { id:"perdidos", icon:"📉",  label:"Clientes Perdidos"  },
   { id:"informeCliente", icon:"📋", label:"Informe Clientes" },
-  { id:"empresasHoras",  icon:"⏱️", label:"Empresas por Horas" },
   { id:"config",   icon:"⚙️",  label:"Configuración"      },
 ];
 
