@@ -151,6 +151,11 @@ function printSection(ref, title) {
       table td:first-child { font-size: 6.5px !important; white-space: nowrap; width: 52px; }
       table td.cell-driver { font-size: 6px !important; line-height: 1.3; }
       table th:first-child { width: 52px; }
+      /* Tabla de direcciones: primera columna ancha y con salto de línea */
+      .dir-table table { font-size: 7px; }
+      .dir-table table td:first-child { white-space: normal !important; width: auto !important; font-size: 6.5px !important; }
+      .dir-table table th:first-child { width: auto !important; }
+      .dir-table table th:not(:first-child), .dir-table table td:not(:first-child) { width: 60px; text-align: center; }
       .kpi-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
       .section-card { break-inside: avoid; page-break-inside: avoid; margin-bottom: 10px; }
       .recharts-wrapper, .recharts-surface { width: 100% !important; max-width: 100% !important; }
@@ -894,21 +899,23 @@ export default function InformeCliente({ currentUser }) {
                     Direcciones con más entregas en el mes
                     {paqData.dirArr.length > 30 ? ` — Top 30 de ${fmtNum(paqData.dirArr.length)}` : ""}
                   </p>
-                  <DataTable
-                    headers={["Dirección de entrega", "Entregas", "Entregados", "% Efectividad"]}
-                    rows={paqData.dirArr.slice(0, 30).map(d => [
-                      d.raw,
-                      fmtNum(d.count),
-                      fmtNum(d.entregados),
-                      fmtPct(d.count > 0 ? d.entregados / d.count : 0),
-                    ])}
-                    footer={[
-                      `Total (${fmtNum(paqData.uniqueDirs)} direcciones)`,
-                      fmtNum(paqData.total),
-                      fmtNum(paqData.entregados),
-                      fmtPct(paqData.efectividad),
-                    ]}
-                  />
+                  <div className="dir-table">
+                    <DataTable
+                      headers={["Dirección de entrega", "Entregas", "Entregados", "% Efectividad"]}
+                      rows={paqData.dirArr.slice(0, 30).map(d => [
+                        d.raw,
+                        fmtNum(d.count),
+                        fmtNum(d.entregados),
+                        fmtPct(d.count > 0 ? d.entregados / d.count : 0),
+                      ])}
+                      footer={[
+                        `Total (${fmtNum(paqData.uniqueDirs)} direcciones)`,
+                        fmtNum(paqData.total),
+                        fmtNum(paqData.entregados),
+                        fmtPct(paqData.efectividad),
+                      ]}
+                    />
+                  </div>
                 </>
               )}
             </>
