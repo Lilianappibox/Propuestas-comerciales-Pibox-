@@ -882,6 +882,41 @@ export default function InformeCliente({ currentUser }) {
                     <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>📍 Direcciones de Entrega</h3>
                   </div>
 
+                  {/* Top 3 direcciones frecuentes */}
+                  {paqData.dirArr.length > 0 && (() => {
+                    const medals = ["🥇", "🥈", "🥉"];
+                    const colors = [
+                      { bg: "#faf5ff", border: "#7C22D4", left: "#7C22D4", num: "#7C22D4" },
+                      { bg: "#f5f3ff", border: "#a78bfa", left: "#a78bfa", num: "#6d28d9" },
+                      { bg: "#fdf4ff", border: "#c4b5fd", left: "#c4b5fd", num: "#7c3aed" },
+                    ];
+                    return (
+                      <div style={{ marginBottom: 16 }}>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: "#0f766e", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Top 3 direcciones con más entregas
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+                          {paqData.dirArr.slice(0, 3).map((d, i) => {
+                            const c = colors[i];
+                            return (
+                              <div key={i} style={{ background: c.bg, border: `1px solid ${c.border}`, borderLeft: `5px solid ${c.left}`, borderRadius: 10, padding: "14px 16px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                  <span style={{ fontSize: 18 }}>{medals[i]}</span>
+                                  <span style={{ fontSize: 28, fontWeight: 800, color: c.num, lineHeight: 1 }}>{fmtNum(d.entregados)}</span>
+                                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>paquetes entregados</span>
+                                </div>
+                                <p style={{ fontSize: 11, color: "#374151", margin: 0, lineHeight: 1.4, wordBreak: "break-word" }}>{d.raw}</p>
+                                <p style={{ fontSize: 10, color: "#6b7280", margin: "4px 0 0" }}>
+                                  {fmtNum(d.count)} visitas · {fmtPct(d.count > 0 ? d.entregados / d.count : 0)} efectividad
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* KPIs de direcciones */}
                   <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
                     <KpiCard label="Direcciones únicas" value={fmtNum(paqData.uniqueDirs)} color="#0891b2" />
