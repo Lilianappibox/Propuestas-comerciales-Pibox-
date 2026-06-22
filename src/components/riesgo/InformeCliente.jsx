@@ -407,23 +407,66 @@ function processHoras(rows) {
 }
 
 // ── Process paquetes ────────────────────────────────────────────────────────
+function getDir(r) {
+  // Intenta varios nombres de columna posibles para la dirección de entrega
+  const CAMPOS = [
+    "Dirección de entrega", "Dirección destino", "Direccion de entrega",
+    "Direccion destino", "Dirección", "Direccion", "drop_off_address",
+    "destination_address", "Dirección Drop", "Dirección drop",
+    "Drop Address", "drop address", "Destino", "Dirección de Entrega",
+  ];
+  for (const c of CAMPOS) {
+    const v = r[c];
+    if (v && String(v).trim()) return String(v).trim();
+  }
+  return null;
+}
+
 function processPaquetes(rows) {
   const total = rows.length;
   let entregados = 0, cancelados = 0, devueltos = 0;
   const porEstado = {}, porSede = {};
+  const porDireccion = {}; // dirección normalizada → { raw, count, entregados }
   let sumCR = 0, countCR = 0, sumRE = 0, countRE = 0;
   for (const r of rows) {
     const estado = String(r["Estado"] || "").trim();
     const sede = r["Nombre de la sede"] || "Sin sede";
     if (!porEstado[estado]) porEstado[estado] = 0; porEstado[estado]++;
     const el = estado.toLowerCase();
-    if (el === "entregado") entregados++; else if (el === "cancelado") cancelados++; else if (el === "devuelto") devueltos++;
+    const esEntregado = el === "entregado";
+    if (esEntregado) entregados++; else if (el === "cancelado") cancelados++; else if (el === "devuelto") devueltos++;
     if (!porSede[sede]) porSede[sede] = 0; porSede[sede]++;
+
+    // Dirección de entrega
+    const dirRaw = getDir(r);
+    if (dirRaw) {
+      const key = dirRaw.toLowerCase().replace(/\s+/g, " ").trim();
+      if (!porDireccion[key]) porDireccion[key] = { raw: dirRaw, count: 0, entregados: 0 };
+      porDireccion[key].count++;
+      if (esEntregado) porDireccion[key].entregados++;
+    }
+
     const tC = r["Hora de creación"], tR = r["Hora de recogida"], tE = r["Hora de entrega"];
     if (tC && tR) { const d1 = new Date(tC), d2 = new Date(tR); if (!isNaN(d1) && !isNaN(d2) && d2 > d1) { sumCR += (d2 - d1) / 60000; countCR++; } }
     if (tR && tE) { const d1 = new Date(tR), d2 = new Date(tE); if (!isNaN(d1) && !isNaN(d2) && d2 > d1) { sumRE += (d2 - d1) / 60000; countRE++; } }
   }
-  return { total, entregados, cancelados, devueltos, efectividad: total > 0 ? entregados / total : 0, tasaDevolucion: total > 0 ? devueltos / total : 0, porEstado, porSede, avgCreoReco: countCR > 0 ? sumCR / countCR : 0, avgRecoEntr: countRE > 0 ? sumRE / countRE : 0 };
+
+  // Direcciones frecuentes: ordenadas por conteo desc
+  const dirArr = Object.values(porDireccion).sort((a, b) => b.count - a.count);
+  const tieneDir = dirArr.length > 0;
+  const dirRecurrentes = dirArr.filter(d => d.count > 1);
+  const totalEnDirRecurrentes = dirRecurrentes.reduce((s, d) => s + d.count, 0);
+
+  return {
+    total, entregados, cancelados, devueltos,
+    efectividad: total > 0 ? entregados / total : 0,
+    tasaDevolucion: total > 0 ? devueltos / total : 0,
+    porEstado, porSede,
+    avgCreoReco: countCR > 0 ? sumCR / countCR : 0,
+    avgRecoEntr: countRE > 0 ? sumRE / countRE : 0,
+    dirArr, tieneDir, dirRecurrentes, totalEnDirRecurrentes,
+    uniqueDirs: dirArr.length,
+  };
 }
 
 // ── Generate POSITIVE-only insights ─────────────────────────────────────────
@@ -825,6 +868,49 @@ export default function InformeCliente({ currentUser }) {
                 {paqData.avgCreoReco > 0 && <KpiCard label="Tiempo prom. creado a recogido" value={fmtMinutes(paqData.avgCreoReco)} />}
                 {paqData.avgRecoEntr > 0 && <KpiCard label="Tiempo prom. recogido a entregado" value={fmtMinutes(paqData.avgRecoEntr)} />}
               </div>
+
+              {/* Análisis de direcciones de entrega */}
+              {paqData.tieneDir && (
+                <>
+                  <div style={{ height: 20 }} />
+                  <div style={{ background: "linear-gradient(135deg,#0f766e 0%,#0891b2 100%)", borderRadius: 10, padding: "8px 16px", marginBottom: 12 }}>
+                    <h3 style={{ color: "#fff", fontSize: 14, fontWeight: 700, margin: 0 }}>📍 Direcciones de Entrega</h3>
+                  </div>
+
+                  {/* KPIs de direcciones */}
+                  <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 14 }}>
+                    <KpiCard label="Direcciones únicas" value={fmtNum(paqData.uniqueDirs)} color="#0891b2" />
+                    <KpiCard label="Direcciones recurrentes (>1 entrega)" value={fmtNum(paqData.dirRecurrentes.length)} color="#0f766e" />
+                    <KpiCard label="Paquetes en dir. recurrentes" value={fmtNum(paqData.totalEnDirRecurrentes)} color="#0f766e" />
+                    <KpiCard
+                      label="% paquetes en dir. recurrentes"
+                      value={paqData.total > 0 ? fmtPct(paqData.totalEnDirRecurrentes / paqData.total) : "—"}
+                      color={paqData.totalEnDirRecurrentes / paqData.total > 0.3 ? "#0f766e" : "#6b7280"}
+                    />
+                  </div>
+
+                  {/* Tabla top 30 direcciones más frecuentes */}
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "#0891b2", marginBottom: 6 }}>
+                    Direcciones con más entregas en el mes
+                    {paqData.dirArr.length > 30 ? ` — Top 30 de ${fmtNum(paqData.dirArr.length)}` : ""}
+                  </p>
+                  <DataTable
+                    headers={["Dirección de entrega", "Entregas", "Entregados", "% Efectividad"]}
+                    rows={paqData.dirArr.slice(0, 30).map(d => [
+                      d.raw,
+                      fmtNum(d.count),
+                      fmtNum(d.entregados),
+                      fmtPct(d.count > 0 ? d.entregados / d.count : 0),
+                    ])}
+                    footer={[
+                      `Total (${fmtNum(paqData.uniqueDirs)} direcciones)`,
+                      fmtNum(paqData.total),
+                      fmtNum(paqData.entregados),
+                      fmtPct(paqData.efectividad),
+                    ]}
+                  />
+                </>
+              )}
             </>
           )}
 
