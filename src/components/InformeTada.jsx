@@ -763,12 +763,47 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
       .map(p => ({ ...p, pctPunt: p.puntTotal > 0 ? (p.puntSI / p.puntTotal * 100) : null }));
     const topActivos = allActivos.slice(0, 5);
 
+    // ── Top 5 pilotos perdidos con mayor GMV estimado (basado en mes anterior) ──
+    // GMV estimado = (turnos_SI_piloto_en_ciudad / total_SI_ciudad_mes_ant) × GMV_ciudad_mes_ant
+    const perdidosAcum = {};
+    const cityPrevSI = {};
+    for (const r of insPrevRows) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      if (!id) continue;
+      const nombre = String(r["NOMBRE DE PILOTO"] || r["NOMBRE PILOTO"] || "").trim();
+      const ciudad = String(r["CIUDAD"] || "").trim();
+      const coloc = String(r["COLOCACION"] || r["COLOCACIÓN"] || "").trim().toUpperCase();
+      const esSI = coloc === "SI";
+      const esCancela = String(r["ESTADO"] || "").toUpperCase().includes("CANCEL");
+      if (!perdidosAcum[id]) perdidosAcum[id] = { id, nombre, ciudad, turnos: 0, si: 0, cancela: 0 };
+      perdidosAcum[id].turnos++;
+      if (esSI) perdidosAcum[id].si++;
+      if (esCancela) perdidosAcum[id].cancela++;
+      if (nombre && nombre.length > (perdidosAcum[id].nombre || "").length) perdidosAcum[id].nombre = nombre;
+      if (ciudad) perdidosAcum[id].ciudad = ciudad;
+      if (ciudad && esSI) cityPrevSI[ciudad] = (cityPrevSI[ciudad] || 0) + 1;
+    }
+    const allPerdidos = Object.values(perdidosAcum)
+      .filter(p => pilotosPerdidos.has(p.id))
+      .map(p => {
+        let gmvEst = 0;
+        if (factP?.ciudadMap && p.ciudad && cityPrevSI[p.ciudad] > 0) {
+          const cGmv = factP.ciudadMap[p.ciudad]?.gmv || 0;
+          gmvEst = (p.si / cityPrevSI[p.ciudad]) * cGmv;
+        }
+        return { ...p, gmvEst };
+      })
+      .sort((a, b) => b.gmvEst - a.gmvEst || b.si - a.si);
+    const topPerdidosGMV = allPerdidos.slice(0, 5);
+    const tieneGMVEst = allPerdidos.some(p => p.gmvEst > 0);
+
     return {
       totalNuevos, totalTurnosNuevos, avgTurnos, pctPuntGlobal, pctCancelaGlobal,
       pilotosPerdidos: pilotosPerdidos.size, tasaRetencion, prevTotal: prevIds.size,
       rangos, ciudadData, topCanceladores, topActivos, allActivos, allCanceladores,
+      topPerdidosGMV, allPerdidos, tieneGMVEst,
     };
-  }, [insRows, insPrevRows]);
+  }, [insRows, insPrevRows, factP]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -1130,6 +1165,69 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
               </div>
             )}
           </div>
+
+          {/* Top 5 pilotos perdidos por GMV */}
+          {analisisNuevos.topPerdidosGMV.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-700">⚠️ Top 5 Pilotos Perdidos por GMV</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Clasificados como perdidos en {mesSel} · datos del mes anterior {insPrevKey}
+                    {analisisNuevos.tieneGMVEst ? " · GMV estimado por proporción de colocaciones en ciudad" : " · ordenado por turnos colocados (SI)"}
+                  </p>
+                </div>
+                <button onClick={() => {
+                  try {
+                    const fmtMoney = (v) => Math.round(v).toLocaleString("es-CO");
+                    const csvRows = [["#","Piloto","ID","Ciudad","Turnos (mes ant.)","Colocados (SI)","Cancelaciones","GMV Estimado"].join(",")];
+                    analisisNuevos.allPerdidos.forEach((p, i) => {
+                      const nombre = String(p.nombre || "").replace(/"/g, '""');
+                      csvRows.push([
+                        i + 1,
+                        `"${nombre}"`,
+                        `"${p.id || ""}"`,
+                        `"${p.ciudad || ""}"`,
+                        p.turnos || 0,
+                        p.si || 0,
+                        p.cancela || 0,
+                        analisisNuevos.tieneGMVEst ? fmtMoney(p.gmvEst) : "—",
+                      ].join(","));
+                    });
+                    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `Pilotos_Perdidos_GMV_${mesSel.replace(/ /g, "_")}.csv`;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  } catch (e) { alert("Error: " + e.message); }
+                }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition whitespace-nowrap">
+                  📥 Descargar todos ({analisisNuevos.allPerdidos.length})
+                </button>
+              </div>
+              <div className="space-y-2">
+                {analisisNuevos.topPerdidosGMV.map((p, i) => (
+                  <div key={p.id} className="flex items-center gap-3 bg-red-50/40 rounded-lg px-3 py-2">
+                    <span className="text-lg font-bold text-red-300 w-6">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800 truncate">{p.nombre || p.id}</p>
+                      <p className="text-[10px] text-gray-400">{p.ciudad} · {p.turnos} turnos · {p.si} colocados</p>
+                    </div>
+                    <div className="text-right">
+                      {analisisNuevos.tieneGMVEst
+                        ? <p className="text-sm font-bold text-green-700">${Math.round(p.gmvEst).toLocaleString("es-CO")}</p>
+                        : <p className="text-sm font-bold text-purple-700">{p.si} turnos SI</p>
+                      }
+                      {p.cancela > 0 && (
+                        <p className="text-[10px] text-red-500">{p.cancela} cancel.</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {isAdmin && insRows && !insPrevRows && insPrevKey && (
