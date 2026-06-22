@@ -179,23 +179,58 @@ export default function AnalisisPilotos() {
           </div>
         </div>
 
-        {/* Franjas */}
-        {analisis.franjas.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-            <h3 className="text-sm font-bold text-gray-700 mb-3">Pilotos por Hora Pico</h3>
-            <div className="flex gap-1 items-end" style={{ height: 120 }}>
-              {analisis.franjas.map(f => {
-                const max = Math.max(...analisis.franjas.map(x => x.pilotos));
-                const pct = max > 0 ? (f.pilotos / max * 100) : 0;
-                return (<div key={f.hora} className="flex-1 text-center group relative">
-                  <div className="mx-auto rounded-t" style={{ height: `${Math.max(pct, 3)}%`, minHeight: 2, background: PIBOX_PURPLE, maxWidth: 28 }} />
-                  <p className="text-[8px] text-gray-400 mt-1">{f.hora.slice(0, 2)}</p>
-                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">{f.hora}: {f.pilotos} pilotos</div>
-                </div>);
-              })}
+        {/* Franjas horarias — heatmap */}
+        {analisis.franjas.length > 0 && (() => {
+          const RANGOS = [
+            { label: "Madrugada",   sub: "00:00 – 05:59", inicio: 0,  fin: 5  },
+            { label: "Amanecer",    sub: "06:00 – 08:59", inicio: 6,  fin: 8  },
+            { label: "Mañana",      sub: "09:00 – 11:59", inicio: 9,  fin: 11 },
+            { label: "Mediodía",    sub: "12:00 – 14:59", inicio: 12, fin: 14 },
+            { label: "Tarde",       sub: "15:00 – 17:59", inicio: 15, fin: 17 },
+            { label: "Noche",       sub: "18:00 – 20:59", inicio: 18, fin: 20 },
+            { label: "Noche tarde", sub: "21:00 – 23:59", inicio: 21, fin: 23 },
+          ];
+          const data = RANGOS.map(r => ({
+            ...r,
+            count: analisis.franjas
+              .filter(f => { const h = parseInt(f.hora); return h >= r.inicio && h <= r.fin; })
+              .reduce((s, f) => s + f.pilotos, 0),
+          }));
+          const maxV = Math.max(...data.map(r => r.count), 1);
+          const getColors = (count) => {
+            const p = count / maxV;
+            if (p === 0)    return { bg: "#F3F4F6", text: "#9CA3AF", sub: "#9CA3AF" };
+            if (p <= 0.20)  return { bg: "#EDE9FE", text: "#5B21B6", sub: "#7C3AED" };
+            if (p <= 0.40)  return { bg: "#C4B5FD", text: "#3B0764", sub: "#4C1D95" };
+            if (p <= 0.60)  return { bg: "#A78BFA", text: "#fff",    sub: "rgba(255,255,255,.75)" };
+            if (p <= 0.80)  return { bg: "#7C22D4", text: "#fff",    sub: "rgba(255,255,255,.75)" };
+            return               { bg: "#4C1D95", text: "#fff",    sub: "rgba(255,255,255,.75)" };
+          };
+          return (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="text-sm font-bold text-gray-700 mb-4">📊 Pilotos por Franja Horaria</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                {data.map(r => {
+                  const c = getColors(r.count);
+                  return (
+                    <div key={r.label} style={{ background: c.bg, borderRadius: 12, padding: "16px 10px", textAlign: "center" }}>
+                      <p style={{ color: c.text, fontSize: 28, fontWeight: 800, margin: 0, lineHeight: 1 }}>
+                        {r.count > 0 ? r.count.toLocaleString("es-CO") : "—"}
+                      </p>
+                      {r.count > 0 && (
+                        <p style={{ color: c.sub, fontSize: 10, fontWeight: 700, margin: "4px 0 2px" }}>
+                          {(r.count / analisis.T * 100).toFixed(0)}% del total
+                        </p>
+                      )}
+                      <p style={{ color: c.text, fontSize: 11, fontWeight: 700, margin: "6px 0 2px", opacity: r.count ? 1 : 0.5 }}>{r.label}</p>
+                      <p style={{ color: c.sub, fontSize: 9, margin: 0, opacity: 0.85 }}>{r.sub}</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Ciudad */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
