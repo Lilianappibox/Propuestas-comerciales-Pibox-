@@ -41,19 +41,23 @@ export default function RiesgoComercial({ currentUser }) {
     }
   }, []);
 
-  // No-admin: cargar datos del código
+  // No-admin: sincronizar meses del código que falten localmente
   useEffect(() => {
     if (isAdmin) return;
     const codeIndex = loadIndexReadonly();
-    if (Object.keys(codeIndex).length === 0) return;
+    const codeKeys = Object.keys(codeIndex);
+    if (codeKeys.length === 0) return;
     const localIndex = loadIndex();
-    if (Object.keys(localIndex).length > 0) return;
+    const missing = codeKeys.filter(k => !localIndex[k]);
+    if (missing.length === 0) return;
     try {
-      saveIndex(codeIndex);
-      for (const key of Object.keys(codeIndex)) {
+      const merged = { ...localIndex };
+      for (const key of missing) {
+        merged[key] = codeIndex[key];
         const mesData = loadMesDataReadonly(key);
         if (mesData) saveMesData(key, mesData);
       }
+      saveIndex(merged);
     } catch {}
     forceRender(n => n + 1);
   }, [isAdmin]);
