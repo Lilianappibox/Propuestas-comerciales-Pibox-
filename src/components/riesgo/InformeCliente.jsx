@@ -147,13 +147,13 @@ function printSection(ref, title) {
       .print-root { max-width: 100% !important; padding: 0 !important; }
       table { table-layout: fixed; width: 100% !important; font-size: 7.5px; border-collapse: collapse; }
       table th { font-size: 7px !important; padding: 3px 5px !important; }
-      table td { padding: 3px 5px; word-wrap: break-word; overflow-wrap: break-word; }
-      table td:first-child { font-size: 6.5px !important; white-space: nowrap; width: 52px; }
+      table td { padding: 3px 5px; word-wrap: break-word; overflow-wrap: break-word; font-size: 6.5px; }
       table td.cell-driver { font-size: 6px !important; line-height: 1.3; }
-      table th:first-child { width: 52px; }
-      /* Tabla de direcciones: primera columna ancha y con salto de línea */
-      .dir-table table { font-size: 7px; }
-      .dir-table table td:first-child { white-space: normal !important; width: auto !important; font-size: 6.5px !important; }
+      /* Tablas con fecha en primera columna: columna estrecha */
+      .date-table table td:first-child { white-space: nowrap !important; width: 52px !important; }
+      .date-table table th:first-child { width: 52px !important; }
+      /* Tablas con dirección: primera columna ancha */
+      .dir-table table td:first-child { white-space: normal !important; width: auto !important; }
       .dir-table table th:first-child { width: auto !important; }
       .dir-table table th:not(:first-child), .dir-table table td:not(:first-child) { width: 60px; text-align: center; }
       .kpi-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
@@ -977,7 +977,7 @@ export default function InformeCliente({ currentUser }) {
 
               {/* Por fecha y sede — solo completados */}
               <p style={{ fontSize: 12, fontWeight: 700, color: BRAND, marginBottom: 6 }}>Por fecha y sede — turnos, tareas On Demand y paquetes (completados)</p>
-              <DataTable
+              <div className="date-table"><DataTable
                 headers={["Fecha", "Sede / Cliente", "Conductor", "Turnos", "Tareas OD", "Paquetes", "GMV", "Costo/Paq"]}
                 rows={Object.entries(horasData.byDateSede)
                   .sort((a, b) => a[0].localeCompare(b[0]))
@@ -991,7 +991,7 @@ export default function InformeCliente({ currentUser }) {
                       ])
                   )}
                 footer={["Total", "", "", fmtNum(horasData.totalServicios), fmtNum(horasData.totalTareas), fmtNum(horasData.totalPackages), fmtCOP(horasData.totalGMV), fmtCOP(horasData.costoPorPaquete)]}
-              />
+              /></div>
 
               {/* Productividad por conductor */}
               <div style={{ height: 14 }} />
@@ -1074,12 +1074,12 @@ export default function InformeCliente({ currentUser }) {
                         footer={["Total", fmtNum(horasData.totalNoCompHoras), fmtCOP(Object.values(horasData.noCompHorasPorEstado).reduce((s, d) => s + d.gmv, 0))]}
                       />
                       <div style={{ height: 10 }} />
-                      <DataTable
+                      <div className="date-table"><DataTable
                         headers={["Fecha", "Sede", "Conductor", "Estado"]}
                         rows={horasData.horasNoComp
                           .sort((a, b) => a.date.localeCompare(b.date))
                           .map(r => [r.date, abrevCiudad(r.sede), { v: r.driver, cls: "cell-driver" }, r.estadoRaw])}
-                      />
+                      /></div>
                     </>
                   )}
 
@@ -1098,12 +1098,12 @@ export default function InformeCliente({ currentUser }) {
                         footer={["Total", fmtNum(horasData.totalNoCompPaq), fmtNum(horasData.paqNoComp.reduce((s, r) => s + r.packages, 0))]}
                       />
                       <div style={{ height: 10 }} />
-                      <DataTable
+                      <div className="date-table"><DataTable
                         headers={["Fecha", "Sede", "Conductor", "Paquetes", "Estado"]}
                         rows={horasData.paqNoComp
                           .sort((a, b) => a.date.localeCompare(b.date))
                           .map(r => [r.date, abrevCiudad(r.sede), { v: r.driver, cls: "cell-driver" }, fmtNum(r.packages), r.estadoRaw])}
-                      />
+                      /></div>
                     </>
                   )}
                 </>
