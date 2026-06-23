@@ -809,6 +809,158 @@ export default function MetricasRiesgo() {
               );
             })()}
             </div>
+
+            {/* Cancelados por Pasajero y Expirados — side by side */}
+            {(() => {
+              const fmtMin = (m) => {
+                if (m === null || m === undefined) return "—";
+                const h = Math.floor(m / 60);
+                const min = Math.round(m % 60);
+                return h > 0 ? `${h}h ${min}m` : `${min}m`;
+              };
+
+              const cancelPaxData = empresasConScore
+                .filter(e => (e.canceladosPax || 0) > 0)
+                .map(e => ({
+                  empresa: e.empresa,
+                  cancelados: e.canceladosPax || 0,
+                  total: e.total,
+                  pct: e.total > 0 ? (e.canceladosPax || 0) / e.total : 0,
+                  avgTiempo: e.avgTiempoCancelPax,
+                }))
+                .sort((a, b) => b.cancelados - a.cancelados);
+
+              const expiradosData = empresasConScore
+                .filter(e => (e.expirados || 0) > 0)
+                .map(e => ({
+                  empresa: e.empresa,
+                  expirados: e.expirados || 0,
+                  total: e.total,
+                  pct: e.total > 0 ? (e.expirados || 0) / e.total : 0,
+                  avgTiempo: e.avgTiempoExpirado,
+                }))
+                .sort((a, b) => b.expirados - a.expirados);
+
+              if (!cancelPaxData.length && !expiradosData.length) return null;
+
+              const dlCSV = (data, filename, cols) => {
+                const csv = [cols.headers.join(","), ...data.map(r => cols.row(r))].join("\n");
+                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              };
+
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+
+                  {/* Tabla: Cancelados por Pasajero */}
+                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-gray-700 text-sm">🚶 Cancelados por Pasajero — Top empresas</h3>
+                      {cancelPaxData.length > 0 && (
+                        <button
+                          onClick={() => dlCSV(cancelPaxData, "cancelados_pasajero.csv", {
+                            headers: ["Empresa", "Cancelados por Pasajero", "Total servicios", "% del total", "Tiempo promedio servicio"],
+                            row: r => `"${r.empresa}",${r.cancelados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
+                          })}
+                          className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                        >
+                          📥 Descargar ({cancelPaxData.length})
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Tiempo promedio del servicio al momento de la cancelación</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: SEM_ROJO }} className="text-white">
+                            {["Empresa", "Cancelados", "% del total", "Tiempo prom."].map(h => (
+                              <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cancelPaxData.length === 0 ? (
+                            <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin cancelaciones por pasajero.</td></tr>
+                          ) : cancelPaxData.slice(0, 15).map((d, i) => (
+                            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-red-50/30"}>
+                              <td className="px-3 py-2 font-semibold text-gray-700 max-w-[140px] truncate" title={d.empresa}>{d.empresa}</td>
+                              <td className="px-3 py-2 font-bold" style={{ color: SEM_ROJO }}>{d.cancelados.toLocaleString()}</td>
+                              <td className="px-3 py-2" style={{ color: d.pct > 0.15 ? SEM_ROJO : d.pct > 0.08 ? SEM_AMARILLO : "#374151" }}>{(d.pct * 100).toFixed(1)}%</td>
+                              <td className="px-3 py-2 text-gray-600">{fmtMin(d.avgTiempo)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-red-200 bg-red-50 font-bold">
+                            <td className="px-3 py-2 text-gray-800">Total</td>
+                            <td className="px-3 py-2" style={{ color: SEM_ROJO }}>{cancelPaxData.reduce((s, d) => s + d.cancelados, 0).toLocaleString()}</td>
+                            <td className="px-3 py-2">—</td>
+                            <td className="px-3 py-2">—</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    {cancelPaxData.length > 15 && (
+                      <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {cancelPaxData.length}. Descarga CSV para ver todos.</p>
+                    )}
+                  </div>
+
+                  {/* Tabla: Expirados */}
+                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-gray-700 text-sm">⏰ Expirados — Top empresas</h3>
+                      {expiradosData.length > 0 && (
+                        <button
+                          onClick={() => dlCSV(expiradosData, "expirados.csv", {
+                            headers: ["Empresa", "Expirados", "Total servicios", "% del total", "Tiempo promedio servicio"],
+                            row: r => `"${r.empresa}",${r.expirados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
+                          })}
+                          className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                        >
+                          📥 Descargar ({expiradosData.length})
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Tiempo promedio del servicio al momento de expirar</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: SEM_AMARILLO }} className="text-white">
+                            {["Empresa", "Expirados", "% del total", "Tiempo prom."].map(h => (
+                              <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expiradosData.length === 0 ? (
+                            <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin servicios expirados.</td></tr>
+                          ) : expiradosData.slice(0, 15).map((d, i) => (
+                            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-yellow-50/30"}>
+                              <td className="px-3 py-2 font-semibold text-gray-700 max-w-[140px] truncate" title={d.empresa}>{d.empresa}</td>
+                              <td className="px-3 py-2 font-bold" style={{ color: SEM_AMARILLO }}>{d.expirados.toLocaleString()}</td>
+                              <td className="px-3 py-2" style={{ color: d.pct > 0.10 ? SEM_ROJO : d.pct > 0.05 ? SEM_AMARILLO : "#374151" }}>{(d.pct * 100).toFixed(1)}%</td>
+                              <td className="px-3 py-2 text-gray-600">{fmtMin(d.avgTiempo)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-yellow-300 bg-yellow-50 font-bold">
+                            <td className="px-3 py-2 text-gray-800">Total</td>
+                            <td className="px-3 py-2" style={{ color: SEM_AMARILLO }}>{expiradosData.reduce((s, d) => s + d.expirados, 0).toLocaleString()}</td>
+                            <td className="px-3 py-2">—</td>
+                            <td className="px-3 py-2">—</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    {expiradosData.length > 15 && (
+                      <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {expiradosData.length}. Descarga CSV para ver todos.</p>
+                    )}
+                  </div>
+
+                </div>
+              );
+            })()}
           </>
         ) : null;
       })()}

@@ -185,13 +185,16 @@ export function procesarDatos(rows) {
       }
     } catch {}
 
-    const esCompletado = status === "Completed";
-    const esCancelado  = status.startsWith("Canceled");
-    const esExpirado   = status === "Expired";
+    const esCompletado   = status === "Completed";
+    const esCancelado    = status.startsWith("Canceled");
+    const esExpirado     = status === "Expired";
+    const esCancelPax    = status === "Canceled by Passenger";
 
     if (!empMap[empresa]) {
       empMap[empresa] = {
         empresa, companyId: companyId, total:0, completados:0, cancelados:0, expirados:0,
+        canceladosPax:0, tiempoCancelPax:0, nTiempoCancelPax:0,
+        tiempoExpirado:0, nTiempoExp:0,
         gmv:0, paquetes:0, service_cost:0, ejecutivo: exec,
         relanzamientos:0, devueltos:0, distancias:{},
         ciudades: {}, ops: {}, weekly: {}, usuarios: {}, sedes: {}, driversPorOp: {},
@@ -203,6 +206,11 @@ export function procesarDatos(rows) {
     if (esCompletado) e.completados++;
     if (esCancelado)  e.cancelados++;
     if (esExpirado)   e.expirados++;
+    if (esCancelPax) {
+      e.canceladosPax++;
+      if (tTotal > 0) { e.tiempoCancelPax += tTotal; e.nTiempoCancelPax++; }
+    }
+    if (esExpirado && tTotal > 0) { e.tiempoExpirado += tTotal; e.nTiempoExp++; }
     e.gmv          += gmv;
     e.service_cost += cost;
     e.paquetes     += pkgs;
@@ -362,6 +370,9 @@ export function procesarDatos(rows) {
     return {
       empresa: e.empresa, companyId: e.companyId, total: e.total,
       completados: e.completados, cancelados: e.cancelados, expirados: e.expirados,
+      canceladosPax: e.canceladosPax,
+      avgTiempoCancelPax: e.nTiempoCancelPax > 0 ? e.tiempoCancelPax / e.nTiempoCancelPax : null,
+      avgTiempoExpirado:  e.nTiempoExp       > 0 ? e.tiempoExpirado  / e.nTiempoExp       : null,
       gmv: e.gmv, service_cost: e.service_cost, paquetes: e.paquetes,
       ciudad: ciudadTop, ejecutivo: e.ejecutivo,
       relanzamientos: e.relanzamientos, devueltos: e.devueltos, distancias: e.distancias,
