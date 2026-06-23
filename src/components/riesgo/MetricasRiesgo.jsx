@@ -529,8 +529,8 @@ export default function MetricasRiesgo() {
         let totalRelaunch = 0;
         for (const e of empresasConScore) {
           totalRelaunch += e.relanzamientos || 0;
-          if (!e.distancias) continue;
-          for (const [rng, val] of Object.entries(e.distancias)) {
+          if (!e.distanciasOnDemand) continue;
+          for (const [rng, val] of Object.entries(e.distanciasOnDemand)) {
             const k = rng === "Más de 10 km" || rng === "Mas de 10 km" ? "Mas de 10 km" : rng;
             if (!(k in distMap)) continue;
             if (typeof val === "number") { distMap[k] += val; continue; }
@@ -558,7 +558,7 @@ export default function MetricasRiesgo() {
         return hasData ? (
           <>
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-              <h3 className="font-bold text-gray-700 text-sm mb-4">📏 Cumplimiento por rango de distancia</h3>
+              <h3 className="font-bold text-gray-700 text-sm mb-4">📏 Cumplimiento por rango de distancia <span className="text-xs font-normal text-gray-400">(solo Op. On Demand)</span></h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
                   <thead>

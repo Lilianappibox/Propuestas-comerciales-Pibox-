@@ -197,7 +197,7 @@ export function procesarDatos(rows) {
         canceladosPax:0, canceladosConductor:0, tiempoCancelPax:0, nTiempoCancelPax:0,
         tiempoExpirado:0, nTiempoExp:0,
         gmv:0, paquetes:0, service_cost:0, ejecutivo: exec,
-        relanzamientos:0, devueltos:0, distancias:{},
+        relanzamientos:0, devueltos:0, distancias:{}, distanciasOnDemand:{},
         ciudades: {}, ops: {}, weekly: {}, usuarios: {}, sedes: {}, driversPorOp: {},
       };
     }
@@ -228,6 +228,15 @@ export function procesarDatos(rows) {
       if (esCompletado) dr.completados++;
       dr.relanzamientos += relaunched;
       if (tTotal > 0) { dr.tAsignacion += tAsignacion; dr.tLlegada += tLlegada; dr.tRecogida += tRecogida; dr.tRuta += tRuta; dr.tTotal += tTotal; dr.nTiempos++; }
+      // Solo On Demand
+      if (op.toLowerCase() === "on demand") {
+        if (!e.distanciasOnDemand[dRng]) e.distanciasOnDemand[dRng] = { total: 0, completados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0 };
+        const dod = e.distanciasOnDemand[dRng];
+        dod.total++;
+        if (esCompletado) dod.completados++;
+        dod.relanzamientos += relaunched;
+        if (tTotal > 0) { dod.tAsignacion += tAsignacion; dod.tLlegada += tLlegada; dod.tRecogida += tRecogida; dod.tRuta += tRuta; dod.tTotal += tTotal; dod.nTiempos++; }
+      }
     }
     if (exec && exec !== "Sin asignar") e.ejecutivo = exec;
 
@@ -386,7 +395,7 @@ export function procesarDatos(rows) {
       avgTiempoExpirado:  e.nTiempoExp       > 0 ? e.tiempoExpirado  / e.nTiempoExp       : null,
       gmv: e.gmv, service_cost: e.service_cost, paquetes: e.paquetes,
       ciudad: ciudadTop, ejecutivo: e.ejecutivo,
-      relanzamientos: e.relanzamientos, devueltos: e.devueltos, distancias: e.distancias,
+      relanzamientos: e.relanzamientos, devueltos: e.devueltos, distancias: e.distancias, distanciasOnDemand: e.distanciasOnDemand,
       tasa_completado: tc, tasa_cancelacion: tca, tasa_expirado: te,
       topCiudades, topOps, weekly, topUsuarios, topSedes,
       driversPorOp: empDriversPorOp, totalDrivers: empTotalDrivers.size,
