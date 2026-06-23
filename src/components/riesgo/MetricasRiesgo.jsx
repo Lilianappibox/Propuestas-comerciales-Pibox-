@@ -786,7 +786,7 @@ export default function MetricasRiesgo() {
                 <h3 className="font-bold text-gray-700 text-sm">🔄 Distribucion de relanzamientos</h3>
                 {empWithRelaunch.length > 0 && (
                   <button onClick={() => {
-                    const csv = ["Empresa,Relanzamientos totales,Servicios,Promedio por servicio", ...empWithRelaunch.map(c => `"${c.empresa}",${c.relanzamientos||0},${c.total},${c.total > 0 ? ((c.relanzamientos||0)/c.total).toFixed(2) : "0"}`)].join("\n");
+                    const csv = ["Empresa,Tipo de Operacion,Relanzamientos totales,Servicios,Promedio por servicio", ...empWithRelaunch.map(c => `"${c.empresa}","${c.topOps?.[0]?.op||''}",${c.relanzamientos||0},${c.total},${c.total > 0 ? ((c.relanzamientos||0)/c.total).toFixed(2) : "0"}`)].join("\n");
                     const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
                     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "relanzamientos.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
                   }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200">
@@ -826,7 +826,7 @@ export default function MetricasRiesgo() {
             {/* Devoluciones por empresa */}
             {(() => {
               const devolData = empresasConScore.filter(e => (e.devueltos||0) > 0)
-                .map(e => ({ empresa: e.empresa, paquetes: e.paquetes||0, devueltos: e.devueltos||0, tasa: (e.paquetes||0) > 0 ? (e.devueltos||0)/(e.paquetes||0) : 0 }))
+                .map(e => ({ empresa: e.empresa, paquetes: e.paquetes||0, devueltos: e.devueltos||0, tasa: (e.paquetes||0) > 0 ? (e.devueltos||0)/(e.paquetes||0) : 0, topOps: e.topOps }))
                 .sort((a,b) => b.devueltos - a.devueltos);
               if (!devolData.length) return null;
               const totPaq = devolData.reduce((s,d) => s+d.paquetes, 0);
@@ -837,7 +837,7 @@ export default function MetricasRiesgo() {
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-gray-700 text-sm">📦 Devoluciones por empresa</h3>
                     <button onClick={() => {
-                      const csv = ["Empresa,Paquetes,Devueltos,Tasa Devolucion", ...devolData.map(d => `"${d.empresa}",${d.paquetes},${d.devueltos},${(d.tasa*100).toFixed(1)}%`)].join("\n");
+                      const csv = ["Empresa,Tipo de Operacion,Paquetes,Devueltos,Tasa Devolucion", ...devolData.map(d => `"${d.empresa}","${d.topOps?.[0]?.op||''}",${d.paquetes},${d.devueltos},${(d.tasa*100).toFixed(1)}%`)].join("\n");
                       const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
                       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "devoluciones.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
                     }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200">
@@ -898,6 +898,7 @@ export default function MetricasRiesgo() {
                   total: e.total,
                   pct: e.total > 0 ? (e.canceladosPax || 0) / e.total : 0,
                   avgTiempo: e.avgTiempoCancelPax,
+                  topOps: e.topOps,
                 }))
                 .sort((a, b) => b.cancelados - a.cancelados);
 
@@ -909,6 +910,7 @@ export default function MetricasRiesgo() {
                   total: e.total,
                   pct: e.total > 0 ? (e.expirados || 0) / e.total : 0,
                   avgTiempo: e.avgTiempoExpirado,
+                  topOps: e.topOps,
                 }))
                 .sort((a, b) => b.expirados - a.expirados);
 
@@ -930,8 +932,8 @@ export default function MetricasRiesgo() {
                       {cancelPaxData.length > 0 && (
                         <button
                           onClick={() => dlCSV(cancelPaxData, "cancelados_pasajero.csv", {
-                            headers: ["Empresa", "Cancelados por Pasajero", "Total servicios", "% del total", "Tiempo promedio servicio"],
-                            row: r => `"${r.empresa}",${r.cancelados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
+                            headers: ["Empresa", "Tipo de Operacion", "Cancelados por Pasajero", "Total servicios", "% del total", "Tiempo promedio servicio"],
+                            row: r => `"${r.empresa}","${r.topOps?.[0]?.op||''}",${r.cancelados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
                           })}
                           className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
                         >
@@ -983,8 +985,8 @@ export default function MetricasRiesgo() {
                       {expiradosData.length > 0 && (
                         <button
                           onClick={() => dlCSV(expiradosData, "expirados.csv", {
-                            headers: ["Empresa", "Expirados", "Total servicios", "% del total", "Tiempo promedio servicio"],
-                            row: r => `"${r.empresa}",${r.expirados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
+                            headers: ["Empresa", "Tipo de Operacion", "Expirados", "Total servicios", "% del total", "Tiempo promedio servicio"],
+                            row: r => `"${r.empresa}","${r.topOps?.[0]?.op||''}",${r.expirados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
                           })}
                           className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
                         >
