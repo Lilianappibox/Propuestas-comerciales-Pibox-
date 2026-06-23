@@ -170,7 +170,8 @@ function processExcel(wb) {
 }
 
 function processRows(rows) {
-  const totalTurnos = rows.length;
+  let totalTurnos = 0;  // Solo cuenta turnos que NO son "cliente cancela"
+  let clienteCancela = 0;
   let colocacionesSI = 0;
   let colocacionesNO = 0;
   let puntualidadSI  = 0;
@@ -201,11 +202,35 @@ function processRows(rows) {
     const isNO  = coloc === "NO";
     const isPunt = punt === "SI CUMPLE";
     const isNoPunt = punt === "NO CUMPLE";
+    const esClienteCancela = estado.toLowerCase().includes("cliente cancela");
 
+    // Estado siempre se contabiliza (para gráfica de distribución de estados)
+    if (estado) estadoMap[estado] = (estadoMap[estado] || 0) + 1;
+
+    // Tracking por piloto (siempre, independiente de si es cliente cancela)
+    const esCancelacion = estado.toUpperCase().includes("CANCEL") || estado.toUpperCase().includes("PILOTO CANCELA");
+    if (piloto) pilotos.add(piloto);
+    const pilotoKey = piloto || pilotoNombre;
+    if (pilotoKey) {
+      if (!pilotoMap[pilotoKey]) pilotoMap[pilotoKey] = { nombre: pilotoNombre, id: piloto, turnos: 0, cumple: 0, noCumple: 0, cancela: 0, ciudad: ciudad };
+      pilotoMap[pilotoKey].turnos++;
+      if (isPunt) pilotoMap[pilotoKey].cumple++;
+      if (isNoPunt) pilotoMap[pilotoKey].noCumple++;
+      if (esCancelacion) pilotoMap[pilotoKey].cancela++;
+      if (pilotoNombre && pilotoNombre.length > (pilotoMap[pilotoKey].nombre || "").length) pilotoMap[pilotoKey].nombre = pilotoNombre;
+      if (ciudad) pilotoMap[pilotoKey].ciudad = ciudad;
+    }
+
+    // Los turnos "cliente cancela" no cuentan para métricas de efectividad
+    if (esClienteCancela) {
+      clienteCancela++;
+      continue;
+    }
+
+    totalTurnos++;
     if (isSI) colocacionesSI++;
     if (isNO) colocacionesNO++;
     if (isPunt) puntualidadSI++;
-    if (piloto) pilotos.add(piloto);
 
     // Hora de inicio de turno (decimal Excel → hora, o HH:MM:SS string)
     const inicioVal = r["INICIO DE TURNO"] || r["INICIO_TURNO"] || "";
@@ -231,23 +256,6 @@ function processRows(rows) {
         if (isSI) horaDiaMap[hdKey].si++;
       }
     }
-
-    // Tracking por piloto — ID como key principal
-    const esCancelacion = estado.toUpperCase().includes("CANCEL") || estado.toUpperCase().includes("PILOTO CANCELA");
-    const pilotoKey = piloto || pilotoNombre;
-    if (pilotoKey) {
-      if (!pilotoMap[pilotoKey]) pilotoMap[pilotoKey] = { nombre: pilotoNombre, id: piloto, turnos: 0, cumple: 0, noCumple: 0, cancela: 0, ciudad: ciudad };
-      pilotoMap[pilotoKey].turnos++;
-      if (isPunt) pilotoMap[pilotoKey].cumple++;
-      if (isNoPunt) pilotoMap[pilotoKey].noCumple++;
-      if (esCancelacion) pilotoMap[pilotoKey].cancela++;
-      // Tomar el nombre más reciente que no esté vacío
-      if (pilotoNombre && pilotoNombre.length > (pilotoMap[pilotoKey].nombre || "").length) pilotoMap[pilotoKey].nombre = pilotoNombre;
-      if (ciudad) pilotoMap[pilotoKey].ciudad = ciudad;
-    }
-
-    // Estado
-    if (estado) estadoMap[estado] = (estadoMap[estado] || 0) + 1;
 
     // Ciudad
     if (ciudad) {
@@ -305,7 +313,8 @@ function processRows(rows) {
     .sort((a, b) => b.cancela - a.cancela);
 
   return {
-    totalTurnos: rows.length,
+    totalTurnos,
+    clienteCancela,
     colocacionesSI,
     colocacionesNO,
     puntualidadSI,
@@ -1385,18 +1394,22 @@ export default function InformeTada({ isAdmin }) {
   const trafFiltroActivo = trafHasRows && (trafFechaInicio || trafFechaFin || trafPuntoSel);
   const data = useMemo(() => {
     if (!trafActual) return null;
-    if (!trafFiltroActivo) return trafActual.data || null;
-    const filtered = trafRows.filter(r => {
-      if (trafFechaInicio && r._fecha && r._fecha < trafFechaInicio) return false;
-      if (trafFechaFin && r._fecha && r._fecha > trafFechaFin) return false;
-      if (trafPuntoSel) {
-        const punto = String(r["PUNTO"] || "").trim();
-        if (punto !== trafPuntoSel) return false;
-      }
-      return true;
-    });
-    if (filtered.length === 0) return null;
-    return processRows(filtered);
+    if (trafFiltroActivo) {
+      const filtered = trafRows.filter(r => {
+        if (trafFechaInicio && r._fecha && r._fecha < trafFechaInicio) return false;
+        if (trafFechaFin && r._fecha && r._fecha > trafFechaFin) return false;
+        if (trafPuntoSel) {
+          const punto = String(r["PUNTO"] || "").trim();
+          if (punto !== trafPuntoSel) return false;
+        }
+        return true;
+      });
+      if (filtered.length === 0) return null;
+      return processRows(filtered);
+    }
+    // Si hay rows crudos disponibles, reprocesar siempre para aplicar la lógica más reciente
+    if (trafRows?.length) return processRows(trafRows);
+    return trafActual.data || null;
   }, [trafActual, trafRows, trafFiltroActivo, trafFechaInicio, trafFechaFin, trafPuntoSel]);
 
   // Lista de puntos disponibles (del data completo, no filtrado)
@@ -1455,6 +1468,21 @@ export default function InformeTada({ isAdmin }) {
     return [...s].sort();
   }, [pilotosNuevos]);
 
+  // clienteCancela: desde processRows si está disponible, sino desde estadoMap cacheado
+  const clienteCancelaCount = useMemo(() => {
+    if (!data) return 0;
+    if (data.clienteCancela != null) return data.clienteCancela;
+    return Object.entries(data.estadoMap || {}).reduce((s, [k, v]) =>
+      k.toLowerCase().includes("cliente cancela") ? s + v : s, 0);
+  }, [data]);
+
+  // Turnos efectivos (sin cliente cancela) para denominadores de KPIs
+  // Si processRows ya corrió con el nuevo código: data.totalTurnos ya excluye cliente cancela
+  // Si es dato cacheado: data.totalTurnos incluye todo, hay que restar
+  const efectiveTurnos = data
+    ? (data.clienteCancela != null ? data.totalTurnos : data.totalTurnos - clienteCancelaCount)
+    : 0;
+
   const estadoData = useMemo(() => {
     if (!data) return [];
     return Object.entries(data.estadoMap)
@@ -1496,10 +1524,11 @@ export default function InformeTada({ isAdmin }) {
 
   const diaData = useMemo(() => {
     if (!data) return [];
-    const order = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+    const order = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"];
+    const norm = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     return Object.entries(data.diaMap)
       .sort(([a], [b]) => {
-        const ia = order.indexOf(a), ib = order.indexOf(b);
+        const ia = order.indexOf(norm(a)), ib = order.indexOf(norm(b));
         return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
       })
       .map(([name, value]) => ({ name, Turnos: value }));
@@ -2031,34 +2060,35 @@ export default function InformeTada({ isAdmin }) {
               <KpiCard
                 icon="📋"
                 label="Total Turnos"
-                value={data.totalTurnos.toLocaleString()}
+                value={efectiveTurnos.toLocaleString()}
+                sub={clienteCancelaCount > 0 ? `(${data.totalTurnos.toLocaleString()} brutos)` : undefined}
                 borderColor={PIBOX_PURPLE}
               />
               <KpiCard
                 icon="✅"
                 label="Colocaciones"
                 value={data.colocacionesSI.toLocaleString()}
-                sub={`${pct(data.colocacionesSI, data.totalTurnos)}%`}
+                sub={`${pct(data.colocacionesSI, efectiveTurnos)}%`}
                 borderColor={SEM_VERDE}
               />
               <KpiCard
                 icon="❌"
                 label="No Colocaciones"
                 value={data.colocacionesNO.toLocaleString()}
-                sub={`${pct(data.colocacionesNO, data.totalTurnos)}%`}
+                sub={`${pct(data.colocacionesNO, efectiveTurnos)}%`}
                 borderColor={SEM_ROJO}
               />
               <KpiCard
                 icon="🚫"
                 label="Cancelaciones"
                 value={data.cancelaciones.toLocaleString()}
-                sub={`${pct(data.cancelaciones, data.totalTurnos)}%`}
+                sub={`${pct(data.cancelaciones, efectiveTurnos)}%`}
                 borderColor={SEM_AMARILLO}
               />
               <KpiCard
                 icon="⏱️"
                 label="Puntualidad"
-                value={`${pct(data.puntualidadSI, data.totalTurnos)}%`}
+                value={`${pct(data.puntualidadSI, efectiveTurnos)}%`}
                 borderColor="#6366F1"
               />
               <KpiCard
@@ -2068,6 +2098,15 @@ export default function InformeTada({ isAdmin }) {
                 borderColor={PIBOX_PINK}
               />
             </div>
+
+            {/* Badge: Cliente Cancela */}
+            {clienteCancelaCount > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-orange-50 border border-orange-200 rounded-xl text-orange-700 text-sm w-fit">
+                <span className="text-base">🙅</span>
+                <span className="font-semibold">{clienteCancelaCount.toLocaleString()} turno{clienteCancelaCount !== 1 ? "s" : ""} en estado <b>"cliente cancela"</b></span>
+                <span className="text-xs text-orange-500 ml-1">— excluidos del cálculo de efectividad</span>
+              </div>
+            )}
 
             {/* Row 1: Pie + Estado Bar */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
