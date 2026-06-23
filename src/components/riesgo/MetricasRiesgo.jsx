@@ -708,6 +708,77 @@ export default function MetricasRiesgo() {
               );
             })()}
 
+            {/* Evolución semanal */}
+            {tot?.weekly?.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-gray-700 text-sm">📈 Evolución semanal</h3>
+                  {mesPrevMeta && (
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PURPLE}}></span>{dataMes?.label}</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PINK,opacity:0.6}}></span>{mesPrevMeta.label}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2 font-semibold">GMV por semana</p>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <BarChart data={tot.weekly.map((w,i)=>({
+                          ...w,
+                          gmvPrev: dataPrev?.totales?.weekly?.[i]?.gmv ?? null,
+                        }))} margin={{right:4}}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                        <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
+                        <YAxis tick={{fontSize:9}} tickFormatter={fmtM}/>
+                        <Tooltip formatter={v=>fmtFull(v)}/>
+                        <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                        <Bar dataKey="gmv"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
+                        {mesPrevMeta && <Bar dataKey="gmvPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[3,3,0,0]} fillOpacity={0.55}/>}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2 font-semibold">Servicios por semana</p>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <BarChart data={tot.weekly.map((w,i)=>({
+                          ...w,
+                          serviciosPrev: dataPrev?.totales?.weekly?.[i]?.servicios ?? null,
+                        }))} margin={{right:4}}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                        <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
+                        <YAxis tick={{fontSize:9}}/>
+                        <Tooltip/>
+                        <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                        <Bar dataKey="servicios"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
+                        {mesPrevMeta && <Bar dataKey="serviciosPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[3,3,0,0]} fillOpacity={0.55}/>}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2 font-semibold">% Completado / Cancelación</p>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <LineChart data={tot.weekly.map((w,i)=>({
+                          ...w,
+                          tc_prev:   dataPrev?.totales?.weekly?.[i]?.tasa_completado  ?? null,
+                          canc_prev: dataPrev?.totales?.weekly?.[i]?.tasa_cancelacion ?? null,
+                        }))}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                        <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
+                        <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
+                        <Tooltip formatter={v=>fmtPct(v)}/>
+                        <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+                        <Line dataKey="tasa_completado"  name="Completado"           stroke={SEM_VERDE} strokeWidth={2} dot={{r:3}}/>
+                        <Line dataKey="tasa_cancelacion" name="Cancelación"          stroke={SEM_ROJO}  strokeWidth={2} dot={{r:3}} strokeDasharray="5 3"/>
+                        {mesPrevMeta && <Line dataKey="tc_prev"   name="Completado (prev)"   stroke={SEM_VERDE} strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
+                        {mesPrevMeta && <Line dataKey="canc_prev" name="Cancelación (prev)"  stroke={SEM_ROJO}  strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Relanzamientos por empresa + Devoluciones por empresa — side by side */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
@@ -964,77 +1035,6 @@ export default function MetricasRiesgo() {
           </>
         ) : null;
       })()}
-
-      {/* Evolución semanal */}
-      {tot?.weekly?.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-gray-700 text-sm">📈 Evolución semanal</h3>
-            {mesPrevMeta && (
-              <div className="flex items-center gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PURPLE}}></span>{dataMes?.label}</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PINK,opacity:0.6}}></span>{mesPrevMeta.label}</span>
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div>
-              <p className="text-xs text-gray-500 mb-2 font-semibold">GMV por semana</p>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={tot.weekly.map((w,i)=>({
-                    ...w,
-                    gmvPrev: dataPrev?.totales?.weekly?.[i]?.gmv ?? null,
-                  }))} margin={{right:4}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
-                  <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
-                  <YAxis tick={{fontSize:9}} tickFormatter={fmtM}/>
-                  <Tooltip formatter={v=>fmtFull(v)}/>
-                  <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
-                  <Bar dataKey="gmv"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
-                  {mesPrevMeta && <Bar dataKey="gmvPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[3,3,0,0]} fillOpacity={0.55}/>}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-2 font-semibold">Servicios por semana</p>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={tot.weekly.map((w,i)=>({
-                    ...w,
-                    serviciosPrev: dataPrev?.totales?.weekly?.[i]?.servicios ?? null,
-                  }))} margin={{right:4}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
-                  <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
-                  <YAxis tick={{fontSize:9}}/>
-                  <Tooltip/>
-                  <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
-                  <Bar dataKey="servicios"     name={dataMes?.label||"Actual"}        fill={PIBOX_PURPLE} radius={[3,3,0,0]}/>
-                  {mesPrevMeta && <Bar dataKey="serviciosPrev" name={mesPrevMeta.label} fill={PIBOX_PINK}   radius={[3,3,0,0]} fillOpacity={0.55}/>}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-2 font-semibold">% Completado / Cancelación</p>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={tot.weekly.map((w,i)=>({
-                    ...w,
-                    tc_prev:   dataPrev?.totales?.weekly?.[i]?.tasa_completado  ?? null,
-                    canc_prev: dataPrev?.totales?.weekly?.[i]?.tasa_cancelacion ?? null,
-                  }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
-                  <XAxis dataKey="label" tick={{fontSize:9}} angle={-30} textAnchor="end" height={45}/>
-                  <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
-                  <Tooltip formatter={v=>fmtPct(v)}/>
-                  <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
-                  <Line dataKey="tasa_completado"  name="Completado"           stroke={SEM_VERDE} strokeWidth={2} dot={{r:3}}/>
-                  <Line dataKey="tasa_cancelacion" name="Cancelación"          stroke={SEM_ROJO}  strokeWidth={2} dot={{r:3}} strokeDasharray="5 3"/>
-                  {mesPrevMeta && <Line dataKey="tc_prev"   name="Completado (prev)"   stroke={SEM_VERDE} strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
-                  {mesPrevMeta && <Line dataKey="canc_prev" name="Cancelación (prev)"  stroke={SEM_ROJO}  strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
