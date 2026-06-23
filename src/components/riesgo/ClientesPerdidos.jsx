@@ -81,8 +81,10 @@ export default function ClientesPerdidos() {
           if (!(k in distMap)) continue;
           if (typeof val === "number") { distMap[k] += val; continue; }
           distMap[k] += val.total || 0;
-          if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
+          if (!distTimes[k]) distTimes[k] = { completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
           distTimes[k].completados += val.completados || 0;
+          distTimes[k].canceladosConductor += val.canceladosConductor || 0;
+          distTimes[k].expirados += val.expirados || 0;
           distTimes[k].relanzamientos += val.relanzamientos || 0;
           distTimes[k].tAsig += val.tAsignacion || 0;
           distTimes[k].tLleg += val.tLlegada || 0;
@@ -105,7 +107,8 @@ export default function ClientesPerdidos() {
     const distArr = Object.entries(distMap).map(([rng, cnt]) => {
       const t = distTimes[rng] || {};
       const n = t.n || 1;
-      return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
+      const denomEfOp = (t.completados||0) + (t.canceladosConductor||0) + (t.expirados||0);
+      return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: denomEfOp > 0 ? (t.completados||0) / denomEfOp : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
     });
 
     const t5 = [...lost].sort((a, b) => (b.gmv || 0) - (a.gmv || 0)).slice(0, 5);

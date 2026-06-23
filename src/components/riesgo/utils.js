@@ -222,18 +222,22 @@ export function procesarDatos(rows) {
     const distKm = distance > 0 ? distance / 1000 : 0;
     const dRng = distKm < 3 ? "0-3 km" : distKm < 5 ? "3-5 km" : distKm < 10 ? "5-10 km" : "Más de 10 km";
     if (distKm > 0) {
-      if (!e.distancias[dRng]) e.distancias[dRng] = { total: 0, completados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0 };
+      if (!e.distancias[dRng]) e.distancias[dRng] = { total: 0, completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0 };
       const dr = e.distancias[dRng];
       dr.total++;
-      if (esCompletado) dr.completados++;
+      if (esCompletado)      dr.completados++;
+      if (esCancelConductor) dr.canceladosConductor++;
+      if (esExpirado)        dr.expirados++;
       dr.relanzamientos += relaunched;
       if (tTotal > 0) { dr.tAsignacion += tAsignacion; dr.tLlegada += tLlegada; dr.tRecogida += tRecogida; dr.tRuta += tRuta; dr.tTotal += tTotal; dr.nTiempos++; }
       // Solo On Demand
       if (op.toLowerCase() === "on demand") {
-        if (!e.distanciasOnDemand[dRng]) e.distanciasOnDemand[dRng] = { total: 0, completados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0 };
+        if (!e.distanciasOnDemand[dRng]) e.distanciasOnDemand[dRng] = { total: 0, completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0 };
         const dod = e.distanciasOnDemand[dRng];
         dod.total++;
-        if (esCompletado) dod.completados++;
+        if (esCompletado)      dod.completados++;
+        if (esCancelConductor) dod.canceladosConductor++;
+        if (esExpirado)        dod.expirados++;
         dod.relanzamientos += relaunched;
         if (tTotal > 0) { dod.tAsignacion += tAsignacion; dod.tLlegada += tLlegada; dod.tRecogida += tRecogida; dod.tRuta += tRuta; dod.tTotal += tTotal; dod.nTiempos++; }
       }
