@@ -1705,7 +1705,14 @@ export default function InformeTada({ isAdmin }) {
             </div>
             {isAdmin && (
               <button onClick={async () => {
-                const allData = { trafIndex: loadTrafIndex(), factIndex: loadFactIndex(), meses: {} };
+                const allData = {
+                  trafIndex: loadTrafIndex(),
+                  factIndex: loadFactIndex(),
+                  meses: {},
+                  notas: JSON.parse(localStorage.getItem("pibox_tada_notas") || "[]"),
+                  tareas: JSON.parse(localStorage.getItem("pibox_tada_tareas") || "[]"),
+                  umbrales: JSON.parse(localStorage.getItem("pibox_tada_umbrales") || "{}"),
+                };
                 for (const key of Object.keys(allData.trafIndex)) {
                   const d = loadTrafMes(key);
                   if (d) {
@@ -1742,6 +1749,9 @@ export default function InformeTada({ isAdmin }) {
                       if (trafKeys[0]) setTrafMesSel(trafKeys[0]);
                       const factKeys = Object.keys(imported.factIndex || {}).sort().reverse();
                       if (factKeys[0]) setFactMesSel(factKeys[0]);
+                      if (imported.notas) localStorage.setItem("pibox_tada_notas", JSON.stringify(imported.notas));
+                      if (imported.tareas) localStorage.setItem("pibox_tada_tareas", JSON.stringify(imported.tareas));
+                      if (imported.umbrales && Object.keys(imported.umbrales).length) localStorage.setItem("pibox_tada_umbrales", JSON.stringify(imported.umbrales));
                       alert("Datos importados correctamente");
                     } catch { alert("Error al leer el archivo JSON"); }
                   };
