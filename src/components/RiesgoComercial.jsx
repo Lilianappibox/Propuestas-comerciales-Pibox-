@@ -1,5 +1,5 @@
-import { useState, useEffect, lazy, Suspense } from "react";
-import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, UMBRALES_DEFAULT } from "./riesgo/utils";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, idbSaveDrivers, idbSaveHorasRows, UMBRALES_DEFAULT } from "./riesgo/utils";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
@@ -28,9 +28,41 @@ const TABS = [
 ];
 
 export default function RiesgoComercial({ currentUser }) {
-  const [tab, setTab]     = useState("metricas");
-  const [, forceRender]   = useState(0);
+  const [tab, setTab]       = useState("metricas");
+  const [, forceRender]     = useState(0);
+  const [importMsg, setImportMsg] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const importRef = useRef();
   const isAdmin = currentUser?.rol === "Administrativo";
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.index || !data.meses) throw new Error("Archivo inválido: estructura incorrecta.");
+      const localIdx = loadIndex();
+      saveIndex({ ...localIdx, ...data.index });
+      await Promise.all(Object.entries(data.meses).map(([key, mesData]) => saveMesData(key, mesData)));
+      if (data.horasRows) await Promise.all(Object.entries(data.horasRows).map(([key, rows]) => idbSaveHorasRows(key, rows)));
+      if (data.drivers)   await Promise.all(Object.entries(data.drivers).map(([key, drs])  => idbSaveDrivers(key, drs)));
+      if (data.umbrales && Object.keys(data.umbrales).length > 0) {
+        localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(data.umbrales));
+      }
+      const nMeses = Object.keys(data.meses).length;
+      setImportMsg({ ok: true, txt: `✅ ${nMeses} mes${nMeses !== 1 ? "es" : ""} importados correctamente` });
+      forceRender(n => n + 1);
+    } catch (err) {
+      setImportMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = "";
+      setTimeout(() => setImportMsg(null), 4000);
+    }
+  };
 
   // Precargar datos de IndexedDB al cache en memoria
   useEffect(() => {
@@ -76,7 +108,23 @@ export default function RiesgoComercial({ currentUser }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Riesgo Comercial 360°</p>
               <p className="text-xs text-gray-500">Monitoreo automático de clientes · Detección de fuga y deterioro</p>
             </div>
-            {currentUser?.rol === "Administrativo" && (
+            {!isAdmin && (
+              <div className="flex items-center gap-2 shrink-0">
+                <input ref={importRef} type="file" accept=".json" onChange={handleImport}
+                  disabled={importing} className="hidden" id="riesgo-import-input" />
+                <label htmlFor="riesgo-import-input"
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shrink-0 ${importing ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-700"}`}
+                  style={{background:"#2563EB", color:"#fff"}}>
+                  {importing ? "⏳ Importando..." : "📥 Importar datos"}
+                </label>
+                {importMsg && (
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${importMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    {importMsg.txt}
+                  </span>
+                )}
+              </div>
+            )}
+            {isAdmin && (
               <button onClick={async () => {
                 const idx = loadIndex();
                 const keys = Object.keys(idx);
