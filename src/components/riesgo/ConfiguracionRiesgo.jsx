@@ -3,7 +3,7 @@ import XLSX from "../../utils/xlsxHelper";
 import {
   procesarDatos, deleteMes, mesesDisponibles,
   saveIndex, loadIndex, mesKey, labelMes, MESES_ES, PIBOX_PURPLE, idbSaveDrivers, idbDeleteDrivers,
-  saveMesData, idbSaveHorasRows, idbDeleteHorasRows,
+  saveMesData, idbSaveHorasRows, idbDeleteHorasRows, UMBRALES_DEFAULT,
 } from "./utils";
 
 const MESES_NUM = Array.from({length:12},(_,i)=>i+1);
@@ -226,52 +226,149 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
 function UmbralesConfig() {
   const SK = "pibox_riesgo_umbrales";
   const load = () => {
-    try { return JSON.parse(localStorage.getItem(SK) || "null") || {}; }
-    catch { return {}; }
+    try { return { ...UMBRALES_DEFAULT, ...JSON.parse(localStorage.getItem(SK) || "{}") }; }
+    catch { return { ...UMBRALES_DEFAULT }; }
   };
   const [saved, setSaved] = useState(false);
+  const [vals, setVals]   = useState(() => {
+    const u = load();
+    return {
+      completado_rojo:     Math.round((u.completado_rojo     ?? 0.70) * 100),
+      completado_amarillo: Math.round((u.completado_amarillo ?? 0.85) * 100),
+      cancel_rojo:         Math.round((u.cancel_rojo         ?? 0.20) * 100),
+      cancel_amarillo:     Math.round((u.cancel_amarillo     ?? 0.10) * 100),
+      expirado_rojo:       Math.round((u.expirado_rojo       ?? 0.15) * 100),
+      expirado_amarillo:   Math.round((u.expirado_amarillo   ?? 0.05) * 100),
+      gmv_caida_rojo:      Math.round(Math.abs(u.gmv_caida_rojo     ?? 0.15) * 100),
+      gmv_caida_amarillo:  Math.round(Math.abs(u.gmv_caida_amarillo ?? 0.05) * 100),
+    };
+  });
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const u  = {
-      gmv_caida_rojo:     Number(fd.get("gmv"))/100,
-      cancel_rojo:        Number(fd.get("cancel"))/100,
-      completado_rojo:    Number(fd.get("completado"))/100,
+  const set = (k, v) => setVals(prev => ({ ...prev, [k]: Number(v) }));
+
+  const handleSave = () => {
+    const u = {
+      completado_rojo:      vals.completado_rojo     / 100,
+      completado_amarillo:  vals.completado_amarillo / 100,
+      cancel_rojo:          vals.cancel_rojo         / 100,
+      cancel_amarillo:      vals.cancel_amarillo     / 100,
+      expirado_rojo:        vals.expirado_rojo       / 100,
+      expirado_amarillo:    vals.expirado_amarillo   / 100,
+      gmv_caida_rojo:      -(vals.gmv_caida_rojo     / 100),
+      gmv_caida_amarillo:  -(vals.gmv_caida_amarillo / 100),
     };
     localStorage.setItem(SK, JSON.stringify(u));
     setSaved(true);
-    setTimeout(()=>setSaved(false),2500);
+    setTimeout(() => setSaved(false), 2500);
   };
 
-  const cur = load();
+  const handleReset = () => {
+    localStorage.removeItem(SK);
+    setVals({
+      completado_rojo:     70,
+      completado_amarillo: 85,
+      cancel_rojo:         20,
+      cancel_amarillo:     10,
+      expirado_rojo:       15,
+      expirado_amarillo:   5,
+      gmv_caida_rojo:      15,
+      gmv_caida_amarillo:  5,
+    });
+  };
+
+  const Input = ({ label, field, min=0, max=100 }) => (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-gray-600 flex-1">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number" value={vals[field]} min={min} max={max} step={1}
+          onChange={e => set(field, e.target.value)}
+          className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
+        />
+        <span className="text-xs text-gray-400">%</span>
+      </div>
+    </div>
+  );
+
+  const Section = ({ icon, title, children }) => (
+    <div className="bg-gray-50 rounded-xl border border-gray-100 p-4 space-y-3">
+      <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">{icon} {title}</p>
+      {children}
+    </div>
+  );
 
   return (
     <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
-      <h3 className="font-bold text-gray-800 text-base mb-4 flex items-center gap-2">
-        <span className="bg-red-100 text-red-700 rounded-lg p-1 text-sm">🎯</span>
-        Umbrales de alerta (riesgo crítico 🔴)
-      </h3>
-      <form onSubmit={handleSave} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { name:"gmv",       label:"Caída de GMV crítica (%)", def: Math.abs((cur.gmv_caida_rojo??-0.15)*100) },
-          { name:"cancel",    label:"Cancelaciones críticas (%)",def: (cur.cancel_rojo??0.20)*100 },
-          { name:"completado",label:"Completado mínimo (%)",     def: (cur.completado_rojo??0.70)*100 },
-        ].map(({name,label,def}) => (
-          <div key={name}>
-            <label className="text-xs font-semibold text-gray-600 mb-1 block">{label}</label>
-            <input type="number" name={name} defaultValue={def} min={0} max={100} step={1}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+          <span className="bg-red-100 text-red-700 rounded-lg p-1 text-sm">🎯</span>
+          Umbrales de riesgo
+        </h3>
+        <button onClick={handleReset}
+          className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
+          ↩ Restaurar valores por defecto
+        </button>
+      </div>
+
+      {/* Leyenda */}
+      <div className="flex gap-4 mb-5 text-xs">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-600 inline-block"/> Rojo — Riesgo crítico</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block"/> Amarillo — Riesgo moderado</span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+
+        {/* Ef. Operativa */}
+        <Section icon="📉" title="Ef. Operativa">
+          <p className="text-[10px] text-gray-400">Umbral mínimo de Completado / (Completado + Cancel. Driver + Expirados)</p>
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-2 text-xs font-semibold text-red-600 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"/> Baja (🔴)</div>
+            <Input label="Ef. Operativa menor a:" field="completado_rojo" />
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-500 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"/> Moderada (🟡)</div>
+            <Input label="Ef. Operativa menor a:" field="completado_amarillo" />
           </div>
-        ))}
-        <div className="sm:col-span-3">
-          <button type="submit"
-            className="px-5 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
-            style={{background:"linear-gradient(135deg,#5B17A8,#7C22D4,#C026D3)"}}>
-            {saved ? "✅ Guardado" : "💾 Guardar umbrales"}
-          </button>
-        </div>
-      </form>
+        </Section>
+
+        {/* Cancelaciones */}
+        <Section icon="❌" title="Cancelaciones">
+          <p className="text-[10px] text-gray-400">% de servicios cancelados sobre el total</p>
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-2 text-xs font-semibold text-red-600 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"/> Altas (🔴)</div>
+            <Input label="Cancelaciones mayores a:" field="cancel_rojo" />
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-500 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"/> Moderadas (🟡)</div>
+            <Input label="Cancelaciones mayores a:" field="cancel_amarillo" />
+          </div>
+        </Section>
+
+        {/* Expirados */}
+        <Section icon="⏰" title="Expirados">
+          <p className="text-[10px] text-gray-400">% de servicios expirados sobre el total</p>
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-2 text-xs font-semibold text-red-600 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"/> Altos (🔴)</div>
+            <Input label="Expirados mayores a:" field="expirado_rojo" />
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-500 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"/> Moderados (🟡)</div>
+            <Input label="Expirados mayores a:" field="expirado_amarillo" />
+          </div>
+        </Section>
+
+        {/* Caída de GMV */}
+        <Section icon="💸" title="Caída de GMV vs mes anterior">
+          <p className="text-[10px] text-gray-400">% de caída respecto al mes anterior</p>
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-2 text-xs font-semibold text-red-600 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"/> Cayó (🔴)</div>
+            <Input label="GMV cayó más de:" field="gmv_caida_rojo" />
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-500 mb-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"/> Bajó (🟡)</div>
+            <Input label="GMV bajó más de:" field="gmv_caida_amarillo" />
+          </div>
+        </Section>
+
+      </div>
+
+      <button onClick={handleSave}
+        className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        style={{background:"linear-gradient(135deg,#5B17A8,#7C22D4,#C026D3)"}}>
+        {saved ? "✅ Umbrales guardados" : "💾 Guardar umbrales"}
+      </button>
     </div>
   );
 }
