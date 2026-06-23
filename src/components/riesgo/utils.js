@@ -185,15 +185,16 @@ export function procesarDatos(rows) {
       }
     } catch {}
 
-    const esCompletado   = status === "Completed";
-    const esCancelado    = status.startsWith("Canceled");
-    const esExpirado     = status === "Expired";
-    const esCancelPax    = status === "Canceled by Passenger";
+    const esCompletado       = status === "Completed";
+    const esCancelado        = status.startsWith("Canceled");
+    const esExpirado         = status === "Expired";
+    const esCancelPax        = status === "Canceled by Passenger";
+    const esCancelConductor  = status === "Canceled by Driver";
 
     if (!empMap[empresa]) {
       empMap[empresa] = {
         empresa, companyId: companyId, total:0, completados:0, cancelados:0, expirados:0,
-        canceladosPax:0, tiempoCancelPax:0, nTiempoCancelPax:0,
+        canceladosPax:0, canceladosConductor:0, tiempoCancelPax:0, nTiempoCancelPax:0,
         tiempoExpirado:0, nTiempoExp:0,
         gmv:0, paquetes:0, service_cost:0, ejecutivo: exec,
         relanzamientos:0, devueltos:0, distancias:{},
@@ -210,6 +211,7 @@ export function procesarDatos(rows) {
       e.canceladosPax++;
       if (tTotal > 0) { e.tiempoCancelPax += tTotal; e.nTiempoCancelPax++; }
     }
+    if (esCancelConductor) e.canceladosConductor++;
     if (esExpirado && tTotal > 0) { e.tiempoExpirado += tTotal; e.nTiempoExp++; }
     e.gmv          += gmv;
     e.service_cost += cost;
@@ -262,21 +264,25 @@ export function procesarDatos(rows) {
 
     // weekly por empresa
     if (semana > 0) {
-      if (!e.weekly[semana]) e.weekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0,paquetes:0,label:semanaLabel };
+      if (!e.weekly[semana]) e.weekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0,canceladosConductor:0,expirados:0,paquetes:0,label:semanaLabel };
       e.weekly[semana].gmv        += gmv;
       e.weekly[semana].servicios++;
       e.weekly[semana].paquetes   += pkgs;
-      if (esCompletado) e.weekly[semana].completados++;
-      if (esCancelado)  e.weekly[semana].cancelados++;
+      if (esCompletado)       e.weekly[semana].completados++;
+      if (esCancelado)        e.weekly[semana].cancelados++;
+      if (esCancelConductor)  e.weekly[semana].canceladosConductor++;
+      if (esExpirado)         e.weekly[semana].expirados++;
     }
 
     // weekly global
     if (semana > 0) {
-      if (!globalWeekly[semana]) globalWeekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0,label:semanaLabel };
+      if (!globalWeekly[semana]) globalWeekly[semana] = { gmv:0,servicios:0,completados:0,cancelados:0,canceladosConductor:0,expirados:0,label:semanaLabel };
       globalWeekly[semana].gmv += gmv;
       globalWeekly[semana].servicios++;
-      if (esCompletado) globalWeekly[semana].completados++;
-      if (esCancelado)  globalWeekly[semana].cancelados++;
+      if (esCompletado)       globalWeekly[semana].completados++;
+      if (esCancelado)        globalWeekly[semana].cancelados++;
+      if (esCancelConductor)  globalWeekly[semana].canceladosConductor++;
+      if (esExpirado)         globalWeekly[semana].expirados++;
     }
 
     // ── Agregación por ciudad ─────────────────────────────────────────────
@@ -284,7 +290,7 @@ export function procesarDatos(rows) {
     const estadoBk    = toStr(row["estado_booking"] || row["estado_Booking"] || status || "Sin estado");
 
     if (!cityMap[city]) cityMap[city] = {
-      city, total:0, gmv:0, paquetes:0, completados:0, cancelados:0, expirados:0,
+      city, total:0, gmv:0, paquetes:0, completados:0, cancelados:0, expirados:0, canceladosConductor:0,
       localidades:{}, ops:{}, estados:{}, weekly:{}, driversPorOp:{},
     };
     const cv = cityMap[city];
@@ -297,9 +303,10 @@ export function procesarDatos(rows) {
       cv.driversPorOp[op].drivers.add(driverKeyCv);
       cv.driversPorOp[op].servicios++;
     }
-    if (esCompletado) cv.completados++;
-    if (esCancelado)  cv.cancelados++;
-    if (esExpirado)   cv.expirados++;
+    if (esCompletado)      cv.completados++;
+    if (esCancelado)       cv.cancelados++;
+    if (esExpirado)        cv.expirados++;
+    if (esCancelConductor) cv.canceladosConductor++;
 
     if (!cv.localidades[locality]) cv.localidades[locality] = {total:0,paquetes:0,gmv:0,completados:0,cancelados:0};
     const lv = cv.localidades[locality];
@@ -314,17 +321,20 @@ export function procesarDatos(rows) {
     cv.estados[estadoBk].total++; cv.estados[estadoBk].paquetes += pkgs;
 
     if (semana > 0) {
-      if (!cv.weekly[semana]) cv.weekly[semana] = {gmv:0,servicios:0,paquetes:0,completados:0,cancelados:0,label:semanaLabel};
+      if (!cv.weekly[semana]) cv.weekly[semana] = {gmv:0,servicios:0,paquetes:0,completados:0,cancelados:0,canceladosConductor:0,expirados:0,label:semanaLabel};
       cv.weekly[semana].gmv += gmv; cv.weekly[semana].servicios++;
       cv.weekly[semana].paquetes += pkgs;
-      if (esCompletado) cv.weekly[semana].completados++;
-      if (esCancelado)  cv.weekly[semana].cancelados++;
+      if (esCompletado)       cv.weekly[semana].completados++;
+      if (esCancelado)        cv.weekly[semana].cancelados++;
+      if (esCancelConductor)  cv.weekly[semana].canceladosConductor++;
+      if (esExpirado)         cv.weekly[semana].expirados++;
     }
   }
 
   // Convertir a arrays serializables
   const empresas = Object.values(empMap).map(e => {
-    const tc = e.total > 0 ? e.completados/e.total : 0;
+    const denomEfOp = e.completados + (e.canceladosConductor||0) + e.expirados;
+    const tc = denomEfOp > 0 ? e.completados / denomEfOp : 0;  // Efectividad Operativa
     const tca= e.total > 0 ? e.cancelados/e.total  : 0;
     const te = e.total > 0 ? e.expirados/e.total   : 0;
 
@@ -345,7 +355,8 @@ export function procesarDatos(rows) {
         label: v.label || `S${s}`,
         gmv:v.gmv, servicios:v.servicios, paquetes:v.paquetes,
         completados:v.completados, cancelados:v.cancelados,
-        tasa_completado: v.servicios>0 ? v.completados/v.servicios : 0,
+        canceladosConductor: v.canceladosConductor||0, expirados: v.expirados||0,
+        tasa_completado: (v.completados+(v.canceladosConductor||0)+(v.expirados||0))>0 ? v.completados/(v.completados+(v.canceladosConductor||0)+(v.expirados||0)) : 0,
         tasa_cancelacion: v.servicios>0 ? v.cancelados/v.servicios : 0,
       }))
       .sort((a,b)=>a.semana-b.semana);
@@ -370,7 +381,7 @@ export function procesarDatos(rows) {
     return {
       empresa: e.empresa, companyId: e.companyId, total: e.total,
       completados: e.completados, cancelados: e.cancelados, expirados: e.expirados,
-      canceladosPax: e.canceladosPax,
+      canceladosPax: e.canceladosPax, canceladosConductor: e.canceladosConductor||0,
       avgTiempoCancelPax: e.nTiempoCancelPax > 0 ? e.tiempoCancelPax / e.nTiempoCancelPax : null,
       avgTiempoExpirado:  e.nTiempoExp       > 0 ? e.tiempoExpirado  / e.nTiempoExp       : null,
       gmv: e.gmv, service_cost: e.service_cost, paquetes: e.paquetes,
@@ -440,7 +451,8 @@ export function procesarDatos(rows) {
       semana: Number(s),
       label: v.label || `S${s}`,
       gmv:v.gmv, servicios:v.servicios,
-      tasa_completado: v.servicios>0?v.completados/v.servicios:0,
+      completados:v.completados, canceladosConductor:v.canceladosConductor||0, expirados:v.expirados||0,
+      tasa_completado: (v.completados+(v.canceladosConductor||0)+(v.expirados||0))>0 ? v.completados/(v.completados+(v.canceladosConductor||0)+(v.expirados||0)) : 0,
       tasa_cancelacion: v.servicios>0?v.cancelados/v.servicios:0,
     }))
     .sort((a,b)=>a.semana-b.semana);
@@ -467,7 +479,8 @@ export function procesarDatos(rows) {
         semana:Number(s), label:v.label||`S${s}`,
         gmv:v.gmv, servicios:v.servicios, paquetes:v.paquetes,
         completados:v.completados, cancelados:v.cancelados,
-        tasa_completado: v.servicios>0?v.completados/v.servicios:0,
+        canceladosConductor:v.canceladosConductor||0, expirados:v.expirados||0,
+        tasa_completado: (v.completados+(v.canceladosConductor||0)+(v.expirados||0))>0 ? v.completados/(v.completados+(v.canceladosConductor||0)+(v.expirados||0)) : 0,
         tasa_cancelacion: v.servicios>0?v.cancelados/v.servicios:0,
       }))
       .sort((a,b)=>a.semana-b.semana);
@@ -482,7 +495,7 @@ export function procesarDatos(rows) {
     return {
       city: cv.city, total: cv.total, gmv: cv.gmv, paquetes: cv.paquetes,
       completados: cv.completados, cancelados: cv.cancelados, expirados: cv.expirados,
-      tasa_completado: cv.total>0?cv.completados/cv.total:0,
+      tasa_completado: (cv.completados+(cv.canceladosConductor||0)+cv.expirados)>0 ? cv.completados/(cv.completados+(cv.canceladosConductor||0)+cv.expirados) : 0,
       tasa_cancelacion: cv.total>0?cv.cancelados/cv.total:0,
       localidades, ops, estados, weekly, driversPorOp,
       totalDrivers: totalDriversCiudad.size,

@@ -65,7 +65,7 @@ function DrillDown({ empresa, mesLabel }) {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         {[
           {icon:"📦",label:"Servicios",  val:empresa.total.toLocaleString(), col:PIBOX_PURPLE},
-          {icon:"✅",label:"Completado", val:fmtPct(empresa.tasa_completado),  col:SEM_VERDE},
+          {icon:"✅",label:"Ef. Operativa", val:fmtPct(empresa.tasa_completado),  col:SEM_VERDE},
           {icon:"❌",label:"Cancelación",val:fmtPct(empresa.tasa_cancelacion), col:SEM_ROJO},
           {icon:"⏱️",label:"Expirados",  val:fmtPct(empresa.tasa_expirado),    col:SEM_AMARILLO},
           {icon:"💰",label:"GMV",         val:fmtFull(empresa.gmv),            col:PIBOX_PURPLE},
@@ -104,7 +104,7 @@ function DrillDown({ empresa, mesLabel }) {
             </ResponsiveContainer>
           </div>
           <div>
-            <p className="text-xs text-gray-500 font-semibold mb-2">% Completado / Cancelación</p>
+            <p className="text-xs text-gray-500 font-semibold mb-2">Ef. Operativa / Cancelación</p>
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={empresa.weekly}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
@@ -112,8 +112,8 @@ function DrillDown({ empresa, mesLabel }) {
                 <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                 <Tooltip formatter={v=>fmtPct(v)}/>
                 <Legend iconSize={7} wrapperStyle={{fontSize:9}}/>
-                <Line dataKey="tasa_completado"  name="Completado"  stroke={SEM_VERDE} strokeWidth={2} dot={{r:2}}/>
-                <Line dataKey="tasa_cancelacion" name="Cancelación" stroke={SEM_ROJO}  strokeWidth={2} dot={{r:2}} strokeDasharray="4 2"/>
+                <Line dataKey="tasa_completado"  name="Ef. Operativa" stroke={SEM_VERDE} strokeWidth={2} dot={{r:2}}/>
+                <Line dataKey="tasa_cancelacion" name="Cancelación"  stroke={SEM_ROJO}  strokeWidth={2} dot={{r:2}} strokeDasharray="4 2"/>
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -317,7 +317,7 @@ export default function RankingRiesgo() {
           <table className="w-full text-xs">
             <thead>
               <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                {["Empresa","Semáforo","Score","Servicios","Completado","Cancelación","Expirado","GMV","Ejecutivo","Factores"].map(h=>(
+                {["Empresa","Semáforo","Score","Servicios","Ef. Operativa","Cancelación","Expirado","GMV","Ejecutivo","Factores"].map(h=>(
                   <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>

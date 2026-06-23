@@ -756,7 +756,7 @@ export default function MetricasRiesgo() {
                     </ResponsiveContainer>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 mb-2 font-semibold">% Completado / Cancelación</p>
+                    <p className="text-xs text-gray-500 mb-2 font-semibold">Ef. Operativa / Cancelación</p>
                     <ResponsiveContainer width="100%" height={160}>
                       <LineChart data={tot.weekly.map((w,i)=>({
                           ...w,
@@ -768,10 +768,10 @@ export default function MetricasRiesgo() {
                         <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                         <Tooltip formatter={v=>fmtPct(v)}/>
                         <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
-                        <Line dataKey="tasa_completado"  name="Completado"           stroke={SEM_VERDE} strokeWidth={2} dot={{r:3}}/>
-                        <Line dataKey="tasa_cancelacion" name="Cancelación"          stroke={SEM_ROJO}  strokeWidth={2} dot={{r:3}} strokeDasharray="5 3"/>
-                        {mesPrevMeta && <Line dataKey="tc_prev"   name="Completado (prev)"   stroke={SEM_VERDE} strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
-                        {mesPrevMeta && <Line dataKey="canc_prev" name="Cancelación (prev)"  stroke={SEM_ROJO}  strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
+                        <Line dataKey="tasa_completado"  name="Ef. Operativa"           stroke={SEM_VERDE} strokeWidth={2} dot={{r:3}}/>
+                        <Line dataKey="tasa_cancelacion" name="Cancelación"             stroke={SEM_ROJO}  strokeWidth={2} dot={{r:3}} strokeDasharray="5 3"/>
+                        {mesPrevMeta && <Line dataKey="tc_prev"   name="Ef. Operativa (prev)" stroke={SEM_VERDE} strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
+                        {mesPrevMeta && <Line dataKey="canc_prev" name="Cancelación (prev)"   stroke={SEM_ROJO}  strokeWidth={1.5} dot={{r:2}} strokeDasharray="3 3" strokeOpacity={0.5}/>}
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -1113,8 +1113,8 @@ function DrillDown({ empresa, mesLabel }) {
                 <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                 <Tooltip formatter={v=>fmtPct(v)}/>
                 <Legend iconSize={7} wrapperStyle={{fontSize:9}}/>
-                <Line dataKey="tasa_completado"  name="Completado"  stroke={SEM_VERDE} strokeWidth={2} dot={{r:2}}/>
-                <Line dataKey="tasa_cancelacion" name="Cancelación" stroke={SEM_ROJO}  strokeWidth={2} dot={{r:2}} strokeDasharray="4 2"/>
+                <Line dataKey="tasa_completado"  name="Ef. Operativa" stroke={SEM_VERDE} strokeWidth={2} dot={{r:2}}/>
+                <Line dataKey="tasa_cancelacion" name="Cancelación"  stroke={SEM_ROJO}  strokeWidth={2} dot={{r:2}} strokeDasharray="4 2"/>
               </LineChart>
             </ResponsiveContainer>
           </div>

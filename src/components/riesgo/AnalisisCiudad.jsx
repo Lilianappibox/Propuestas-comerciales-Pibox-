@@ -144,7 +144,8 @@ export default function AnalisisCiudad() {
       for (const w of (c.weekly || [])) { if (!weekMap[w.semana]) weekMap[w.semana] = { ...w }; else { weekMap[w.semana].gmv += w.gmv; weekMap[w.semana].servicios += w.servicios; weekMap[w.semana].paquetes += (w.paquetes||0); weekMap[w.semana].completados += w.completados; weekMap[w.semana].cancelados += w.cancelados; } }
       for (const d of (c.driversPorOp || [])) { if (!drvMap[d.op]) drvMap[d.op] = { ...d }; else { drvMap[d.op].driversActivos += d.driversActivos; drvMap[d.op].servicios += d.servicios; } }
     }
-    merged.tasa_completado = merged.total > 0 ? merged.completados / merged.total : 0;
+    const denomEfOpCity = merged.completados + (merged.canceladosConductor||0) + (merged.expirados||0);
+    merged.tasa_completado = denomEfOpCity > 0 ? merged.completados / denomEfOpCity : 0;
     merged.tasa_cancelacion = merged.total > 0 ? merged.cancelados / merged.total : 0;
     merged.localidades = Object.values(locMap).sort((a, b) => b.paquetes - a.paquetes).slice(0, 20);
     merged.ops = Object.values(opMap).sort((a, b) => b.total - a.total);
@@ -161,7 +162,7 @@ export default function AnalisisCiudad() {
     if (selected.length === 1) return selected[0];
     const m = { total: 0, gmv: 0, paquetes: 0, completados: 0, tasa_completado: 0 };
     for (const c of selected) { m.total += c.total; m.gmv += c.gmv; m.paquetes += c.paquetes; m.completados += c.completados; }
-    m.tasa_completado = m.total > 0 ? m.completados / m.total : 0;
+    m.tasa_completado = (m.completados + (m.canceladosConductor||0) + (m.expirados||0)) > 0 ? m.completados / (m.completados + (m.canceladosConductor||0) + (m.expirados||0)) : 0;
     return m;
   }, [dataPrev, ciudadesSeleccionadas]);
 
@@ -270,7 +271,7 @@ export default function AnalisisCiudad() {
             <KpiCard icon="📦" label="Paquetes"    value={cityData.paquetes.toLocaleString()}   borderColor={PIBOX_PURPLE} delta={varPaq}/>
             <KpiCard icon="🚗" label="Servicios"   value={cityData.total.toLocaleString()}      borderColor={PIBOX_PINK}   delta={varSvc}/>
             <KpiCard icon="💰" label="GMV"         value={fmtFull(cityData.gmv)}               borderColor={PIBOX_PURPLE} delta={varGmv}/>
-            <KpiCard icon="✅" label="Completado"  value={fmtPct(cityData.tasa_completado)}     borderColor={SEM_VERDE}
+            <KpiCard icon="✅" label="Ef. Operativa"  value={fmtPct(cityData.tasa_completado)}     borderColor={SEM_VERDE}
               delta={varTc}/>
           </div>
 
@@ -294,7 +295,7 @@ export default function AnalisisCiudad() {
                       {label:"📦 Paquetes",    curr:cityData.paquetes.toLocaleString(),       prev:cityPrev.paquetes.toLocaleString(),       delta:varPaq,  inv:false},
                       {label:"🚗 Servicios",   curr:cityData.total.toLocaleString(),           prev:cityPrev.total.toLocaleString(),           delta:varSvc,  inv:false},
                       {label:"💰 GMV",         curr:fmtFull(cityData.gmv),                    prev:fmtFull(cityPrev.gmv),                    delta:varGmv,  inv:false},
-                      {label:"✅ Completado",  curr:fmtPct(cityData.tasa_completado),          prev:fmtPct(cityPrev.tasa_completado),          delta:varTc,   inv:false},
+                      {label:"✅ Ef. Operativa",  curr:fmtPct(cityData.tasa_completado),          prev:fmtPct(cityPrev.tasa_completado),          delta:varTc,   inv:false},
                       {label:"❌ Cancelación", curr:fmtPct(cityData.tasa_cancelacion),         prev:fmtPct(cityPrev.tasa_cancelacion),         delta:(cityPrev?cityData.tasa_cancelacion-cityPrev.tasa_cancelacion:null), inv:true},
                     ].map((r,i)=>{
                       const isPos = r.inv ? r.delta < 0 : r.delta > 0;
@@ -349,7 +350,7 @@ export default function AnalisisCiudad() {
                         <th className="px-3 py-2 text-left">Localidad</th>
                         <th className="px-3 py-2 text-right">Paquetes</th>
                         <th className="px-3 py-2 text-right">Servicios</th>
-                        <th className="px-3 py-2 text-right">Completado</th>
+                        <th className="px-3 py-2 text-right">Ef. Operativa</th>
                         <th className="px-3 py-2 text-right">Cancelado</th>
                       </tr>
                     </thead>
@@ -480,7 +481,7 @@ export default function AnalisisCiudad() {
                   </ResponsiveContainer>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 font-semibold mb-2">% Completado / Cancelación</p>
+                  <p className="text-xs text-gray-500 font-semibold mb-2">Ef. Operativa / Cancelación</p>
                   <ResponsiveContainer width="100%" height={150}>
                     <LineChart data={cityData.weekly.map((w,i)=>({
                         ...w,

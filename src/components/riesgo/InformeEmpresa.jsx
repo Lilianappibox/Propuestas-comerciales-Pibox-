@@ -201,7 +201,8 @@ export default function InformeEmpresa() {
       for (const u of (e.topUsuarios || [])) { if (!userMap[u.usuario]) userMap[u.usuario] = { ...u }; else { userMap[u.usuario].total += u.total; userMap[u.usuario].completados += u.completados; userMap[u.usuario].gmv += u.gmv; } }
       for (const s of (e.topSedes || [])) { if (!sedeMap[s.sede]) sedeMap[s.sede] = { ...s }; else { sedeMap[s.sede].total += s.total; sedeMap[s.sede].completados += s.completados; sedeMap[s.sede].gmv += s.gmv; } }
     }
-    m.tasa_completado = m.total > 0 ? m.completados / m.total : 0;
+    const denomEfOpEmp = m.completados + (m.canceladosConductor||0) + m.expirados;
+    m.tasa_completado = denomEfOpEmp > 0 ? m.completados / denomEfOpEmp : 0;
     m.tasa_cancelacion = m.total > 0 ? m.cancelados / m.total : 0;
     m.tasa_expirado = m.total > 0 ? m.expirados / m.total : 0;
     m.topCiudades = Object.values(cityMap).sort((a, b) => b.gmv - a.gmv);
@@ -626,7 +627,7 @@ export default function InformeEmpresa() {
                     </ResponsiveContainer>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 font-semibold mb-2">% Completado / Cancelación</p>
+                    <p className="text-xs text-gray-500 font-semibold mb-2">Ef. Operativa / Cancelación</p>
                     <ResponsiveContainer width="100%" height={130}>
                       <LineChart data={empData.weekly}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
@@ -634,7 +635,7 @@ export default function InformeEmpresa() {
                         <YAxis tick={{fontSize:9}} tickFormatter={v=>`${(v*100).toFixed(0)}%`}/>
                         <Tooltip formatter={v=>fmtPct(v)}/>
                         <Legend iconSize={7} wrapperStyle={{fontSize:9}}/>
-                        <Line dataKey="tasa_completado"  name="Completado"  stroke={SEM_VERDE} strokeWidth={2} dot={{r:2}}/>
+                        <Line dataKey="tasa_completado"  name="Ef. Operativa" stroke={SEM_VERDE} strokeWidth={2} dot={{r:2}}/>
                         <Line dataKey="tasa_cancelacion" name="Cancelación" stroke={SEM_ROJO}  strokeWidth={2} dot={{r:2}} strokeDasharray="4 2"/>
                       </LineChart>
                     </ResponsiveContainer>
