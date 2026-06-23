@@ -8,6 +8,9 @@ import {
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const PIBOX_PURPLE = "#7C22D4";
 const PIBOX_PINK   = "#C026D3";
+
+// Estados excluidos del cálculo de puntualidad
+const ESTADOS_EXCLUIR_PUNTUALIDAD = ["reemplazo", "adicional", "adicional tada", "adicional cancelado", "piloto cancela"];
 const SEM_VERDE    = "#16A34A";
 const SEM_ROJO     = "#DC2626";
 const SEM_AMARILLO = "#D97706";
@@ -170,11 +173,12 @@ function processExcel(wb) {
 }
 
 function processRows(rows) {
-  let totalTurnos = 0;  // Solo cuenta turnos que NO son "cliente cancela"
+  let totalTurnos = 0;      // Solo cuenta turnos que NO son "cliente cancela"
   let clienteCancela = 0;
   let colocacionesSI = 0;
   let colocacionesNO = 0;
-  let puntualidadSI  = 0;
+  let puntualidadSI    = 0;
+  let puntualidadTurnos = 0; // Turnos válidos para medir puntualidad (excluye estados especiales)
   const estadoMap    = {};
   const ciudadMap    = {};
   const puntoMap     = {};
@@ -200,9 +204,11 @@ function processRows(rows) {
 
     const isSI  = coloc === "SI";
     const isNO  = coloc === "NO";
-    const isPunt = punt === "SI CUMPLE";
-    const isNoPunt = punt === "NO CUMPLE";
-    const esClienteCancela = estado.toLowerCase().includes("cliente cancela");
+    const estadoLower = estado.toLowerCase();
+    const esExcluidoPuntualidad = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estadoLower === e);
+    const isPunt = !esExcluidoPuntualidad && punt === "SI CUMPLE";
+    const isNoPunt = !esExcluidoPuntualidad && punt === "NO CUMPLE";
+    const esClienteCancela = estadoLower.includes("cliente cancela");
 
     // Estado siempre se contabiliza (para gráfica de distribución de estados)
     if (estado) estadoMap[estado] = (estadoMap[estado] || 0) + 1;
@@ -230,6 +236,7 @@ function processRows(rows) {
     totalTurnos++;
     if (isSI) colocacionesSI++;
     if (isNO) colocacionesNO++;
+    if (!esExcluidoPuntualidad) puntualidadTurnos++;
     if (isPunt) puntualidadSI++;
 
     // Hora de inicio de turno (decimal Excel → hora, o HH:MM:SS string)
@@ -259,27 +266,30 @@ function processRows(rows) {
 
     // Ciudad
     if (ciudad) {
-      if (!ciudadMap[ciudad]) ciudadMap[ciudad] = { turnos: 0, si: 0, no: 0, punt: 0 };
+      if (!ciudadMap[ciudad]) ciudadMap[ciudad] = { turnos: 0, si: 0, no: 0, punt: 0, puntTurnos: 0 };
       ciudadMap[ciudad].turnos++;
       if (isSI) ciudadMap[ciudad].si++;
       if (isNO) ciudadMap[ciudad].no++;
+      if (!esExcluidoPuntualidad) ciudadMap[ciudad].puntTurnos++;
       if (isPunt) ciudadMap[ciudad].punt++;
     }
 
     // Punto
     if (punto) {
-      if (!puntoMap[punto]) puntoMap[punto] = { ciudad, turnos: 0, si: 0, no: 0, punt: 0 };
+      if (!puntoMap[punto]) puntoMap[punto] = { ciudad, turnos: 0, si: 0, no: 0, punt: 0, puntTurnos: 0 };
       puntoMap[punto].turnos++;
       if (isSI) puntoMap[punto].si++;
       if (isNO) puntoMap[punto].no++;
+      if (!esExcluidoPuntualidad) puntoMap[punto].puntTurnos++;
       if (isPunt) puntoMap[punto].punt++;
     }
 
     // Semana
     if (semana) {
-      if (!semanaMap[semana]) semanaMap[semana] = { turnos: 0, si: 0, punt: 0 };
+      if (!semanaMap[semana]) semanaMap[semana] = { turnos: 0, si: 0, punt: 0, puntTurnos: 0 };
       semanaMap[semana].turnos++;
       if (isSI) semanaMap[semana].si++;
+      if (!esExcluidoPuntualidad) semanaMap[semana].puntTurnos++;
       if (isPunt) semanaMap[semana].punt++;
     }
 
@@ -288,9 +298,10 @@ function processRows(rows) {
 
     // Mes
     if (mes) {
-      if (!mesMap[mes]) mesMap[mes] = { turnos: 0, si: 0, punt: 0 };
+      if (!mesMap[mes]) mesMap[mes] = { turnos: 0, si: 0, punt: 0, puntTurnos: 0 };
       mesMap[mes].turnos++;
       if (isSI) mesMap[mes].si++;
+      if (!esExcluidoPuntualidad) mesMap[mes].puntTurnos++;
       if (isPunt) mesMap[mes].punt++;
     }
   }
@@ -318,6 +329,7 @@ function processRows(rows) {
     colocacionesSI,
     colocacionesNO,
     puntualidadSI,
+    puntualidadTurnos,
     cancelaciones,
     pilotosActivos: pilotos.size,
     estadoMap,
@@ -527,7 +539,8 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     const T = traf.totalTurnos;
     const pctColoc = T > 0 ? (traf.colocacionesSI / T * 100) : 0;
     const pctNoColoc = T > 0 ? (traf.colocacionesNO / T * 100) : 0;
-    const pctPunt = T > 0 ? (traf.puntualidadSI / T * 100) : 0;
+    const PT = traf.puntualidadTurnos || 0;
+    const pctPunt = PT > 0 ? (traf.puntualidadSI / PT * 100) : 0;
     const pctCancel = T > 0 ? (traf.cancelaciones / T * 100) : 0;
 
     // 1. Colocación general
@@ -549,7 +562,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     if (trafP && trafP.totalTurnos > 0) {
       const vTurnos = ((T - trafP.totalTurnos) / trafP.totalTurnos * 100);
       const vColoc = trafP.colocacionesSI > 0 ? ((traf.colocacionesSI - trafP.colocacionesSI) / trafP.colocacionesSI * 100) : 0;
-      const pctPuntP = trafP.totalTurnos > 0 ? (trafP.puntualidadSI / trafP.totalTurnos * 100) : 0;
+      const pctPuntP = (trafP.puntualidadTurnos || 0) > 0 ? (trafP.puntualidadSI / trafP.puntualidadTurnos * 100) : 0;
       const diffPunt = pctPunt - pctPuntP;
       if (vTurnos < umb.varTurnosAlerta) alerts.push({ cat: "Tendencia", icon: "📉", text: `Turnos cayeron ${Math.abs(vTurnos).toFixed(1)}% vs ${insPrevMesKey} (${trafP.totalTurnos.toLocaleString()} → ${T.toLocaleString()}). Revisar si es por menor demanda o falta de pilotos.` });
       else if (vTurnos > umb.varTurnosWin) wins.push({ cat: "Tendencia", icon: "📈", text: `Turnos crecieron ${vTurnos.toFixed(1)}% vs ${insPrevMesKey} (${trafP.totalTurnos.toLocaleString()} → ${T.toLocaleString()}).` });
@@ -599,7 +612,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
       // Ciudades con problemas y ciudades destacadas
       Object.entries(traf.ciudadMap).forEach(([c, v]) => {
         const pct = v.turnos > 0 ? (v.si / v.turnos * 100) : 0;
-        const pctP = v.turnos > 0 ? (v.punt / v.turnos * 100) : 0;
+        const pctP = (v.puntTurnos || 0) > 0 ? (v.punt / v.puntTurnos * 100) : 0;
         if (v.turnos >= umb.minTurnosCiudad) {
           const color = pct < umb.ciudadColocAlerta ? "rojo" : pct >= umb.colocExcelente ? "verde" : "amarillo";
           detalleCiudades.push({ ciudad: c, turnos: v.turnos, coloc: pct, punt: pctP, color });
@@ -710,13 +723,14 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
       const punto = String(r["PUNTO"] || "").trim();
       const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
       const esCancela = estado.toUpperCase().includes("CANCEL") || estado.toUpperCase().includes("PILOTO CANCELA");
+      const esExcluidoPuntN = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estado.toLowerCase() === e);
       if (!map[id]) map[id] = { id, nombre, ciudad, turnos: 0, puntSI: 0, puntTotal: 0, cancela: 0, estados: {}, puntos: new Set() };
       map[id].turnos++;
       totalTurnosNuevos++;
       if (estado) map[id].estados[estado] = (map[id].estados[estado] || 0) + 1;
       if (punto) map[id].puntos.add(punto);
-      if (punt === "SI CUMPLE" || punt === "NO CUMPLE") { map[id].puntTotal++; totalPuntEval++; }
-      if (punt === "SI CUMPLE") { map[id].puntSI++; totalPuntSI++; }
+      if (!esExcluidoPuntN && (punt === "SI CUMPLE" || punt === "NO CUMPLE")) { map[id].puntTotal++; totalPuntEval++; }
+      if (!esExcluidoPuntN && punt === "SI CUMPLE") { map[id].puntSI++; totalPuntSI++; }
       if (esCancela) { map[id].cancela++; totalCancela++; }
       if (nombre && nombre.length > (map[id].nombre || "").length) map[id].nombre = nombre;
       if (ciudad) map[id].ciudad = ciudad;
@@ -725,8 +739,8 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
         if (!porCiudad[ciudad]) porCiudad[ciudad] = { nuevos: new Set(), turnos: 0, puntSI: 0, puntTotal: 0, cancela: 0, confirmados: 0 };
         porCiudad[ciudad].nuevos.add(id);
         porCiudad[ciudad].turnos++;
-        if (punt === "SI CUMPLE") porCiudad[ciudad].puntSI++;
-        if (punt === "SI CUMPLE" || punt === "NO CUMPLE") porCiudad[ciudad].puntTotal++;
+        if (!esExcluidoPuntN && punt === "SI CUMPLE") porCiudad[ciudad].puntSI++;
+        if (!esExcluidoPuntN && (punt === "SI CUMPLE" || punt === "NO CUMPLE")) porCiudad[ciudad].puntTotal++;
         if (esCancela) porCiudad[ciudad].cancela++;
         if (estado === "Confirmado") porCiudad[ciudad].confirmados++;
       }
@@ -1445,11 +1459,12 @@ export default function InformeTada({ isAdmin }) {
       const estado = String(r["ESTADO"] || "").trim();
       const punto = String(r["PUNTO"] || "").trim();
       const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
+      const esExcluidoPuntM = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estado.toLowerCase() === e);
       if (!map[id]) map[id] = { id, nombre, ciudad, turnos: 0, puntSI: 0, puntTotal: 0, estados: {}, puntos: new Set() };
       map[id].turnos++;
       if (estado) map[id].estados[estado] = (map[id].estados[estado] || 0) + 1;
       if (punto) map[id].puntos.add(punto);
-      if (punt === "SI CUMPLE" || punt === "NO CUMPLE") {
+      if (!esExcluidoPuntM && (punt === "SI CUMPLE" || punt === "NO CUMPLE")) {
         map[id].puntTotal++;
         if (punt === "SI CUMPLE") map[id].puntSI++;
       }
@@ -1502,7 +1517,7 @@ export default function InformeTada({ isAdmin }) {
     return Object.entries(data.ciudadMap)
       .map(([name, v]) => ({
         name,
-        "Puntualidad %": v.turnos ? parseFloat(((v.punt / v.turnos) * 100).toFixed(1)) : 0,
+        "Puntualidad %": (v.puntTurnos || 0) ? parseFloat(((v.punt / v.puntTurnos) * 100).toFixed(1)) : 0,
       }))
       .sort((a, b) => b["Puntualidad %"] - a["Puntualidad %"]);
   }, [data]);
@@ -1518,7 +1533,7 @@ export default function InformeTada({ isAdmin }) {
         name: `S${name}`,
         Turnos: v.turnos,
         Colocaciones: v.si,
-        "Puntualidad %": v.turnos ? parseFloat(((v.punt / v.turnos) * 100).toFixed(1)) : 0,
+        "Puntualidad %": (v.puntTurnos || 0) ? parseFloat(((v.punt / v.puntTurnos) * 100).toFixed(1)) : 0,
       }));
   }, [data]);
 
@@ -1551,7 +1566,7 @@ export default function InformeTada({ isAdmin }) {
         turnos: v.turnos,
         colocaciones: v.si,
         pctColoc: pct(v.si, v.turnos),
-        pctPunt: pct(v.punt, v.turnos),
+        pctPunt: pct(v.punt, v.puntTurnos || 0),
       }))
       .sort((a, b) => b.turnos - a.turnos)
       .slice(0, 20);
@@ -2088,7 +2103,7 @@ export default function InformeTada({ isAdmin }) {
               <KpiCard
                 icon="⏱️"
                 label="Puntualidad"
-                value={`${pct(data.puntualidadSI, efectiveTurnos)}%`}
+                value={`${pct(data.puntualidadSI, data.puntualidadTurnos || efectiveTurnos)}%`}
                 borderColor="#6366F1"
               />
               <KpiCard
