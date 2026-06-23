@@ -131,7 +131,7 @@ function processHoras(rows) {
 
   for (const r of rows) {
     const opType = String(r["operation_type"] || "").trim().toLowerCase();
-    const esTurno = opType === "horas";
+    const esTurno = opType === "horas" || opType === "bavaria paquetes tada";
     const esTarea = opType === "on demand";
     if (!esTurno && !esTarea) continue;
 
@@ -382,7 +382,7 @@ export default function EmpresasHoras() {
       for (const r of rows) {
         const opType = String(r["operation_type"] || "").trim().toLowerCase();
         const company = String(r["company"] || "Sin empresa").trim();
-        if (opType === "horas") {
+        if (opType === "horas" || opType === "bavaria paquetes tada") {
           if (!empresasTurnosMap[company]) empresasTurnosMap[company] = 0;
           empresasTurnosMap[company]++;
         }
