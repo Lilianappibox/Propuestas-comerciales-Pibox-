@@ -15,6 +15,7 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg]         = useState(null);
   const fileRef               = useRef();
+  const importRef             = useRef();
   const [meses, setMeses]     = useState(mesesDisponibles);
 
   const toast = (txt, ok=true) => {
@@ -83,6 +84,52 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
     const fresh = mesesDisponibles();
     setMeses(fresh);
     onMesesChange?.(fresh);
+  };
+
+  const handleImportJSON = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.index || !data.meses) throw new Error("Archivo inválido: estructura incorrecta.");
+
+      // Guardar índice
+      const localIdx = loadIndex();
+      const merged = { ...localIdx, ...data.index };
+      saveIndex(merged);
+
+      // Guardar datos de mes (métricas, ranking, ciudad, empresa, clientes)
+      await Promise.all(Object.entries(data.meses).map(([key, mesData]) => saveMesData(key, mesData)));
+
+      // Guardar filas crudas de Empresas por Horas
+      if (data.horasRows) {
+        await Promise.all(Object.entries(data.horasRows).map(([key, rows]) => idbSaveHorasRows(key, rows)));
+      }
+
+      // Guardar drivers (Análisis Pilotos)
+      if (data.drivers) {
+        await Promise.all(Object.entries(data.drivers).map(([key, drs]) => idbSaveDrivers(key, drs)));
+      }
+
+      // Restaurar umbrales de Configuración
+      if (data.umbrales && Object.keys(data.umbrales).length > 0) {
+        localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(data.umbrales));
+      }
+
+      const fresh = mesesDisponibles();
+      setMeses(fresh);
+      onMesesChange?.(fresh);
+      const nMeses = Object.keys(data.meses).length;
+      toast(`✅ Importado correctamente — ${nMeses} mes${nMeses !== 1 ? "es" : ""} cargados`);
+    } catch (err) {
+      toast(`❌ Error al importar: ${err.message}`, false);
+    } finally {
+      setLoading(false);
+      if (importRef.current) importRef.current.value = "";
+    }
   };
 
   return (
@@ -164,6 +211,18 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
             Procesando archivo... esto puede tomar unos segundos.
           </div>
         )}
+      </div>
+
+      {/* Importar JSON del equipo */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+        <h3 className="font-bold text-gray-800 text-base mb-1 flex items-center gap-2">
+          <span className="bg-green-100 text-green-700 rounded-lg p-1 text-sm">📥</span>
+          Importar datos del equipo
+        </h3>
+        <p className="text-xs text-gray-500 mb-4">Carga el archivo <b>riesgo-export.json</b> exportado por un administrador para sincronizar todos los meses, pilotos, Empresas por Horas y configuración.</p>
+        <input ref={importRef} type="file" accept=".json"
+          onChange={handleImportJSON} disabled={loading}
+          className="w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-100 file:text-green-700 hover:file:bg-green-200 disabled:opacity-50" />
       </div>
 
       {/* Lista de meses */}

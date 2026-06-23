@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
-import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync } from "./riesgo/utils";
+import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, UMBRALES_DEFAULT } from "./riesgo/utils";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
@@ -79,11 +79,23 @@ export default function RiesgoComercial({ currentUser }) {
             {currentUser?.rol === "Administrativo" && (
               <button onClick={async () => {
                 const idx = loadIndex();
-                const allData = { index: idx, meses: {} };
-                await Promise.all(Object.keys(idx).map(async (key) => {
+                const keys = Object.keys(idx);
+                const allData = { index: idx, meses: {}, horasRows: {}, drivers: {} };
+                // Datos de mes (métricas, ranking, ciudad, empresa, clientes nuevos/perdidos, informe)
+                await Promise.all(keys.map(async (key) => {
                   const d = await loadMesDataAsync(key);
                   if (d) allData.meses[key] = d;
+                  // Empresas por Horas
+                  const hr = await idbLoadHorasRows(key);
+                  if (hr) allData.horasRows[key] = hr;
+                  // Análisis Pilotos
+                  const dr = await idbLoadDrivers(key);
+                  if (dr) allData.drivers[key] = dr;
                 }));
+                // Umbrales de configuración
+                try {
+                  allData.umbrales = JSON.parse(localStorage.getItem("pibox_riesgo_umbrales") || "{}");
+                } catch { allData.umbrales = {}; }
                 const blob = new Blob([JSON.stringify(allData)], { type: "application/json" });
                 const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
                 a.download = "riesgo-export.json"; a.click();
