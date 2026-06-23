@@ -580,9 +580,9 @@ export function calcularScore(kpi, kpiPrev, umb = UMBRALES_DEFAULT) {
   const factores = [];
 
   if (kpi.tasa_completado < umb.completado_rojo) {
-    pts -= 25; factores.push(`Completado bajo (${(kpi.tasa_completado*100).toFixed(0)}%)`);
+    pts -= 25; factores.push(`Ef. Operativa baja (${(kpi.tasa_completado*100).toFixed(0)}%)`);
   } else if (kpi.tasa_completado < umb.completado_amarillo) {
-    pts -= 12; factores.push(`Completado moderado (${(kpi.tasa_completado*100).toFixed(0)}%)`);
+    pts -= 12; factores.push(`Ef. Operativa moderada (${(kpi.tasa_completado*100).toFixed(0)}%)`);
   }
 
   if (kpi.tasa_cancelacion > umb.cancel_rojo) {

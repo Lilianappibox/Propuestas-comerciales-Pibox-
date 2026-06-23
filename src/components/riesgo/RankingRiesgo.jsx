@@ -194,8 +194,8 @@ export default function RankingRiesgo() {
   // Catalogo fijo de factores de riesgo posibles
   const FACTORES_CATALOGO = [
     { key:"Todos",                label:"⚠️ Todos los factores" },
-    { key:"Completado bajo",      label:"📉 Completado bajo"       },
-    { key:"Completado moderado",  label:"📊 Completado moderado"   },
+    { key:"Ef. Operativa baja",    label:"📉 Ef. Operativa baja"    },
+    { key:"Ef. Operativa moderada", label:"📊 Ef. Operativa moderada" },
     { key:"Cancelaciones altas",  label:"❌ Cancelaciones altas"   },
     { key:"Cancelaciones moderadas", label:"⚠️ Cancelaciones moderadas" },
     { key:"Expirados altos",      label:"⏱️ Expirados altos"       },
