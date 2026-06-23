@@ -131,6 +131,35 @@ export default function MetricasRiesgo() {
   const varPaq     = totalPaqPrev  > 0 ? (totalPaquetes - totalPaqPrev)/totalPaqPrev   : null;
   const varDrivers = totalDriversPrev > 0 ? (totalDrivers - totalDriversPrev)/totalDriversPrev : null;
 
+  // ── Efectividad Comercial y Operativa ────────────────────────────────────
+  const getStatus = (porStatus, name) => (porStatus || []).find(d => d.name === name)?.total || 0;
+  const ps     = tot?.porStatus || [];
+  const psPrev = dataPrev?.totales?.porStatus || [];
+
+  const sCompleted   = getStatus(ps, "Completed");
+  const sCancelPax   = getStatus(ps, "Canceled by Passenger");
+  const sCancelDrv   = getStatus(ps, "Canceled by Driver");
+  const sCancelOps   = getStatus(ps, "Canceled by Ops");
+  const sExpired     = getStatus(ps, "Expired");
+
+  const denomComercial = sCompleted + sCancelPax + sCancelDrv + sCancelOps + sExpired;
+  const denomOperativa = sCompleted + sCancelDrv + sExpired;
+  const efectComercial = denomComercial > 0 ? sCompleted / denomComercial : null;
+  const efectOperativa = denomOperativa > 0 ? sCompleted / denomOperativa : null;
+
+  // Variación vs mes anterior
+  const sCompPrev    = getStatus(psPrev, "Completed");
+  const sCancelPaxP  = getStatus(psPrev, "Canceled by Passenger");
+  const sCancelDrvP  = getStatus(psPrev, "Canceled by Driver");
+  const sCancelOpsP  = getStatus(psPrev, "Canceled by Ops");
+  const sExpiredP    = getStatus(psPrev, "Expired");
+  const denomComPrev = sCompPrev + sCancelPaxP + sCancelDrvP + sCancelOpsP + sExpiredP;
+  const denomOpPrev  = sCompPrev + sCancelDrvP + sExpiredP;
+  const efComPrev    = denomComPrev > 0 ? sCompPrev / denomComPrev : null;
+  const efOpPrev     = denomOpPrev  > 0 ? sCompPrev / denomOpPrev  : null;
+  const varEfCom     = efectComercial !== null && efComPrev !== null ? efectComercial - efComPrev : null;
+  const varEfOp      = efectOperativa !== null && efOpPrev  !== null ? efectOperativa - efOpPrev  : null;
+
   return (
     <div className="space-y-6">
       {/* Selección de mes */}
@@ -166,6 +195,26 @@ export default function MetricasRiesgo() {
         <KpiCard icon="📦" label="Servicios"       value={totalServicios.toLocaleString()} borderColor="#6366F1" delta={varServ}/>
         <KpiCard icon="📮" label="Paquetes"        value={totalPaquetes.toLocaleString()} borderColor="#0EA5E9" delta={varPaq}/>
         <KpiCard icon="🏍️" label="Drivers Activos" value={totalDrivers.toLocaleString()} borderColor="#F59E0B" delta={varDrivers}/>
+      </div>
+
+      {/* KPIs globales — fila 2: efectividad */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <KpiCard
+          icon="🎯"
+          label="Efectividad Comercial"
+          value={efectComercial !== null ? (efectComercial * 100).toFixed(1) + "%" : "—"}
+          borderColor="#16a34a"
+          delta={varEfCom}
+          deltaLabel={mesPrevMeta ? "Sin variación" : "Sin mes anterior"}
+        />
+        <KpiCard
+          icon="⚙️"
+          label="Efectividad Operativa"
+          value={efectOperativa !== null ? (efectOperativa * 100).toFixed(1) + "%" : "—"}
+          borderColor="#0891b2"
+          delta={varEfOp}
+          deltaLabel={mesPrevMeta ? "Sin variación" : "Sin mes anterior"}
+        />
       </div>
 
       {/* KPIs riesgo + gráfica distribución alineados */}
