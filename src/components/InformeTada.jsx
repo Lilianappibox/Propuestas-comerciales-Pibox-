@@ -1271,12 +1271,14 @@ async function printSection(ref, title) {
   if (!ref?.current) return;
   // Snapshot all Recharts SVGs as PNG via canvas (ensures images load before cloning)
   const svgContainers = ref.current.querySelectorAll(".recharts-wrapper");
+  console.log("[PDF] Gráficas encontradas:", svgContainers.length);
   const snapshots = [];
   for (const wrapper of svgContainers) {
     const svg = wrapper.querySelector("svg");
-    if (!svg) continue;
+    if (!svg) { console.log("[PDF] wrapper sin SVG, saltando"); continue; }
     const width = wrapper.offsetWidth || 800;
     const height = wrapper.offsetHeight || 400;
+    console.log("[PDF] SVG size:", width, "x", height);
     // Clone SVG with explicit pixel dimensions and namespace
     const svgClone = svg.cloneNode(true);
     svgClone.setAttribute("width", width);
@@ -1293,17 +1295,26 @@ async function printSection(ref, title) {
     await new Promise((resolve) => {
       const tmpImg = new Image();
       tmpImg.onload = () => {
+        console.log("[PDF] SVG cargó en img OK, dibujando en canvas...");
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(tmpImg, 0, 0, width, height);
         URL.revokeObjectURL(url);
         resolve();
       };
-      tmpImg.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+      tmpImg.onerror = (e) => { console.error("[PDF] Error cargando SVG en img:", e); URL.revokeObjectURL(url); resolve(); };
       tmpImg.src = url;
     });
+    let pngDataUrl;
+    try {
+      pngDataUrl = canvas.toDataURL("image/png");
+      console.log("[PDF] Canvas a PNG OK, longitud:", pngDataUrl.length);
+    } catch (e) {
+      console.error("[PDF] Error canvas.toDataURL (canvas contaminado?):", e);
+      pngDataUrl = "";
+    }
     const imgEl = document.createElement("img");
-    imgEl.src = canvas.toDataURL("image/png");
+    imgEl.src = pngDataUrl;
     imgEl.style.cssText = `width:${width}px;height:${height}px;max-width:100%;display:block;`;
     snapshots.push({ wrapper, img: imgEl });
   }
