@@ -116,11 +116,12 @@ export default function App() {
   useEffect(() => {
     fetchCloudUsers().then(cloud => {
       if (cloud && cloud.length > 0) {
-        setUsers(cloud);
         saveUsers(cloud);
-        // Refrescar sesión del usuario actual con permisos actualizados
+        // Aplicar restricciones de DEFAULT_USERS sobre los datos de la nube
+        const merged = loadUsers();
+        setUsers(merged);
         if (currentUser) {
-          const updated = cloud.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
+          const updated = merged.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
           if (updated && updated.activo) setCurrentUser(updated);
         }
       }

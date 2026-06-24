@@ -152,7 +152,7 @@ export const DEFAULT_USERS = [
     cargo: "",
     celular: "",
     telefono: "",
-    permisosCustom: { verInformeTada: true, verRiesgoComercial: true, verTarifario: true },
+    permisosCustom: { verInformeTada: false, verRiesgoComercial: true, verTarifario: true },
   },
   {
     id: "6",
@@ -164,7 +164,7 @@ export const DEFAULT_USERS = [
     cargo: "",
     celular: "",
     telefono: "",
-    permisosCustom: { verInformeTada: true, verRiesgoComercial: true, verTarifario: true },
+    permisosCustom: { verInformeTada: false, verRiesgoComercial: true, verTarifario: true },
   },
   {
     id: "7",
