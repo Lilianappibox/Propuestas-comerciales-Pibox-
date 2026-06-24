@@ -1262,21 +1262,47 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   );
 }
 
-function printSection(ref, title) {
+async function printSection(ref, title) {
   if (!ref?.current) return;
-  // Snapshot all Recharts SVGs as static images before cloning
+  // Snapshot all Recharts SVGs as PNG via canvas (ensures images load before cloning)
   const svgContainers = ref.current.querySelectorAll(".recharts-wrapper");
   const snapshots = [];
   for (const wrapper of svgContainers) {
     const svg = wrapper.querySelector("svg");
     if (!svg) continue;
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const img = document.createElement("img");
-    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
-    img.style.cssText = `width:${svg.getAttribute("width") || wrapper.offsetWidth}px;height:${svg.getAttribute("height") || wrapper.offsetHeight}px;max-width:100%;`;
-    snapshots.push({ wrapper, img });
+    const width = wrapper.offsetWidth || 800;
+    const height = wrapper.offsetHeight || 400;
+    // Clone SVG with explicit pixel dimensions and namespace
+    const svgClone = svg.cloneNode(true);
+    svgClone.setAttribute("width", width);
+    svgClone.setAttribute("height", height);
+    svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const svgData = new XMLSerializer().serializeToString(svgClone);
+    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    // Render SVG into canvas to get a PNG data URL
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    await new Promise((resolve) => {
+      const tmpImg = new Image();
+      tmpImg.onload = () => {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(tmpImg, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+      tmpImg.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+      tmpImg.src = url;
+    });
+    const imgEl = document.createElement("img");
+    imgEl.src = canvas.toDataURL("image/png");
+    imgEl.style.cssText = `width:${width}px;height:${height}px;max-width:100%;display:block;`;
+    snapshots.push({ wrapper, img: imgEl });
   }
-  // Temporarily replace SVG wrappers with images
+  // Temporarily replace SVG wrappers with PNG images
   for (const { wrapper, img } of snapshots) {
     wrapper._origHTML = wrapper.innerHTML;
     wrapper.innerHTML = "";
@@ -1314,7 +1340,7 @@ function printSection(ref, title) {
     </style>
     </head><body><div class="max-w-7xl mx-auto px-4 py-4 space-y-4">${content.innerHTML}</div></body></html>`);
   win.document.close();
-  setTimeout(() => { win.print(); win.close(); }, 500);
+  setTimeout(() => { win.print(); win.close(); }, 800);
 }
 
 export default function InformeTada({ isAdmin }) {
