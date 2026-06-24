@@ -3,6 +3,7 @@ import XLSX from "../utils/xlsxHelper";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend,
+  ComposedChart, Line,
 } from "recharts";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
@@ -294,7 +295,11 @@ function processRows(rows) {
     }
 
     // Día
-    if (dia) diaMap[dia] = (diaMap[dia] || 0) + 1;
+    if (dia) {
+      if (!diaMap[dia]) diaMap[dia] = { turnos: 0, si: 0 };
+      diaMap[dia].turnos++;
+      if (isSI) diaMap[dia].si++;
+    }
 
     // Mes
     if (mes) {
@@ -1572,7 +1577,11 @@ export default function InformeTada({ isAdmin }) {
         const ia = order.indexOf(norm(a)), ib = order.indexOf(norm(b));
         return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
       })
-      .map(([name, value]) => ({ name, Turnos: value }));
+      .map(([name, v]) => ({
+        name,
+        Turnos: v.turnos,
+        "Colocación %": v.turnos > 0 ? parseFloat((v.si / v.turnos * 100).toFixed(1)) : 0,
+      }));
   }, [data]);
 
   const pieData = useMemo(() => {
@@ -2249,13 +2258,16 @@ export default function InformeTada({ isAdmin }) {
 
               {chartCard("Distribución por Día de la Semana", (
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={diaData}>
+                  <ComposedChart data={diaData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} domain={[0, 100]} tickFormatter={v => `${v}%`} />
                     <Tooltip content={<TT />} />
-                    <Bar dataKey="Turnos" fill={PIBOX_PINK} name="Turnos" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar yAxisId="left" dataKey="Turnos" fill={PIBOX_PINK} name="Turnos" radius={[4, 4, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="Colocación %" stroke={SEM_VERDE} strokeWidth={2} dot={{ r: 4, fill: SEM_VERDE }} name="Colocación %" />
+                  </ComposedChart>
                 </ResponsiveContainer>
               ))}
             </div>
