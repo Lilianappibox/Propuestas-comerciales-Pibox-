@@ -18,16 +18,31 @@ const COLORS  = [C_TEAL, C_CYAN, "#6366F1", "#A855F7", "#EC4899", "#F59E0B", "#1
 const INTEG_USERS = new Set(["cruz verde integración", "ferney jimenez", "ivan javier", "oms back office"]);
 const isInteg = (u) => INTEG_USERS.has((u || "").toLowerCase().trim());
 
-const SLA_SD_RANGES = [
-  { maxKm: 3,  min: 35  },
-  { maxKm: 5,  min: 45  },
-  { maxKm: 7,  min: 50  },
-  { maxKm: 10, min: 65  },
-  { maxKm: 17, min: 110 },
-];
-function getSlaLimite(km) {
-  for (const r of SLA_SD_RANGES) if (km <= r.maxKm) return r.min;
-  return null;
+const SLA_DEFAULTS = {
+  ranges: [
+    { label: "0 – 3 km",     maxKm: 3,  min: 35  },
+    { label: "3,1 – 5 km",   maxKm: 5,  min: 45  },
+    { label: "5,1 – 7 km",   maxKm: 7,  min: 50  },
+    { label: "7,1 – 10 km",  maxKm: 10, min: 65  },
+    { label: "10,1 – 17 km", maxKm: 17, min: 110 },
+  ],
+  nextDayHora: 18,
+};
+
+const UMBRALES_CV_DEFAULTS = {
+  mostrador: { sla_rojo: 85, sla_amarillo: 92, noPerf_rojo: 15, noPerf_amarillo: 8 },
+  integ_sd:  { sla_rojo: 85, sla_amarillo: 92, noPerf_rojo: 15, noPerf_amarillo: 8 },
+  integ_nd:  { sla_rojo: 85, sla_amarillo: 92, noPerf_rojo: 15, noPerf_amarillo: 8 },
+};
+
+function getSlaConfig() {
+  try { return { ...SLA_DEFAULTS, ...JSON.parse(localStorage.getItem("pibox_cv_sla") || "{}") }; }
+  catch { return SLA_DEFAULTS; }
+}
+
+function getUmbrales() {
+  try { return { ...UMBRALES_CV_DEFAULTS, ...JSON.parse(localStorage.getItem("pibox_cv_umbrales") || "{}") }; }
+  catch { return UMBRALES_CV_DEFAULTS; }
 }
 
 const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -55,47 +70,131 @@ function getLinea(row) {
   return "mostrador";
 }
 
+// ── Normalización de direcciones ───────────────────────────────────────────
+function normalizeDireccion(str) {
+  return (str || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// ── Parseo de tiempo Excel ─────────────────────────────────────────────────
+function excelTimeToMinutes(val) {
+  if (val == null || val === "") return null;
+  const str = String(val).toLowerCase();
+  if (str.includes("24 hora") || str.includes("24hora")) return "24h";
+  const num = parseFloat(val);
+  if (isNaN(num)) return null;
+  return Math.round(num * 24 * 60);
+}
+
+function minutesToHHMM(min) {
+  if (min === "24h" || min === null) return min === "24h" ? "24 Horas" : "—";
+  const h = Math.floor(min / 60) % 24;
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// ── buildHorariosMap ───────────────────────────────────────────────────────
+function buildHorariosMap(horarios) {
+  const map = {};
+  for (const h of (horarios || [])) {
+    const key = normalizeDireccion(h.direccion);
+    const parseEntry = (apertura, es24h) => ({ apertura, es24h });
+    const lvAp = excelTimeToMinutes(h.lv_apertura);
+    const sabAp = excelTimeToMinutes(h.sab_apertura);
+    const domAp = excelTimeToMinutes(h.dom_apertura);
+    map[key] = {
+      lv:  { apertura: lvAp === "24h" ? null : lvAp, es24h: lvAp === "24h" },
+      sab: { apertura: sabAp === "24h" ? null : sabAp, es24h: sabAp === "24h" },
+      dom: { apertura: domAp === "24h" ? null : domAp, es24h: domAp === "24h" },
+    };
+  }
+  return map;
+}
+
+// ── procesarRows ───────────────────────────────────────────────────────────
 function procesarRows(rawRows) {
   return rawRows.map((r) => {
     const linea = getLinea(r);
     const estado = (r.estado || "").trim();
     const km = parseFloat(r.distancia_km) || 0;
-    let slaCumplido = null, slaLimite = null, minutos = null;
+    let minutos = null;
 
-    if (linea === "integ_nd") {
-      // Next Day: llego_donde_el_cliente antes de las 18:00
-      const hm = horaMin(r.llego_donde_el_cliente);
-      if (hm !== null && estado === "Finalizado") slaCumplido = hm < 18 * 60;
-    } else {
-      // Same Day: salio_de_origen → llego_donde_el_cliente vs tabla de distancias
+    if (linea !== "integ_nd") {
       if (r.salio_de_origen && r.llego_donde_el_cliente) {
         const t0 = new Date(r.salio_de_origen);
         const t1 = new Date(r.llego_donde_el_cliente);
         if (!isNaN(t0) && !isNaN(t1) && t1 > t0) {
           minutos = (t1 - t0) / 60000;
-          slaLimite = getSlaLimite(km);
-          if (slaLimite !== null && estado === "Finalizado") slaCumplido = minutos <= slaLimite;
         }
       }
     }
 
+    const tsalida = r.salio_de_origen ? new Date(r.salio_de_origen).getTime() : null;
+    const dayOfWeek = r.salio_de_origen ? new Date(r.salio_de_origen).getDay() : null;
+
     return {
-      uuid:       r.uuid_booking || "",
-      fecha:      toDateStr(r.salio_de_origen || r.iniciado),
-      mes:        toMesLabel(r.salio_de_origen || r.iniciado),
+      uuid:            r.uuid_booking || "",
+      fecha:           toDateStr(r.salio_de_origen || r.iniciado),
+      mes:             toMesLabel(r.salio_de_origen || r.iniciado),
       estado,
       linea,
-      ciudad:     (r.ciudad || "Sin ciudad").trim(),
-      sucursal:   (r.nombre_usuario || "Sin sucursal").trim(),
+      ciudad:          (r.ciudad || "Sin ciudad").trim(),
+      sucursal:        (r.nombre_usuario || "Sin sucursal").trim(),
       km,
       minutos,
-      slaLimite,
-      slaCumplido,
-      horaEntrega: horaMin(r.llego_donde_el_cliente),
-      esDevolucion: !!(r.fecha_devolucion_paquete && String(r.fecha_devolucion_paquete).trim()),
-      esPerfecto:  estado === "Finalizado",
+      horaEntrega:     horaMin(r.llego_donde_el_cliente),
+      esDevolucion:    !!(r.fecha_devolucion_paquete && String(r.fecha_devolucion_paquete).trim()),
+      esPerfecto:      estado === "Finalizado",
+      tsalida,
+      dayOfWeek,
+      direccionOrigen: (r.direccion_origen || "").trim(),
     };
   });
+}
+
+// ── computeRowSla ──────────────────────────────────────────────────────────
+function computeRowSla(row, slaConfig, horariosMap) {
+  const cfg = slaConfig || SLA_DEFAULTS;
+
+  if (row.linea === "integ_nd") {
+    const slaCumplido = row.esPerfecto && row.horaEntrega !== null && row.horaEntrega <= cfg.nextDayHora * 60;
+    return { slaCumplido: row.esPerfecto && row.horaEntrega !== null ? slaCumplido : null, slaLimite: cfg.nextDayHora * 60, minutosEfectivos: null };
+  }
+
+  // Same Day / Mostrador
+  let slaLimite = null;
+  for (const rng of cfg.ranges) {
+    if (row.km <= rng.maxKm) { slaLimite = rng.min; break; }
+  }
+
+  if (slaLimite === null || row.minutos == null) {
+    return { slaCumplido: null, slaLimite, minutosEfectivos: null };
+  }
+
+  let minutosEfectivos = row.minutos;
+
+  // Ajuste por horario de apertura
+  if (horariosMap && row.tsalida && row.direccionOrigen) {
+    const key = normalizeDireccion(row.direccionOrigen);
+    const store = horariosMap[key];
+    if (store) {
+      // dayOfWeek: 0=dom, 6=sab, else lv
+      let slot;
+      if (row.dayOfWeek === 0) slot = store.dom;
+      else if (row.dayOfWeek === 6) slot = store.sab;
+      else slot = store.lv;
+
+      if (slot && !slot.es24h && slot.apertura != null) {
+        const t = new Date(row.tsalida);
+        const hourMinOfDay = t.getHours() * 60 + t.getMinutes();
+        if (hourMinOfDay < slot.apertura) {
+          minutosEfectivos = Math.max(0, row.minutos - (slot.apertura - hourMinOfDay));
+        }
+      }
+    }
+  }
+
+  const slaCumplido = row.esPerfecto ? minutosEfectivos <= slaLimite : null;
+  return { slaCumplido, slaLimite, minutosEfectivos };
 }
 
 // ── Persistencia ────────────────────────────────────────────────────────────
@@ -202,23 +301,23 @@ function slaDistribucion(rows) {
   ].filter(d=>d.value>0);
 }
 
-function slaByRange(rows) {
-  const ranges = [
-    { label:"0–3 km",   lim:3,  min:35  },
-    { label:"3.1–5 km", lim:5,  min:45  },
-    { label:"5.1–7 km", lim:7,  min:50  },
-    { label:"7.1–10 km",lim:10, min:65  },
-    { label:"10.1–17 km",lim:17,min:110 },
-    { label:">17 km",   lim:Infinity, min:null },
-  ];
-  const prev = [0,3,5,7,10,17];
-  return ranges.map((rng, i) => {
-    const sub = rows.filter(r => r.km > prev[i] && r.km <= rng.lim && r.esPerfecto && r.minutos!=null);
+function slaByRange(rows, ranges) {
+  const cfg = ranges || SLA_DEFAULTS.ranges;
+  const breakpoints = [0, ...cfg.map(r => r.maxKm)];
+  const result = cfg.map((rng, i) => {
+    const sub = rows.filter(r => r.km > breakpoints[i] && r.km <= rng.maxKm && r.esPerfecto && r.minutos!=null);
     const met = sub.filter(r=>r.slaCumplido===true).length;
     const total = sub.length;
     const avg = sub.length ? sub.reduce((a,b)=>a+b.minutos,0)/sub.length : null;
-    return { ...rng, total, met, pct: pct(met,total), avg };
-  }).filter(r=>r.total>0);
+    return { label: rng.label, lim: rng.maxKm, min: rng.min, total, met, pct: pct(met,total), avg };
+  });
+  // Also add >maxKm bucket
+  const lastMax = cfg[cfg.length - 1]?.maxKm || 17;
+  const overSub = rows.filter(r => r.km > lastMax && r.esPerfecto && r.minutos!=null);
+  if (overSub.length > 0) {
+    result.push({ label: `>${lastMax} km`, lim: Infinity, min: null, total: overSub.length, met: 0, pct: 0, avg: overSub.reduce((a,b)=>a+b.minutos,0)/overSub.length });
+  }
+  return result.filter(r=>r.total>0);
 }
 
 // ── KPI Card ───────────────────────────────────────────────────────────────
@@ -568,7 +667,6 @@ function ResumenPanel({ rows }) {
   const byLinea = lineas.map(l => ({ ...l, rows: rows.filter(r=>r.linea===l.key), m: calcMetricas(rows.filter(r=>r.linea===l.key)) }));
 
   const pieData = byLinea.map(l => ({ name: l.label, value: l.m.total, color: l.color })).filter(d=>d.value>0);
-  const entregaPieData = byLinea.map(l => ({ name: l.label, value: l.m.entregados, color: l.color })).filter(d=>d.value>0);
   const byCiudad = topN(rows, "ciudad", 12);
 
   return (
@@ -687,18 +785,418 @@ function ResumenPanel({ rows }) {
   );
 }
 
+// ── AdminPanel ─────────────────────────────────────────────────────────────
+function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
+  // ── Sección 1: Directorio Cruz Verde ──
+  const [dirUploadMsg, setDirUploadMsg] = useState(null);
+  const [dirLoading,   setDirLoading]   = useState(false);
+  const [directorio,   setDirectorio]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null"); } catch { return null; }
+  });
+  const [dirSearch, setDirSearch] = useState("");
+
+  const handleDirectorioUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDirLoading(true); setDirUploadMsg(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf, { type: "array" });
+
+      // Hoja1: tiendas
+      const ws1 = wb.Sheets["Hoja1"] || wb.Sheets[wb.SheetNames[0]];
+      const raw1 = XLSX.utils.sheet_to_json(ws1, { defval: "" });
+
+      const tiendaMap = new Map();
+      for (const r of raw1) {
+        const key = (r.Usuario_Tienda || r.usuario_tienda || "").toString().trim();
+        if (!key) continue;
+        if (!tiendaMap.has(key)) {
+          tiendaMap.set(key, {
+            tienda:    key,
+            empresa:   (r.Empresa || r.empresa || "").trim(),
+            ciudad:    (r.Ciudad || r.ciudad || "").trim(),
+            direccion: (r.Direccion_Salida || r.direccion_salida || r.Direccion || r.direccion || "").trim(),
+            nit:       (r.NIT || r.nit || "").toString().trim(),
+            kam:       (r.KAM || r.kam || "").trim(),
+          });
+        }
+      }
+      const tiendas = Array.from(tiendaMap.values());
+
+      // Hoja3: horarios
+      const ws3 = wb.Sheets["Hoja3"] || wb.Sheets[wb.SheetNames[2]] || null;
+      let horarios = [];
+      if (ws3) {
+        const raw3 = XLSX.utils.sheet_to_json(ws3, { defval: "" });
+        horarios = raw3.map(r => ({
+          direccion:     (r["DIRECCION TRUMP"] || r.direccion_trump || r.Direccion || "").toString().trim(),
+          sucursal:      (r["SUCURSAL"] || r.sucursal || "").toString().trim(),
+          nombre:        (r["NOMBRE TIENDA"] || r.nombre_tienda || r.Nombre || "").toString().trim(),
+          lv_apertura:   r["L-V Apertura"] ?? r["LV_Apertura"] ?? r["APERTURA L-V"] ?? r["apertura_lv"] ?? "",
+          lv_cierre:     r["L-V Cierre"]   ?? r["LV_Cierre"]   ?? r["CIERRE L-V"]   ?? r["cierre_lv"]   ?? "",
+          sab_apertura:  r["Sab Apertura"]  ?? r["SAB_Apertura"] ?? r["APERTURA SAB"] ?? r["apertura_sab"] ?? "",
+          sab_cierre:    r["Sab Cierre"]    ?? r["SAB_Cierre"]   ?? r["CIERRE SAB"]   ?? r["cierre_sab"]   ?? "",
+          dom_apertura:  r["Dom Apertura"]  ?? r["DOM_Apertura"] ?? r["APERTURA DOM"] ?? r["apertura_dom"] ?? "",
+          dom_cierre:    r["Dom Cierre"]    ?? r["DOM_Cierre"]   ?? r["CIERRE DOM"]   ?? r["cierre_dom"]   ?? "",
+          fest_apertura: r["Festivos Apertura"] ?? r["APERTURA FESTIVOS"] ?? r["apertura_fest"] ?? "",
+          fest_cierre:   r["Festivos Cierre"]   ?? r["CIERRE FESTIVOS"]   ?? r["cierre_fest"]   ?? "",
+        })).filter(h => h.direccion);
+      }
+
+      const newDir = { tiendas, horarios, uploaded: new Date().toISOString() };
+      localStorage.setItem("pibox_cv_directorio", JSON.stringify(newDir));
+      setDirectorio(newDir);
+      setHorariosMap(buildHorariosMap(horarios));
+      setDirUploadMsg({ ok: true, txt: `✅ ${tiendas.length} tiendas y ${horarios.length} horarios cargados correctamente.` });
+    } catch (err) {
+      setDirUploadMsg({ ok: false, txt: `❌ Error al procesar: ${err.message}` });
+    } finally {
+      setDirLoading(false);
+      e.target.value = "";
+      setTimeout(() => setDirUploadMsg(null), 7000);
+    }
+  };
+
+  const tiendas = directorio?.tiendas || [];
+  const filteredTiendas = dirSearch.trim()
+    ? tiendas.filter(t =>
+        t.tienda.toLowerCase().includes(dirSearch.toLowerCase()) ||
+        t.ciudad.toLowerCase().includes(dirSearch.toLowerCase()) ||
+        t.empresa.toLowerCase().includes(dirSearch.toLowerCase())
+      )
+    : tiendas;
+
+  // ── Sección 2: Horarios (de Hoja3) ──
+  const horarios = directorio?.horarios || [];
+
+  // ── Sección 3: Configuración SLA ──
+  const [localSla, setLocalSla] = useState(() => getSlaConfig());
+  const [slaMsg,   setSlaMsg]   = useState(null);
+
+  const handleSlaRangeChange = (idx, val) => {
+    setLocalSla(prev => {
+      const ranges = prev.ranges.map((r, i) => i === idx ? { ...r, min: parseInt(val) || 0 } : r);
+      return { ...prev, ranges };
+    });
+  };
+  const handleSlaNextDay = (val) => setLocalSla(prev => ({ ...prev, nextDayHora: parseInt(val) || 18 }));
+
+  const saveSla = () => {
+    localStorage.setItem("pibox_cv_sla", JSON.stringify(localSla));
+    setSlaConfig(localSla);
+    setSlaMsg({ ok: true, txt: "✅ Configuración SLA guardada." });
+    setTimeout(() => setSlaMsg(null), 4000);
+  };
+  const restoreSla = () => {
+    setLocalSla(SLA_DEFAULTS);
+    localStorage.setItem("pibox_cv_sla", JSON.stringify(SLA_DEFAULTS));
+    setSlaConfig(SLA_DEFAULTS);
+    setSlaMsg({ ok: true, txt: "↩️ Valores restaurados por defecto." });
+    setTimeout(() => setSlaMsg(null), 4000);
+  };
+
+  // ── Sección 4: Umbrales de riesgo ──
+  const [umbrales,  setUmbrales]  = useState(() => getUmbrales());
+  const [umbMsg,    setUmbMsg]    = useState(null);
+
+  const handleUmbral = (linea, campo, val) => {
+    setUmbrales(prev => ({
+      ...prev,
+      [linea]: { ...prev[linea], [campo]: parseInt(val) || 0 },
+    }));
+  };
+  const saveUmbrales = () => {
+    localStorage.setItem("pibox_cv_umbrales", JSON.stringify(umbrales));
+    setUmbMsg({ ok: true, txt: "✅ Umbrales guardados." });
+    setTimeout(() => setUmbMsg(null), 4000);
+  };
+  const restoreUmbrales = () => {
+    setUmbrales(UMBRALES_CV_DEFAULTS);
+    localStorage.setItem("pibox_cv_umbrales", JSON.stringify(UMBRALES_CV_DEFAULTS));
+    setUmbMsg({ ok: true, txt: "↩️ Umbrales restaurados por defecto." });
+    setTimeout(() => setUmbMsg(null), 4000);
+  };
+
+  const LINEAS_UMBRAL = [
+    { key: "mostrador", label: "Cruz Verde Mostrador" },
+    { key: "integ_sd",  label: "Integración Same Day" },
+    { key: "integ_nd",  label: "Integración Next Day" },
+  ];
+
+  const inputCls = "border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400";
+  const cardCls  = "bg-white rounded-2xl shadow-md border border-gray-100 p-5";
+  const btnPrimary = { background: BRAND, color: "#fff" };
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Sección 1: Directorio Cruz Verde ── */}
+      <div className={cardCls}>
+        <p className="text-sm font-bold text-gray-700 mb-4">📒 Directorio Cruz Verde</p>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <label className={`cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow transition ${dirLoading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90"}`}
+            style={btnPrimary}>
+            {dirLoading ? "⏳ Procesando..." : "📂 Subir DIRECTORIO SAME DAY CV.xlsx"}
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleDirectorioUpload} disabled={dirLoading} />
+          </label>
+          {tiendas.length > 0 && (
+            <span className="text-xs text-teal-700 font-semibold bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
+              {tiendas.length} tiendas cargadas
+            </span>
+          )}
+          {directorio?.uploaded && (
+            <span className="text-xs text-gray-400">
+              Actualizado: {new Date(directorio.uploaded).toLocaleDateString("es-CO")}
+            </span>
+          )}
+        </div>
+        {dirUploadMsg && (
+          <p className={`text-sm font-semibold mb-3 ${dirUploadMsg.ok ? "text-green-600" : "text-red-600"}`}>{dirUploadMsg.txt}</p>
+        )}
+
+        {tiendas.length > 0 && (
+          <>
+            <input
+              type="text"
+              placeholder="Buscar por tienda, ciudad o empresa..."
+              value={dirSearch}
+              onChange={e => setDirSearch(e.target.value)}
+              className={`${inputCls} w-full mb-3`}
+            />
+            <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-lg border border-gray-100">
+              <table className="w-full text-xs border-collapse">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-teal-50 text-teal-700">
+                    <th className="text-left p-2 font-semibold">Tienda</th>
+                    <th className="text-left p-2 font-semibold">Empresa</th>
+                    <th className="text-left p-2 font-semibold">Ciudad</th>
+                    <th className="text-left p-2 font-semibold">Dirección</th>
+                    <th className="text-left p-2 font-semibold">NIT</th>
+                    <th className="text-left p-2 font-semibold">KAM</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTiendas.slice(0, 200).map((t, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <td className="p-2 font-medium text-gray-700 max-w-[160px] truncate" title={t.tienda}>{t.tienda}</td>
+                      <td className="p-2 text-gray-600 max-w-[120px] truncate" title={t.empresa}>{t.empresa}</td>
+                      <td className="p-2 text-gray-600">{t.ciudad}</td>
+                      <td className="p-2 text-gray-500 max-w-[180px] truncate" title={t.direccion}>{t.direccion}</td>
+                      <td className="p-2 text-gray-500">{t.nit}</td>
+                      <td className="p-2 text-gray-600">{t.kam}</td>
+                    </tr>
+                  ))}
+                  {filteredTiendas.length > 200 && (
+                    <tr><td colSpan={6} className="p-2 text-center text-gray-400 text-xs">Mostrando 200 de {filteredTiendas.length} tiendas. Usa la búsqueda para filtrar.</td></tr>
+                  )}
+                  {filteredTiendas.length === 0 && (
+                    <tr><td colSpan={6} className="p-3 text-center text-gray-400">Sin resultados</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Sección 2: Horarios Tiendas ── */}
+      <div className={cardCls}>
+        <p className="text-sm font-bold text-gray-700 mb-2">🕐 Horarios Tiendas - Integración Same Day</p>
+        <p className="text-xs text-gray-500 mb-4">
+          Estos horarios se usan para ajustar el tiempo de inicio cuando la tienda aún no ha abierto.
+          Se cargan automáticamente al subir el Directorio (Hoja3).
+        </p>
+        {horarios.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">Sube el directorio para cargar los horarios.</p>
+        ) : (
+          <>
+            <p className="text-xs text-teal-700 font-semibold mb-2">{horarios.length} tiendas con horario cargadas</p>
+            <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-lg border border-gray-100">
+              <table className="w-full text-xs border-collapse">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-teal-50 text-teal-700">
+                    <th className="text-left p-2 font-semibold">Tienda</th>
+                    <th className="text-left p-2 font-semibold">Dirección</th>
+                    <th className="text-right p-2 font-semibold">L-V Apertura</th>
+                    <th className="text-right p-2 font-semibold">L-V Cierre</th>
+                    <th className="text-right p-2 font-semibold">Sáb</th>
+                    <th className="text-right p-2 font-semibold">Dom</th>
+                    <th className="text-right p-2 font-semibold">Festivos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {horarios.map((h, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <td className="p-2 font-medium text-gray-700 max-w-[150px] truncate" title={h.nombre}>{h.nombre || h.sucursal}</td>
+                      <td className="p-2 text-gray-500 max-w-[180px] truncate" title={h.direccion}>{h.direccion}</td>
+                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.lv_apertura))}</td>
+                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.lv_cierre))}</td>
+                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.sab_apertura))}</td>
+                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.dom_apertura))}</td>
+                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.fest_apertura))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Sección 3: Configuración SLA ── */}
+      <div className={cardCls}>
+        <p className="text-sm font-bold text-gray-700 mb-4">⚙️ Configuración SLA</p>
+
+        {/* Same Day ranges */}
+        <p className="text-xs font-semibold text-gray-600 mb-2">Same Day — Rangos por distancia</p>
+        <div className="overflow-x-auto mb-5">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-teal-50 text-teal-700">
+                <th className="text-left p-2 font-semibold">Rango</th>
+                <th className="text-right p-2 font-semibold">Tiempo perfecto (min)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {localSla.ranges.map((rng, i) => (
+                <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  <td className="p-2 text-gray-700 font-medium">{rng.label}</td>
+                  <td className="p-2 text-right">
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={rng.min}
+                      onChange={e => handleSlaRangeChange(i, e.target.value)}
+                      className={`${inputCls} w-24 text-right`}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Next Day hora límite */}
+        <div className="flex items-center gap-3 mb-5">
+          <label className="text-xs font-semibold text-gray-600">Next Day — Hora límite de entrega (antes de las XX:00)</label>
+          <input
+            type="number"
+            min={1}
+            max={23}
+            value={localSla.nextDayHora}
+            onChange={e => handleSlaNextDay(e.target.value)}
+            className={`${inputCls} w-20 text-center`}
+          />
+          <span className="text-xs text-gray-500">:00</span>
+        </div>
+
+        {slaMsg && <p className={`text-sm font-semibold mb-3 ${slaMsg.ok ? "text-green-600" : "text-red-600"}`}>{slaMsg.txt}</p>}
+
+        <div className="flex gap-2">
+          <button onClick={saveSla}
+            className="px-5 py-2 rounded-xl text-white text-sm font-bold shadow hover:opacity-90 transition"
+            style={btnPrimary}>
+            Guardar SLA
+          </button>
+          <button onClick={restoreSla}
+            className="px-5 py-2 rounded-xl text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition">
+            Restaurar valores
+          </button>
+        </div>
+      </div>
+
+      {/* ── Sección 4: Umbrales de riesgo ── */}
+      <div className={cardCls}>
+        <p className="text-sm font-bold text-gray-700 mb-4">🚦 Umbrales de Riesgo</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+          {LINEAS_UMBRAL.map(({ key, label }) => {
+            const u = umbrales[key] || {};
+            return (
+              <div key={key} className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-bold text-teal-700 mb-3">{label}</p>
+
+                {/* % SLA cumplido */}
+                <p className="text-xs font-semibold text-gray-600 mb-2">% SLA cumplido</p>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs w-5">🔴</span>
+                    <span className="text-xs text-gray-500 w-16">Rojo si &lt;</span>
+                    <input type="number" min={0} max={100} value={u.sla_rojo ?? 85}
+                      onChange={e => handleUmbral(key, "sla_rojo", e.target.value)}
+                      className={`${inputCls} w-16 text-center`} />
+                    <span className="text-xs text-gray-400">%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs w-5">🟡</span>
+                    <span className="text-xs text-gray-500 w-16">Amar. si &lt;</span>
+                    <input type="number" min={0} max={100} value={u.sla_amarillo ?? 92}
+                      onChange={e => handleUmbral(key, "sla_amarillo", e.target.value)}
+                      className={`${inputCls} w-16 text-center`} />
+                    <span className="text-xs text-gray-400">%</span>
+                  </div>
+                </div>
+
+                {/* % No perfectos */}
+                <p className="text-xs font-semibold text-gray-600 mb-2">% No perfectos</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs w-5">🔴</span>
+                    <span className="text-xs text-gray-500 w-16">Rojo si &gt;</span>
+                    <input type="number" min={0} max={100} value={u.noPerf_rojo ?? 15}
+                      onChange={e => handleUmbral(key, "noPerf_rojo", e.target.value)}
+                      className={`${inputCls} w-16 text-center`} />
+                    <span className="text-xs text-gray-400">%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs w-5">🟡</span>
+                    <span className="text-xs text-gray-500 w-16">Amar. si &gt;</span>
+                    <input type="number" min={0} max={100} value={u.noPerf_amarillo ?? 8}
+                      onChange={e => handleUmbral(key, "noPerf_amarillo", e.target.value)}
+                      className={`${inputCls} w-16 text-center`} />
+                    <span className="text-xs text-gray-400">%</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {umbMsg && <p className={`text-sm font-semibold mb-3 ${umbMsg.ok ? "text-green-600" : "text-red-600"}`}>{umbMsg.txt}</p>}
+
+        <div className="flex gap-2">
+          <button onClick={saveUmbrales}
+            className="px-5 py-2 rounded-xl text-white text-sm font-bold shadow hover:opacity-90 transition"
+            style={btnPrimary}>
+            Guardar Umbrales
+          </button>
+          <button onClick={restoreUmbrales}
+            className="px-5 py-2 rounded-xl text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition">
+            Restaurar valores
+          </button>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ── Constantes de meses ────────────────────────────────────────────────────
 const MESES_LABEL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-// ── Componente principal ───────────────────────────────────────────────────
+// ── Tabs ───────────────────────────────────────────────────────────────────
 const TABS = [
-  { id:"resumen",    label:"Resumen",              icon:"📊" },
-  { id:"mostrador",  label:"Cruz Verde Mostrador",  icon:"🏪" },
-  { id:"integ_sd",   label:"Integración Same Day",  icon:"⚡" },
-  { id:"integ_nd",   label:"Integración Next Day",  icon:"📅" },
-  { id:"devolucion", label:"Devoluciones",           icon:"↩️" },
+  { id:"resumen",    label:"Resumen",              icon:"📊",  adminOnly: false },
+  { id:"mostrador",  label:"Cruz Verde Mostrador",  icon:"🏪",  adminOnly: false },
+  { id:"integ_sd",   label:"Integración Same Day",  icon:"⚡",  adminOnly: false },
+  { id:"integ_nd",   label:"Integración Next Day",  icon:"📅",  adminOnly: false },
+  { id:"devolucion", label:"Devoluciones",           icon:"↩️",  adminOnly: false },
+  { id:"admin",      label:"Administrativo",         icon:"🔧",  adminOnly: true  },
 ];
 
+// ── Componente principal ───────────────────────────────────────────────────
 export default function InformeCruzVerde({ isAdmin }) {
   const now = new Date();
   const [tab,        setTab]        = useState("resumen");
@@ -713,6 +1211,20 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [upAnio,  setUpAnio]  = useState(now.getFullYear());
   const [upMesN,  setUpMesN]  = useState(now.getMonth() + 1);
 
+  // SLA config state
+  const [slaConfig,    setSlaConfig]    = useState(() => getSlaConfig());
+  const [horariosMap,  setHorariosMap]  = useState({});
+
+  // Load horarios on mount from localStorage
+  useEffect(() => {
+    try {
+      const dir = JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null");
+      if (dir?.horarios) {
+        setHorariosMap(buildHorariosMap(dir.horarios));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   // Auto-seleccionar mes más reciente al cargar
   useEffect(() => {
     const meses = Object.keys(index).sort().reverse();
@@ -725,13 +1237,14 @@ export default function InformeCruzVerde({ isAdmin }) {
     idbLoad(mesSel).then(data => setRows(data?.rows || []));
   }, [mesSel]);
 
-  // Filtros derivados
+  // Filtros derivados con SLA computado dinámicamente
   const filteredRows = useMemo(() => {
     let r = rows;
     if (filtLinea  !== "todas") r = r.filter(row => row.linea   === filtLinea);
     if (filtCiudad !== "todas") r = r.filter(row => row.ciudad  === filtCiudad);
-    return r;
-  }, [rows, filtLinea, filtCiudad]);
+    // Enrich with dynamic SLA computation
+    return r.map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
+  }, [rows, filtLinea, filtCiudad, slaConfig, horariosMap]);
 
   const ciudades = useMemo(() => [...new Set(rows.map(r => r.ciudad))].filter(Boolean).sort(), [rows]);
 
@@ -788,6 +1301,9 @@ export default function InformeCruzVerde({ isAdmin }) {
     return filteredRows;
   }, [tab, filteredRows]);
 
+  // Visible tabs
+  const visibleTabs = TABS.filter(t => !t.adminOnly || isAdmin);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── Banner ── */}
@@ -842,7 +1358,7 @@ export default function InformeCruzVerde({ isAdmin }) {
 
           {/* Sub-tabs */}
           <div className="flex gap-1 overflow-x-auto">
-            {TABS.map(t => (
+            {visibleTabs.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`flex-shrink-0 flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${tab===t.id?"text-white shadow":"text-gray-600 hover:bg-teal-50"}`}
                 style={tab===t.id?{background:C_TEAL}:{}}>
@@ -857,7 +1373,7 @@ export default function InformeCruzVerde({ isAdmin }) {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
         {/* Estado vacío */}
-        {rows.length === 0 && !loading && (
+        {rows.length === 0 && !loading && tab !== "admin" && (
           <div className="text-center py-16">
             <div className="text-6xl mb-4">🟢</div>
             <p className="text-lg font-bold text-gray-700 mb-2">Informe Cruz Verde</p>
@@ -877,59 +1393,70 @@ export default function InformeCruzVerde({ isAdmin }) {
           </>
         )}
 
+        {/* Panel Administrativo */}
+        {tab === "admin" && isAdmin && (
+          <AdminPanel
+            slaConfig={slaConfig}
+            setSlaConfig={setSlaConfig}
+            setHorariosMap={setHorariosMap}
+          />
+        )}
+
         {/* ── Panel: Subir nuevo mes ── */}
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <h3 className="font-bold text-gray-700 text-sm mb-4">📂 Subir nuevo mes</h3>
-          <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">Año</label>
-              <select value={upAnio} onChange={e => setUpAnio(Number(e.target.value))}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
-                {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes</label>
-              <select value={upMesN} onChange={e => setUpMesN(Number(e.target.value))}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
-                {MESES_LABEL.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">Archivo Excel (.xlsx)</label>
-              <label className={`cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow transition ${loading?"opacity-60 cursor-not-allowed":"hover:opacity-90"}`}
-                style={{ background: BRAND }}>
-                {loading ? "⏳ Procesando..." : "Seleccionar archivo"}
-                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={loading} />
-              </label>
-            </div>
-          </div>
-
-          {uploadMsg && (
-            <p className={`mt-3 text-sm font-semibold ${uploadMsg.ok ? "text-green-600" : "text-red-600"}`}>{uploadMsg.txt}</p>
-          )}
-
-          {meses.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({meses.length})</p>
-              <div className="flex flex-wrap gap-2">
-                {meses.map(m => (
-                  <div key={m}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
-                      mesSel === m
-                        ? "text-white border-transparent"
-                        : "border-gray-200 text-gray-600 hover:bg-teal-50"
-                    }`}
-                    style={mesSel === m ? { background: C_TEAL } : {}}>
-                    <button onClick={() => setMesSel(m)}>{m}</button>
-                    <button onClick={() => handleDelete(m)}
-                      className="text-red-300 hover:text-red-500 ml-1 font-bold leading-none">✕</button>
-                  </div>
-                ))}
+        {tab !== "admin" && (
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <h3 className="font-bold text-gray-700 text-sm mb-4">📂 Subir nuevo mes</h3>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Año</label>
+                <select value={upAnio} onChange={e => setUpAnio(Number(e.target.value))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes</label>
+                <select value={upMesN} onChange={e => setUpMesN(Number(e.target.value))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  {MESES_LABEL.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Archivo Excel (.xlsx)</label>
+                <label className={`cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow transition ${loading?"opacity-60 cursor-not-allowed":"hover:opacity-90"}`}
+                  style={{ background: BRAND }}>
+                  {loading ? "⏳ Procesando..." : "Seleccionar archivo"}
+                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={loading} />
+                </label>
               </div>
             </div>
-          )}
-        </div>
+
+            {uploadMsg && (
+              <p className={`mt-3 text-sm font-semibold ${uploadMsg.ok ? "text-green-600" : "text-red-600"}`}>{uploadMsg.txt}</p>
+            )}
+
+            {meses.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({meses.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {meses.map(m => (
+                    <div key={m}
+                      className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                        mesSel === m
+                          ? "text-white border-transparent"
+                          : "border-gray-200 text-gray-600 hover:bg-teal-50"
+                      }`}
+                      style={mesSel === m ? { background: C_TEAL } : {}}>
+                      <button onClick={() => setMesSel(m)}>{m}</button>
+                      <button onClick={() => handleDelete(m)}
+                        className="text-red-300 hover:text-red-500 ml-1 font-bold leading-none">✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>
