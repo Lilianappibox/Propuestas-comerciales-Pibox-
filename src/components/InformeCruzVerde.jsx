@@ -687,78 +687,81 @@ function ResumenPanel({ rows }) {
   );
 }
 
+// ── Constantes de meses ────────────────────────────────────────────────────
+const MESES_LABEL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
 // ── Componente principal ───────────────────────────────────────────────────
 const TABS = [
-  { id:"resumen",    label:"Resumen",           icon:"📊" },
-  { id:"mostrador",  label:"Cruz Verde Mostrador", icon:"🏪" },
-  { id:"integ_sd",   label:"Integración Same Day", icon:"⚡" },
-  { id:"integ_nd",   label:"Integración Next Day", icon:"📅" },
-  { id:"devolucion", label:"Devoluciones",        icon:"↩️" },
+  { id:"resumen",    label:"Resumen",              icon:"📊" },
+  { id:"mostrador",  label:"Cruz Verde Mostrador",  icon:"🏪" },
+  { id:"integ_sd",   label:"Integración Same Day",  icon:"⚡" },
+  { id:"integ_nd",   label:"Integración Next Day",  icon:"📅" },
+  { id:"devolucion", label:"Devoluciones",           icon:"↩️" },
 ];
 
 export default function InformeCruzVerde({ isAdmin }) {
-  const [tab,       setTab]       = useState("resumen");
-  const [index,     setIndex]     = useState(() => loadIndex());
-  const [mesSel,    setMesSel]    = useState("");
-  const [rows,      setRows]      = useState([]);
-  const [loading,   setLoading]   = useState(false);
-  const [msg,       setMsg]       = useState(null);
+  const now = new Date();
+  const [tab,        setTab]        = useState("resumen");
+  const [index,      setIndex]      = useState(() => loadIndex());
+  const [mesSel,     setMesSel]     = useState("");
+  const [rows,       setRows]       = useState([]);
+  const [loading,    setLoading]    = useState(false);
+  const [uploadMsg,  setUploadMsg]  = useState(null);
   const [filtCiudad, setFiltCiudad] = useState("todas");
   const [filtLinea,  setFiltLinea]  = useState("todas");
-  const fileRef = useRef();
+  // Upload year/month selectors
+  const [upAnio,  setUpAnio]  = useState(now.getFullYear());
+  const [upMesN,  setUpMesN]  = useState(now.getMonth() + 1);
 
-  // Cargar datos cuando cambia el mes seleccionado
+  // Auto-seleccionar mes más reciente al cargar
   useEffect(() => {
     const meses = Object.keys(index).sort().reverse();
     if (!mesSel && meses.length) setMesSel(meses[0]);
   }, [index]);
 
+  // Cargar filas del mes seleccionado
   useEffect(() => {
-    if (!mesSel) return;
-    setRows([]);
-    idbLoad(mesSel).then(data => {
-      if (data?.rows) setRows(data.rows);
-    });
+    if (!mesSel) { setRows([]); return; }
+    idbLoad(mesSel).then(data => setRows(data?.rows || []));
   }, [mesSel]);
 
-  // Filtros
+  // Filtros derivados
   const filteredRows = useMemo(() => {
     let r = rows;
-    if (filtLinea !== "todas") r = r.filter(row => row.linea === filtLinea);
-    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad === filtCiudad);
+    if (filtLinea  !== "todas") r = r.filter(row => row.linea   === filtLinea);
+    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad  === filtCiudad);
     return r;
   }, [rows, filtLinea, filtCiudad]);
 
-  const ciudades = useMemo(() => [...new Set(rows.map(r=>r.ciudad))].filter(Boolean).sort(), [rows]);
+  const ciudades = useMemo(() => [...new Set(rows.map(r => r.ciudad))].filter(Boolean).sort(), [rows]);
 
-  // Upload
+  // Upload handler — usa año/mes del selector, no del archivo
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setLoading(true); setMsg(null);
+    setLoading(true); setUploadMsg(null);
     try {
-      const buf = await file.arrayBuffer();
-      const wb  = XLSX.read(buf, { type: "array" });
-      const ws  = wb.Sheets[wb.SheetNames[0]];
-      // Headers en fila 3 (índice 3), datos desde fila 4
+      const buf     = await file.arrayBuffer();
+      const wb      = XLSX.read(buf, { type: "array" });
+      const ws      = wb.Sheets[wb.SheetNames[0]];
       const rawRows = XLSX.utils.sheet_to_json(ws, { range: 3, defval: "" });
       if (!rawRows.length) throw new Error("El archivo no contiene datos.");
-      if (!rawRows[0].uuid_booking && !rawRows[0].nombre_usuario) throw new Error("Formato no reconocido. ¿Es el archivo 'Cruz verde [mes].xlsx'?");
+      if (!rawRows[0].uuid_booking && !rawRows[0].nombre_usuario)
+        throw new Error("Formato no reconocido. ¿Es el archivo 'Cruz verde [mes].xlsx'?");
       const processed = procesarRows(rawRows);
-      // Determinar mes desde el primer registro
-      const mes = processed[0]?.mes || "Sin mes";
-      await idbSave(mes, { rows: processed, archivo: file.name, fecha: new Date().toISOString(), total: processed.length });
-      const newIdx = { ...index, [mes]: { archivo: file.name, fecha: new Date().toISOString(), total: processed.length } };
+      const mesKey    = `${MESES_LABEL[upMesN - 1]} ${upAnio}`;
+      await idbSave(mesKey, { rows: processed, archivo: file.name, fecha: new Date().toISOString(), total: processed.length });
+      const newIdx = { ...index, [mesKey]: { archivo: file.name, fecha: new Date().toISOString(), total: processed.length } };
       saveIndex(newIdx);
       setIndex(newIdx);
-      setMesSel(mes);
-      setMsg({ ok: true, txt: `✅ ${mes}: ${processed.length.toLocaleString()} registros importados` });
+      setMesSel(mesKey);
+      setUploadMsg({ ok: true, txt: `✅ ${mesKey}: ${processed.length.toLocaleString()} registros importados` });
     } catch (err) {
-      setMsg({ ok: false, txt: `❌ ${err.message}` });
+      setUploadMsg({ ok: false, txt: `❌ ${err.message}` });
     } finally {
       setLoading(false);
-      if (fileRef.current) fileRef.current.value = "";
-      setTimeout(() => setMsg(null), 5000);
+      e.target.value = "";
+      setTimeout(() => setUploadMsg(null), 6000);
     }
   };
 
@@ -772,72 +775,50 @@ export default function InformeCruzVerde({ isAdmin }) {
     if (mesSel === mes) {
       const rest = Object.keys(newIdx).sort().reverse();
       setMesSel(rest[0] || "");
-      setRows([]);
     }
   };
 
   const meses = Object.keys(index).sort().reverse();
 
-  // Filas por tab
+  // Filas filtradas por tab de línea
   const tabRows = useMemo(() => {
-    if (tab === "mostrador")  return filteredRows.filter(r=>r.linea==="mostrador");
-    if (tab === "integ_sd")   return filteredRows.filter(r=>r.linea==="integ_sd");
-    if (tab === "integ_nd")   return filteredRows.filter(r=>r.linea==="integ_nd");
-    if (tab === "devolucion") return filteredRows;
+    if (tab === "mostrador")  return filteredRows.filter(r => r.linea === "mostrador");
+    if (tab === "integ_sd")   return filteredRows.filter(r => r.linea === "integ_sd");
+    if (tab === "integ_nd")   return filteredRows.filter(r => r.linea === "integ_nd");
     return filteredRows;
   }, [tab, filteredRows]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Banner */}
+      {/* ── Banner ── */}
       <div className="border-b border-teal-100 bg-white shadow-sm print:hidden">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex flex-wrap items-center gap-3 mb-3">
+          {/* Título */}
+          <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
                  style={{ background: BRAND }}>🟢</div>
-            <div className="min-w-0">
+            <div>
               <p className="font-bold text-gray-800 text-sm leading-tight">Informe Cruz Verde</p>
               <p className="text-xs text-gray-500">Mostrador · Integración Same Day · Integración Next Day · SLA en tiempo real</p>
             </div>
-
-            {/* Upload */}
-            <div className="flex items-center gap-2 ml-auto shrink-0">
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleUpload}
-                disabled={loading} className="hidden" id="cv-upload-input" />
-              <label htmlFor="cv-upload-input"
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shrink-0 text-white ${loading?"opacity-50 cursor-not-allowed":"hover:opacity-90"}`}
-                style={{ background: C_TEAL }}>
-                {loading ? "⏳ Procesando..." : "📤 Cargar Excel"}
-              </label>
-              {msg && (
-                <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${msg.ok?"bg-green-50 text-green-700":"bg-red-50 text-red-700"}`}>
-                  {msg.txt}
-                </span>
-              )}
-            </div>
           </div>
 
-          {/* Mes selector + filtros */}
+          {/* Filtros de mes + línea + ciudad */}
           {meses.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">Mes:</span>
-                <div className="flex gap-1 flex-wrap">
-                  {meses.map(m => (
-                    <button key={m} onClick={() => setMesSel(m)}
-                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition ${mesSel===m?"text-white":"text-gray-500 hover:bg-teal-50"}`}
-                      style={mesSel===m?{background:C_TEAL}:{}}>
-                      {m}
-                      {isAdmin && (
-                        <span className="ml-1 text-red-400 hover:text-red-600 cursor-pointer" onClick={e=>{e.stopPropagation();handleDelete(m);}}>×</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
+              <span className="text-xs text-gray-500 font-medium">Mes:</span>
+              <div className="flex gap-1 flex-wrap">
+                {meses.map(m => (
+                  <button key={m} onClick={() => setMesSel(m)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition border ${mesSel===m?"text-white border-transparent":"border-gray-200 text-gray-600 hover:bg-teal-50"}`}
+                    style={mesSel===m?{background:C_TEAL}:{}}>
+                    {m}
+                  </button>
+                ))}
               </div>
               <div className="flex items-center gap-1 ml-2">
                 <span className="text-xs text-gray-500">Línea:</span>
-                <select value={filtLinea} onChange={e=>setFiltLinea(e.target.value)}
+                <select value={filtLinea} onChange={e => setFiltLinea(e.target.value)}
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white">
                   <option value="todas">Todas</option>
                   <option value="mostrador">Mostrador</option>
@@ -847,19 +828,19 @@ export default function InformeCruzVerde({ isAdmin }) {
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-xs text-gray-500">Ciudad:</span>
-                <select value={filtCiudad} onChange={e=>setFiltCiudad(e.target.value)}
+                <select value={filtCiudad} onChange={e => setFiltCiudad(e.target.value)}
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white">
                   <option value="todas">Todas</option>
                   {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               {rows.length > 0 && (
-                <span className="text-xs text-gray-400 ml-2">{filteredRows.length.toLocaleString()} servicios</span>
+                <span className="text-xs text-gray-400 ml-1">{filteredRows.length.toLocaleString()} servicios</span>
               )}
             </div>
           )}
 
-          {/* Tabs */}
+          {/* Sub-tabs */}
           <div className="flex gap-1 overflow-x-auto">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
@@ -872,35 +853,84 @@ export default function InformeCruzVerde({ isAdmin }) {
         </div>
       </div>
 
-      {/* Contenido */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      {/* ── Contenido ── */}
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
         {/* Estado vacío */}
         {rows.length === 0 && !loading && (
-          <div className="text-center py-20">
+          <div className="text-center py-16">
             <div className="text-6xl mb-4">🟢</div>
             <p className="text-lg font-bold text-gray-700 mb-2">Informe Cruz Verde</p>
-            <p className="text-gray-500 text-sm mb-6">Carga el archivo de operaciones Cruz Verde (.xlsx) para ver el análisis completo.</p>
-            <label htmlFor="cv-upload-input"
-              className="px-6 py-3 rounded-xl text-sm font-bold cursor-pointer text-white transition hover:opacity-90"
-              style={{ background: BRAND }}>
-              📤 Cargar archivo Excel
-            </label>
-            <div className="mt-6 text-xs text-gray-400 space-y-1">
-              <p>Archivo esperado: <strong>Cruz verde [mes].xlsx</strong></p>
-              <p>Columnas requeridas: uuid_booking, estado, nombre_usuario, next_day, distancia_km, salio_de_origen, llego_donde_el_cliente</p>
-            </div>
+            <p className="text-gray-500 text-sm mb-2">Selecciona el año y mes, luego sube el archivo Excel de Cruz Verde.</p>
+            <p className="text-xs text-gray-400">Columnas requeridas: uuid_booking, estado, nombre_usuario, next_day, distancia_km, salio_de_origen, llego_donde_el_cliente</p>
           </div>
         )}
 
+        {/* Paneles de análisis */}
         {rows.length > 0 && (
           <>
-            {tab === "resumen"    && <ResumenPanel rows={filteredRows} />}
-            {tab === "mostrador"  && <LineaPanel rows={tabRows} linea="mostrador" />}
-            {tab === "integ_sd"   && <LineaPanel rows={tabRows} linea="integ_sd" />}
-            {tab === "integ_nd"   && <LineaPanel rows={tabRows} linea="integ_nd" />}
+            {tab === "resumen"    && <ResumenPanel    rows={filteredRows} />}
+            {tab === "mostrador"  && <LineaPanel      rows={tabRows} linea="mostrador" />}
+            {tab === "integ_sd"   && <LineaPanel      rows={tabRows} linea="integ_sd" />}
+            {tab === "integ_nd"   && <LineaPanel      rows={tabRows} linea="integ_nd" />}
             {tab === "devolucion" && <DevolucionesPanel rows={filteredRows} />}
           </>
         )}
+
+        {/* ── Panel: Subir nuevo mes ── */}
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <h3 className="font-bold text-gray-700 text-sm mb-4">📂 Subir nuevo mes</h3>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">Año</label>
+              <select value={upAnio} onChange={e => setUpAnio(Number(e.target.value))}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+                {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">Mes</label>
+              <select value={upMesN} onChange={e => setUpMesN(Number(e.target.value))}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+                {MESES_LABEL.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">Archivo Excel (.xlsx)</label>
+              <label className={`cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow transition ${loading?"opacity-60 cursor-not-allowed":"hover:opacity-90"}`}
+                style={{ background: BRAND }}>
+                {loading ? "⏳ Procesando..." : "Seleccionar archivo"}
+                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={loading} />
+              </label>
+            </div>
+          </div>
+
+          {uploadMsg && (
+            <p className={`mt-3 text-sm font-semibold ${uploadMsg.ok ? "text-green-600" : "text-red-600"}`}>{uploadMsg.txt}</p>
+          )}
+
+          {meses.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({meses.length})</p>
+              <div className="flex flex-wrap gap-2">
+                {meses.map(m => (
+                  <div key={m}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                      mesSel === m
+                        ? "text-white border-transparent"
+                        : "border-gray-200 text-gray-600 hover:bg-teal-50"
+                    }`}
+                    style={mesSel === m ? { background: C_TEAL } : {}}>
+                    <button onClick={() => setMesSel(m)}>{m}</button>
+                    <button onClick={() => handleDelete(m)}
+                      className="text-red-300 hover:text-red-500 ml-1 font-bold leading-none">✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );
