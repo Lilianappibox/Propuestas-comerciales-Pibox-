@@ -24,7 +24,7 @@ const TABS = [
   { id:"nuevos",   icon:"🆕",  label:"Clientes Nuevos"    },
   { id:"perdidos", icon:"📉",  label:"Clientes Perdidos"  },
   { id:"informeCliente", icon:"📋", label:"Informe Clientes" },
-  { id:"config",   icon:"⚙️",  label:"Configuración"      },
+  { id:"config",   icon:"⚙️",  label:"Configuración", adminOnly: true },
 ];
 
 export default function RiesgoComercial({ currentUser }) {
@@ -159,7 +159,7 @@ export default function RiesgoComercial({ currentUser }) {
 
           {/* Sub-tabs */}
           <div className="flex gap-1 overflow-x-auto">
-            {TABS.map(t => (
+            {TABS.filter(t => !t.adminOnly || isAdmin).map(t => (
               <button key={t.id} onClick={()=>setTab(t.id)}
                 className={`flex-shrink-0 flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
                   tab === t.id
