@@ -14,6 +14,7 @@ import CierreComercial  from "./components/CierreComercial";
 import RiesgoComercial  from "./components/RiesgoComercial";
 import TarifarioInterno from "./components/TarifarioInterno";
 import InformeTada from "./components/InformeTada";
+import InformeCruzVerde from "./components/InformeCruzVerde";
 import homeBg from "./assets/pibox-home.png";
 import "./App.css";
 
@@ -37,6 +38,7 @@ const VIEW_USUARIOS   = "usuarios";
 const VIEW_CIERRE     = "cierre";
 const VIEW_RIESGO     = "riesgo";
 const VIEW_TADA       = "tada";
+const VIEW_CRUZ_VERDE = "cruz-verde";
 const VIEW_TARIFARIO  = "tarifario-interno";
 
 const ROLE_COLORS = {
@@ -250,6 +252,7 @@ export default function App() {
     { id: VIEW_CIERRE,     label: "Cierre Comercial",       icon: "📊", visible: !!permisos.verCierreComercial },
     { id: VIEW_RIESGO,     label: "Riesgo Comercial",       icon: "🚨", visible: !!permisos.verRiesgoComercial },
     { id: VIEW_TADA,       label: "Informe TaDa",           icon: "🍺", visible: !!permisos.verInformeTada },
+    { id: VIEW_CRUZ_VERDE, label: "Informe Cruz Verde",     icon: "🟢", visible: !!permisos.verInformeCruzVerde },
     { id: VIEW_USUARIOS,   label: "Usuarios",               icon: "👥", visible: permisos.gestionarUsuarios },
   ].filter((v) => v.visible);
 
@@ -592,6 +595,13 @@ export default function App() {
         <main className="max-w-7xl mx-auto px-4 py-6">
           <InformeTada isAdmin={currentUser?.rol === "Administrativo"} />
         </main>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: INFORME CRUZ VERDE
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_CRUZ_VERDE && permisos.verInformeCruzVerde && (
+        <InformeCruzVerde isAdmin={currentUser?.rol === "Administrativo"} />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
