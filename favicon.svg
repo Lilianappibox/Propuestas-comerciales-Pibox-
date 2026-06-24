@@ -1,0 +1,19 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C22D4"/>
+      <stop offset="100%" stop-color="#C026D3"/>
+    </linearGradient>
+  </defs>
+  <!-- Fondo con esquinas redondeadas -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- Cubo isométrico — mismo diseño que el logo -->
+  <!-- Cara superior -->
+  <polygon points="32,10 50,20 32,30 14,20" fill="white" opacity="1"/>
+  <!-- Cara derecha -->
+  <polygon points="50,20 50,40 32,50 32,30" fill="white" opacity="0.78"/>
+  <!-- Cara izquierda -->
+  <polygon points="14,20 32,30 32,50 14,40" fill="white" opacity="0.55"/>
+  <!-- Arco sonriente -->
+  <path d="M 8 56 Q 32 66 56 56" stroke="white" stroke-width="4" fill="none" stroke-linecap="round"/>
+</svg>
