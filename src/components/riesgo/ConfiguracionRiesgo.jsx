@@ -46,21 +46,26 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
         totales: processed.totales,
       };
 
-      // Guardar data en IndexedDB (sin límite de espacio)
-      await saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades });
+      // Guardar data en IndexedDB — incluye drivers embebido para que quede en el export
+      await saveMesData(key, {
+        ...entry,
+        empresas: processed.empresas,
+        ciudades: processed.ciudades,
+        drivers: processed.drivers || [],
+      });
 
       // Guardar índice (solo metadata, muy pequeño)
       const idx = loadIndex();
       idx[key] = entry;
       saveIndex(idx);
 
-      // Drivers en IndexedDB
+      // Drivers también en IDB separado (para compatibilidad)
       if (processed.drivers) idbSaveDrivers(key, processed.drivers);
 
-      // Filas crudas Horas+OD para la pestaña "Empresas por Horas"
+      // Filas crudas Horas+OD+Bavaria para la pestaña "Empresas por Horas"
       const horasOdRows = rows.filter(r => {
         const op = String(r["operation_type"] || "").trim().toLowerCase();
-        return op === "horas" || op === "on demand";
+        return op === "horas" || op === "on demand" || op === "bavaria paquetes tada";
       });
       if (horasOdRows.length > 0) await idbSaveHorasRows(key, horasOdRows);
 
@@ -101,7 +106,7 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
       const merged = { ...localIdx, ...data.index };
       saveIndex(merged);
 
-      // Guardar datos de mes (métricas, ranking, ciudad, empresa, clientes)
+      // Guardar datos de mes (métricas, ranking, ciudad, empresa, clientes, drivers embebidos)
       await Promise.all(Object.entries(data.meses).map(([key, mesData]) => saveMesData(key, mesData)));
 
       // Guardar filas crudas de Empresas por Horas
@@ -109,10 +114,11 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
         await Promise.all(Object.entries(data.horasRows).map(([key, rows]) => idbSaveHorasRows(key, rows)));
       }
 
-      // Guardar drivers (Análisis Pilotos)
-      if (data.drivers) {
-        await Promise.all(Object.entries(data.drivers).map(([key, drs]) => idbSaveDrivers(key, drs)));
-      }
+      // Drivers: desde campo separado o embebidos en mesData
+      await Promise.all(Object.entries(data.meses).map(([key, mesData]) => {
+        const drs = data.drivers?.[key] || mesData.drivers;
+        if (drs && drs.length > 0) return idbSaveDrivers(key, drs);
+      }));
 
       // Restaurar umbrales de Configuración
       if (data.umbrales && Object.keys(data.umbrales).length > 0) {

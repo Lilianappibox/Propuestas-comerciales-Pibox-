@@ -48,7 +48,11 @@ export default function RiesgoComercial({ currentUser }) {
       saveIndex({ ...localIdx, ...data.index });
       await Promise.all(Object.entries(data.meses).map(([key, mesData]) => saveMesData(key, mesData)));
       if (data.horasRows) await Promise.all(Object.entries(data.horasRows).map(([key, rows]) => idbSaveHorasRows(key, rows)));
-      if (data.drivers)   await Promise.all(Object.entries(data.drivers).map(([key, drs])  => idbSaveDrivers(key, drs)));
+      // Drivers: desde campo separado o embebidos en mesData
+      await Promise.all(Object.entries(data.meses).map(([key, mesData]) => {
+        const drs = data.drivers?.[key] || mesData.drivers;
+        if (drs && drs.length > 0) return idbSaveDrivers(key, drs);
+      }));
       if (data.umbrales && Object.keys(data.umbrales).length > 0) {
         localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(data.umbrales));
       }

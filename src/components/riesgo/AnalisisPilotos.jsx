@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { loadIndex, idbLoadDrivers, MESES_ES, PIBOX_PURPLE } from "./utils";
+import { loadIndex, idbLoadDrivers, loadMesDataAsync, MESES_ES, PIBOX_PURPLE } from "./utils";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const fmtM = (v) => "$" + Math.round(v).toLocaleString("es-CO");
@@ -23,12 +23,23 @@ export default function AnalisisPilotos() {
   useEffect(() => {
     setDriversActual([]); setLoadingMsg("Cargando...");
     if (!mesSel) { setLoadingMsg(""); return; }
-    idbLoadDrivers(mesSel).then(d => { setDriversActual(d || []); setLoadingMsg(d ? "" : "Sin datos de pilotos. Re-sube el archivo en Configuración."); });
+    idbLoadDrivers(mesSel).then(async d => {
+      if (d && d.length > 0) { setDriversActual(d); setLoadingMsg(""); return; }
+      // Fallback: drivers embebidos en mesData (exportados desde admin)
+      const mesData = await loadMesDataAsync(mesSel);
+      const embedded = mesData?.drivers || [];
+      setDriversActual(embedded);
+      setLoadingMsg(embedded.length > 0 ? "" : "Sin datos de pilotos. Re-sube el archivo en Configuración.");
+    });
   }, [mesSel]);
   useEffect(() => {
     setDriversPrev([]);
     if (!prevKey) return;
-    idbLoadDrivers(prevKey).then(d => setDriversPrev(d || []));
+    idbLoadDrivers(prevKey).then(async d => {
+      if (d && d.length > 0) { setDriversPrev(d); return; }
+      const mesData = await loadMesDataAsync(prevKey);
+      setDriversPrev(mesData?.drivers || []);
+    });
   }, [prevKey]);
 
   // Análisis
