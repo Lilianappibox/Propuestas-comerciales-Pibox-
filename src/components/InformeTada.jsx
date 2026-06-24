@@ -1267,96 +1267,47 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   );
 }
 
-async function printSection(ref, title) {
+function printSection(ref, title) {
   if (!ref?.current) return;
-  // Snapshot all Recharts SVGs as PNG via canvas (ensures images load before cloning)
-  const svgContainers = ref.current.querySelectorAll(".recharts-wrapper");
-  console.log("[PDF] Gráficas encontradas:", svgContainers.length);
-  const snapshots = [];
-  for (const wrapper of svgContainers) {
-    const svg = wrapper.querySelector("svg");
-    if (!svg) { console.log("[PDF] wrapper sin SVG, saltando"); continue; }
-    const width = wrapper.offsetWidth || 800;
-    const height = wrapper.offsetHeight || 400;
-    console.log("[PDF] SVG size:", width, "x", height);
-    // Clone SVG with explicit pixel dimensions and namespace
-    const svgClone = svg.cloneNode(true);
-    svgClone.setAttribute("width", width);
-    svgClone.setAttribute("height", height);
-    svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    const svgData = new XMLSerializer().serializeToString(svgClone);
-    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    // Render SVG into canvas to get a PNG data URL
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    await new Promise((resolve) => {
-      const tmpImg = new Image();
-      tmpImg.onload = () => {
-        console.log("[PDF] SVG cargó en img OK, dibujando en canvas...");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(tmpImg, 0, 0, width, height);
-        URL.revokeObjectURL(url);
-        resolve();
-      };
-      tmpImg.onerror = (e) => { console.error("[PDF] Error cargando SVG en img:", e); URL.revokeObjectURL(url); resolve(); };
-      tmpImg.src = url;
-    });
-    let pngDataUrl;
-    try {
-      pngDataUrl = canvas.toDataURL("image/png");
-      console.log("[PDF] Canvas a PNG OK, longitud:", pngDataUrl.length);
-    } catch (e) {
-      console.error("[PDF] Error canvas.toDataURL (canvas contaminado?):", e);
-      pngDataUrl = "";
-    }
-    const imgEl = document.createElement("img");
-    imgEl.src = pngDataUrl;
-    imgEl.style.cssText = `width:${width}px;height:${height}px;max-width:100%;display:block;`;
-    snapshots.push({ wrapper, img: imgEl });
-  }
-  // Temporarily replace SVG wrappers with PNG images
-  for (const { wrapper, img } of snapshots) {
-    wrapper._origHTML = wrapper.innerHTML;
-    wrapper.innerHTML = "";
-    wrapper.appendChild(img);
-  }
-  const content = ref.current.cloneNode(true);
-  // Restore originals
-  for (const { wrapper } of snapshots) {
-    wrapper.innerHTML = wrapper._origHTML;
-    delete wrapper._origHTML;
-  }
-  // Remove download buttons from the clone
-  for (const btn of content.querySelectorAll("button")) btn.remove();
-  for (const lbl of content.querySelectorAll("label")) {
-    if (lbl.querySelector('input[type="file"]')) lbl.remove();
-  }
-  const win = window.open("", "_blank");
-  if (!win) { alert("Permite ventanas emergentes para descargar el PDF"); return; }
-  // Copy all stylesheets
-  const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')].map(s => s.outerHTML).join("\n");
-  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>${styles}
-    <style>
+  const el = ref.current;
+  const parent = el.parentNode;
+  const nextSib = el.nextSibling;
+
+  // Move the LIVE element (with rendered charts) to a body-level print root
+  const printRoot = document.createElement("div");
+  printRoot.id = "__pibox_print_root__";
+  document.body.appendChild(printRoot);
+  printRoot.appendChild(el);
+
+  const style = document.createElement("style");
+  style.textContent = `
+    @media print {
       @page { size: A4 landscape; margin: 8mm; }
-      body { margin: 0; background: white; }
-      .max-w-7xl { max-width: 100% !important; }
-      .grid { display: block !important; }
-      .grid > * { margin-bottom: 16px; }
-      .lg\\:grid-cols-2 { display: block !important; }
-      .recharts-wrapper, .recharts-surface { width: 100% !important; max-width: 100% !important; }
-      svg { max-width: 100%; height: auto; }
-      .overflow-x-auto { overflow: visible !important; }
-      table { width: 100% !important; font-size: 10px; }
-      .rounded-2xl, .rounded-xl { break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; }
-      .shadow-md { box-shadow: none !important; border: 1px solid #e5e7eb; }
-    </style>
-    </head><body><div class="max-w-7xl mx-auto px-4 py-4 space-y-4">${content.innerHTML}</div></body></html>`);
-  win.document.close();
-  setTimeout(() => { win.print(); win.close(); }, 800);
+      body > *:not(#__pibox_print_root__) { display: none !important; }
+      #__pibox_print_root__ { display: block !important; background: white; }
+      #__pibox_print_root__ button { display: none !important; }
+      #__pibox_print_root__ label:has(input[type="file"]) { display: none !important; }
+      #__pibox_print_root__ .overflow-x-auto { overflow: visible !important; }
+      #__pibox_print_root__ table { width: 100% !important; font-size: 10px; }
+      #__pibox_print_root__ .max-w-7xl { max-width: 100% !important; }
+      #__pibox_print_root__ .grid { display: block !important; }
+      #__pibox_print_root__ .lg\\:grid-cols-2 { display: block !important; }
+      #__pibox_print_root__ .grid > * { margin-bottom: 16px; }
+      #__pibox_print_root__ .shadow-md { box-shadow: none !important; border: 1px solid #e5e7eb; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  const origTitle = document.title;
+  document.title = title;
+  window.print();
+  document.title = origTitle;
+
+  // Restore element to original position
+  if (nextSib) parent.insertBefore(el, nextSib);
+  else parent.appendChild(el);
+  document.body.removeChild(printRoot);
+  document.head.removeChild(style);
 }
 
 export default function InformeTada({ isAdmin }) {
