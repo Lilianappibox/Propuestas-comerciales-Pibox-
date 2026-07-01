@@ -141,6 +141,7 @@ export function procesarDatos(rows) {
   // Mapear por empresa y por ciudad
   const empMap = {};
   const globalWeekly = {};
+  const globalDaily  = {};
   const cityMap = {};
 
   for (const row of rows) {
@@ -182,6 +183,15 @@ export function procesarDatos(rows) {
           new Date(anioN, mesN, 0).getDate());
         const diaIni = dia - ((dia-1)%7) + 1;
         semanaLabel = `${String(diaIni).padStart(2,"0")}/${String(mesN).padStart(2,"0")}–${String(diaFin).padStart(2,"0")}/${String(mesN).padStart(2,"0")}`;
+        // daily global
+        const dateStr  = d.toISOString().slice(0, 10);
+        const diaLabel = `${String(dia).padStart(2,"0")}/${String(mesN).padStart(2,"0")}`;
+        if (!globalDaily[dateStr]) globalDaily[dateStr] = { date: dateStr, dia, label: diaLabel, gmv: 0, servicios: 0, completados: 0, cancelados: 0, expirados: 0 };
+        globalDaily[dateStr].gmv += gmv;
+        globalDaily[dateStr].servicios++;
+        if (esCompletado) globalDaily[dateStr].completados++;
+        if (esCancelado)  globalDaily[dateStr].cancelados++;
+        if (esExpirado)   globalDaily[dateStr].expirados++;
       }
     } catch {}
 
@@ -459,6 +469,8 @@ export function procesarDatos(rows) {
       .sort((a, b) => b.gmv - a.gmv).slice(0, 12);
   })();
 
+  const dailyArr = Object.values(globalDaily).sort((a, b) => a.date.localeCompare(b.date));
+
   const weeklyGlobal = Object.entries(globalWeekly)
     .map(([s,v])=>({
       semana: Number(s),
@@ -556,6 +568,7 @@ export function procesarDatos(rows) {
       n_empresas: empresas.length,
       topCiudades: topCiudadesGlobal,
       weekly: weeklyGlobal,
+      daily:  dailyArr,
       porTipoOp,
       porStatus,
       porVehiculo,

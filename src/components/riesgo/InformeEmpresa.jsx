@@ -1,10 +1,10 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell,
+  LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell, ReferenceLine,
 } from "recharts";
 import {
-  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtCOP, fmtFull,
+  loadMesData, loadMesDataAsync, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtCOP, fmtFull,
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT, labelMes,
 } from "./utils";
@@ -228,6 +228,31 @@ export default function InformeEmpresa() {
   const score    = useMemo(()=>empData?calcularScore(empData,prevData||null,umb):null, [empData,prevData,umb]);
 
   const semColor = score?.color==="rojo"?SEM_ROJO:score?.color==="amarillo"?SEM_AMARILLO:SEM_VERDE;
+
+  // ── Historial de GMV por mes para proyección ──────────────────────────────
+  const [historialEmpresa, setHistorialEmpresa] = useState([]);
+  useEffect(() => {
+    if (!empresasSel.length) { setHistorialEmpresa([]); return; }
+    let cancelled = false;
+    (async () => {
+      const allMeses = mesesDisponibles();
+      const result   = [];
+      for (const m of allMeses) {
+        const d = await loadMesDataAsync(m.key);
+        if (!d?.empresas) continue;
+        const sel = d.empresas.filter(e => empresasSel.includes(e.empresa));
+        if (!sel.length) continue;
+        result.push({
+          key:   m.key,
+          label: m.label,
+          gmv:   sel.reduce((s, e) => s + e.gmv,   0),
+          total: sel.reduce((s, e) => s + e.total, 0),
+        });
+      }
+      if (!cancelled) setHistorialEmpresa(result.sort((a, b) => a.key < b.key ? -1 : 1));
+    })();
+    return () => { cancelled = true; };
+  }, [empresasSel, mesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Generar insights automáticos
   const insights = useMemo(() => {
@@ -1121,6 +1146,185 @@ export default function InformeEmpresa() {
                 </div>
               </div>
             )}
+
+            {/* ── Proyección de Cierre ── */}
+            {(() => {
+              const nowDate  = new Date();
+              const nowKey   = `${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,"0")}`;
+              const esMesAct = mesKey === nowKey;
+              const [yy, mm] = mesKey.split("-").map(Number);
+              const totalDias = new Date(yy, mm, 0).getDate();
+
+              // Último día cubierto por los datos (desde labels semanales "01/06–07/06")
+              let ultimoDia = 0;
+              for (const w of (empData.weekly || [])) {
+                const m2 = String(w.label || "").match(/[–\-](\d{1,2})\/\d{2}/);
+                if (m2) ultimoDia = Math.max(ultimoDia, parseInt(m2[1]));
+                else if (w.semana) ultimoDia = Math.max(ultimoDia, Math.min(w.semana * 7, totalDias));
+              }
+              const diasConDatos = esMesAct ? (ultimoDia > 0 ? ultimoDia : nowDate.getDate()) : totalDias;
+              const pct          = diasConDatos / totalDias;
+              const gmvProy      = pct > 0 ? empData.gmv / pct : empData.gmv;
+              const svcProy      = pct > 0 ? Math.round(empData.total / pct) : empData.total;
+
+              // Meses anteriores al seleccionado
+              const histPrev = historialEmpresa.filter(h => h.key < mesKey);
+              const avgGmv   = histPrev.length ? histPrev.reduce((s,h)=>s+h.gmv,0) / histPrev.length : 0;
+              const maxGmv   = histPrev.length ? Math.max(...histPrev.map(h=>h.gmv)) : 0;
+              const minGmv   = histPrev.length ? Math.min(...histPrev.map(h=>h.gmv)) : 0;
+
+              // Rango basado en varianza histórica (o ±12% si no hay suficiente historial)
+              const halfRange = avgGmv > 0 && histPrev.length >= 2
+                ? Math.min((maxGmv - minGmv) / (2 * avgGmv), 0.35)
+                : 0.12;
+              const gmvOpt  = gmvProy * (1 + halfRange);
+              const gmvCons = gmvProy * (1 - halfRange);
+
+              // Acortar label de mes: "Junio 2026" → "Jun. 2026"
+              const short = (l = "") => l.replace(/^(\w{3})\w*\s(\d{4})$/, "$1. $2");
+
+              // Chart: hasta 5 meses previos + mes actual
+              const chartData = [
+                ...histPrev.slice(-5).map(h => ({ label: short(h.label), gmv: h.gmv, esActual: false })),
+                {
+                  label: short(dataMes?.label || "") + (esMesAct ? "*" : ""),
+                  gmv: esMesAct ? gmvProy : empData.gmv,
+                  esActual: true,
+                },
+              ];
+
+              const vsDelta = avgGmv > 0 ? (gmvProy - avgGmv) / avgGmv : null;
+
+              return (
+                <div className="px-6 py-5 border-t border-gray-100">
+                  {/* Header */}
+                  <div className="flex items-center gap-2 mb-4 flex-wrap">
+                    <span>🎯</span>
+                    <h4 className="font-bold text-gray-700 text-sm">
+                      Proyección de Cierre — {dataMes?.label}
+                    </h4>
+                    {esMesAct
+                      ? <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Mes en curso</span>
+                      : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Mes completado</span>
+                    }
+                  </div>
+
+                  {/* Barra de progreso (mes en curso) */}
+                  {esMesAct && (
+                    <div className="mb-5">
+                      <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                        <span>Avance del mes</span>
+                        <span className="font-semibold">{diasConDatos} de {totalDias} días · {(pct*100).toFixed(0)}% transcurrido</span>
+                      </div>
+                      <div className="bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                        <div className="h-2.5 rounded-full transition-all"
+                             style={{ width: `${Math.min(pct*100,100).toFixed(1)}%`, background: BRAND_GRADIENT }}/>
+                      </div>
+                      <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                        <span>1</span>
+                        <span>Hoy: día {diasConDatos}</span>
+                        <span>Día {totalDias}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cards KPI */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-3.5 text-center">
+                      <p className="text-xs text-gray-500 mb-1">{esMesAct ? "GMV acumulado" : "GMV real (cierre)"}</p>
+                      <p className="font-extrabold text-lg" style={{ color: PIBOX_PURPLE }}>{fmtM(empData.gmv)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{fmtFull(empData.gmv)}</p>
+                    </div>
+
+                    <div className="rounded-xl p-3.5 text-center shadow-md" style={{ background: BRAND_GRADIENT }}>
+                      <p className="text-xs text-purple-200 mb-1">Proyección al cierre</p>
+                      <p className="font-extrabold text-lg text-white">{fmtM(gmvProy)}</p>
+                      <p className="text-[10px] text-purple-300 mt-0.5">{fmtFull(gmvProy)}</p>
+                    </div>
+
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-3.5 text-center">
+                      <p className="text-xs text-gray-500 mb-1">↑ Optimista</p>
+                      <p className="font-bold text-lg text-green-700">{fmtM(gmvOpt)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {histPrev.length >= 2 ? "Ritmo mejor mes" : `+${(halfRange*100).toFixed(0)}% sobre base`}
+                      </p>
+                    </div>
+
+                    <div className="bg-orange-50 border border-orange-200 rounded-xl p-3.5 text-center">
+                      <p className="text-xs text-gray-500 mb-1">↓ Conservador</p>
+                      <p className="font-bold text-lg text-orange-600">{fmtM(gmvCons)}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {histPrev.length >= 2 ? "Ritmo peor mes" : `-${(halfRange*100).toFixed(0)}% sobre base`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Gráfica histórica + proyección */}
+                  {chartData.length > 0 && (
+                    <>
+                      <p className="text-xs font-semibold text-gray-500 mb-2">
+                        📈 GMV mensual — historial vs. {esMesAct ? "proyección *" : "cierre real"}
+                      </p>
+                      <ResponsiveContainer width="100%" height={170}>
+                        <BarChart data={chartData} margin={{ left: 5, right: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                          <XAxis dataKey="label" tick={{ fontSize: 9 }}/>
+                          <YAxis tick={{ fontSize: 9 }} tickFormatter={fmtM}/>
+                          <Tooltip formatter={(v) => [fmtCOP(v), "GMV"]}/>
+                          {avgGmv > 0 && (
+                            <ReferenceLine y={avgGmv} stroke="#9CA3AF" strokeDasharray="4 2"
+                              label={{ value: `Prom. ${fmtM(avgGmv)}`, position: "insideTopRight", fontSize: 8, fill: "#9CA3AF" }}/>
+                          )}
+                          {esMesAct && gmvOpt > 0 && (
+                            <ReferenceLine y={gmvOpt} stroke={SEM_VERDE} strokeDasharray="3 3"
+                              label={{ value: `Opt. ${fmtM(gmvOpt)}`, position: "insideTopRight", fontSize: 8, fill: SEM_VERDE }}/>
+                          )}
+                          {esMesAct && gmvCons > 0 && (
+                            <ReferenceLine y={gmvCons} stroke={SEM_AMARILLO} strokeDasharray="3 3"
+                              label={{ value: `Cons. ${fmtM(gmvCons)}`, position: "insideTopRight", fontSize: 8, fill: SEM_AMARILLO }}/>
+                          )}
+                          <Bar dataKey="gmv" radius={[4,4,0,0]}>
+                            {chartData.map((d, i) => (
+                              <Cell key={i}
+                                fill={d.esActual ? PIBOX_PURPLE : "#DDD6FE"}
+                                fillOpacity={d.esActual && esMesAct ? 0.85 : 1}/>
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+
+                      {/* Stats fila */}
+                      <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-xs text-gray-500">
+                        {avgGmv > 0 && (
+                          <span>
+                            Prom. histórico ({histPrev.length} mes{histPrev.length!==1?"es":""}): <b className="text-gray-700">{fmtM(avgGmv)}</b>
+                            {vsDelta !== null && (
+                              <span className="ml-1 font-bold" style={{ color: vsDelta>=0 ? SEM_VERDE : SEM_ROJO }}>
+                                {vsDelta>=0?" ▲":" ▼"}{Math.abs(vsDelta*100).toFixed(1)}%
+                              </span>
+                            )}
+                          </span>
+                        )}
+                        {esMesAct && <>
+                          <span>Servicios proyectados: <b className="text-gray-700">{svcProy.toLocaleString()}</b></span>
+                          <span>GMV/día promedio: <b className="text-gray-700">{fmtM(empData.gmv / diasConDatos)}</b></span>
+                          {empData.total > 0 && <span>GMV/servicio: <b className="text-gray-700">{fmtM(empData.gmv / empData.total)}</b></span>}
+                        </>}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Nota metodológica */}
+                  <p className="text-[10px] text-gray-400 mt-3 border-t border-gray-100 pt-2">
+                    📐 Metodología:{" "}
+                    {esMesAct
+                      ? `Proyección lineal: ${diasConDatos} de ${totalDias} días (${(pct*100).toFixed(0)}%) con datos. ${histPrev.length>0 ? `Rango ±${(halfRange*100).toFixed(0)}% basado en varianza de ${histPrev.length} mes${histPrev.length>1?"es":""}  anterior${histPrev.length>1?"es":""}.` : "Sin historial previo — rango fijo ±12%."}`
+                      : `Mes completado. ${histPrev.length>0 ? `Promedio de ${histPrev.length} mes${histPrev.length>1?"es":""} anteriores: ${fmtM(avgGmv)}.` : "Sin meses anteriores de referencia."}`
+                    }
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* Footer */}
             <div className="px-6 py-3 border-t border-gray-100 bg-gray-50">

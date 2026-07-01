@@ -165,9 +165,11 @@ function processExcel(wb) {
     if (semana) s["SEMANA"] = semana;
     if (dia) s["DIA"] = dia;
     if (mes) s["MES"] = mes;
+    const telefono = r["TELEFONO"] || r["TELÉFONO"] || r["Telefono"] || r["CELULAR"] || "";
     if (piloto) s["ID PILOTO"] = piloto;
     if (pilotoNombre) s["NOMBRE PILOTO"] = pilotoNombre;
     if (inicio) s["INICIO_TURNO"] = inicio;
+    if (telefono) s["TELEFONO"] = telefono;
     return s;
   }) : null;
   return { data: processRows(enrichedRows), rows: slimRows };
@@ -462,22 +464,25 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
   const [mesSel, setMesSel] = useState(insightsMeses[0] || "");
 
-  // Cargar rows de mes actual y anterior para análisis de pilotos nuevos
+  // Cargar rows de mes actual, anterior y hace 2 meses
   const [insRows, setInsRows] = useState(null);
   const [insPrevRows, setInsPrevRows] = useState(null);
-  const insPrevKey = useMemo(() => {
-    if (!mesSel) return null;
-    // Calcular mes calendario anterior (Junio 2026 → Mayo 2026)
+  const [ins2PrevRows, setIns2PrevRows] = useState(null);
+
+  const calcPrevKey = (base, offset) => {
     const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-    const parts = mesSel.split(" ");
+    const parts = (base || "").split(" ");
     if (parts.length !== 2) return null;
     const mi = ML.indexOf(parts[0]);
     const yr = parseInt(parts[1]);
     if (mi <= 0 || isNaN(yr)) return null;
-    const prevMi = mi === 1 ? 12 : mi - 1;
-    const prevYr = mi === 1 ? yr - 1 : yr;
-    return `${ML[prevMi]} ${prevYr}`;
-  }, [mesSel]);
+    let m = mi - offset, y = yr;
+    while (m <= 0) { m += 12; y--; }
+    return `${ML[m]} ${y}`;
+  };
+  const insPrevKey  = useMemo(() => calcPrevKey(mesSel, 1), [mesSel]);
+  const ins2PrevKey = useMemo(() => calcPrevKey(mesSel, 2), [mesSel]);
+
   useEffect(() => {
     setInsRows(null);
     if (!mesSel) return;
@@ -500,6 +505,17 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
       setInsPrevRows(imp?.rows || fb?.rows || null);
     }
   }, [insPrevKey, trafIndex, importedData]);
+  useEffect(() => {
+    setIns2PrevRows(null);
+    if (!ins2PrevKey) return;
+    if (isAdmin) {
+      idbLoadRows(SK_TRAF_MES(ins2PrevKey)).then(r => setIns2PrevRows(r || null));
+    } else {
+      const imp = importedData?.meses?.[`traf_${ins2PrevKey}`];
+      const fb = tadaInicial.meses?.[`traf_${ins2PrevKey}`];
+      setIns2PrevRows(imp?.rows || fb?.rows || null);
+    }
+  }, [ins2PrevKey, trafIndex, importedData]);
 
   const saveUmb = (u) => { setUmb(u); localStorage.setItem(SK_TADA_UMB, JSON.stringify(u)); };
   const UmbField = ({ label, k, suffix = "%" }) => (
@@ -803,12 +819,14 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
       const coloc = String(r["COLOCACION"] || r["COLOCACIÓN"] || "").trim().toUpperCase();
       const esSI = coloc === "SI";
       const esCancela = String(r["ESTADO"] || "").toUpperCase().includes("CANCEL");
-      if (!perdidosAcum[id]) perdidosAcum[id] = { id, nombre, ciudad, turnos: 0, si: 0, cancela: 0 };
+      const telefono = String(r["TELEFONO"] || r["TELÉFONO"] || r["CELULAR"] || "").trim();
+      if (!perdidosAcum[id]) perdidosAcum[id] = { id, nombre, ciudad, telefono, turnos: 0, si: 0, cancela: 0 };
       perdidosAcum[id].turnos++;
       if (esSI) perdidosAcum[id].si++;
       if (esCancela) perdidosAcum[id].cancela++;
       if (nombre && nombre.length > (perdidosAcum[id].nombre || "").length) perdidosAcum[id].nombre = nombre;
       if (ciudad) perdidosAcum[id].ciudad = ciudad;
+      if (telefono && !perdidosAcum[id].telefono) perdidosAcum[id].telefono = telefono;
       if (ciudad && esSI) cityPrevSI[ciudad] = (cityPrevSI[ciudad] || 0) + 1;
     }
     const allPerdidos = Object.values(perdidosAcum)
@@ -832,6 +850,38 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
       topPerdidosGMV, allPerdidos, tieneGMVEst,
     };
   }, [insRows, insPrevRows, factP]);
+
+  // ── Pilotos ausentes 2 meses consecutivos ──
+  const analisisAusentes2Meses = useMemo(() => {
+    if (!ins2PrevRows?.length) return null;
+    // IDs activos en mes actual y mes anterior
+    const idsActuales  = new Set((insRows    || []).map(r => String(r["ID PILOTO"] || "").trim()).filter(Boolean));
+    const idsPrevios   = new Set((insPrevRows|| []).map(r => String(r["ID PILOTO"] || "").trim()).filter(Boolean));
+    // Acumular datos desde hace 2 meses
+    const acum = {};
+    for (const r of ins2PrevRows) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      if (!id) continue;
+      const nombre   = String(r["NOMBRE DE PILOTO"] || r["NOMBRE PILOTO"] || "").trim();
+      const ciudad   = String(r["CIUDAD"] || "").trim();
+      const telefono = String(r["TELEFONO"] || r["TELÉFONO"] || r["CELULAR"] || "").trim();
+      const coloc    = String(r["COLOCACION"] || r["COLOCACIÓN"] || "").trim().toUpperCase();
+      const esSI     = coloc === "SI";
+      const esCancela= String(r["ESTADO"] || "").toUpperCase().includes("CANCEL");
+      if (!acum[id]) acum[id] = { id, nombre, ciudad, telefono, turnos: 0, si: 0, cancela: 0 };
+      acum[id].turnos++;
+      if (esSI)     acum[id].si++;
+      if (esCancela)acum[id].cancela++;
+      if (nombre  && nombre.length  > (acum[id].nombre  || "").length) acum[id].nombre  = nombre;
+      if (ciudad)   acum[id].ciudad  = ciudad;
+      if (telefono && !acum[id].telefono) acum[id].telefono = telefono;
+    }
+    // Filtrar: que NO estén ni en el mes anterior ni en el actual
+    const ausentes = Object.values(acum)
+      .filter(p => !idsActuales.has(p.id) && !idsPrevios.has(p.id))
+      .sort((a, b) => b.si - a.si || b.turnos - a.turnos);
+    return { ausentes, top5: ausentes.slice(0, 5), base: ins2PrevKey };
+  }, [ins2PrevRows, insRows, insPrevRows, ins2PrevKey]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -910,57 +960,6 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
           ) : <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">Sin highlights para {mesSel}</p>}
         </div>
       </div>
-
-      {/* Detalle por ciudad */}
-      {detalleCiudades.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <h3 className="text-sm font-bold text-gray-700 mb-3">📍 Detalle por Ciudad — {mesSel}</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead><tr className="bg-purple-600 text-white">
-                {["Ciudad","Turnos","Colocación %","Puntualidad %","Estado"].map(h => <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {detalleCiudades.map((c, i) => (
-                  <tr key={c.ciudad} className={`border-t ${i%2===0?"bg-white":"bg-purple-50/30"}`}>
-                    <td className="px-3 py-2 font-semibold">{c.ciudad}</td>
-                    <td className="px-3 py-2">{c.turnos}</td>
-                    <td className="px-3 py-2 font-bold" style={{color:SEM[c.color]}}>{c.coloc.toFixed(1)}%</td>
-                    <td className="px-3 py-2">{c.punt.toFixed(1)}%</td>
-                    <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-white text-xs font-bold" style={{background:SEM[c.color]}}>{c.color === "rojo" ? "Crítico" : c.color === "verde" ? "Excelente" : "Moderado"}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Detalle por punto */}
-      {detallePuntos.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <h3 className="text-sm font-bold text-gray-700 mb-3">🏪 Detalle por Punto — {mesSel}</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead><tr className="bg-purple-600 text-white">
-                {["Punto","Ciudad","Turnos","Colocación %","Estado"].map(h => <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {detallePuntos.slice(0, 30).map((p, i) => (
-                  <tr key={p.punto} className={`border-t ${i%2===0?"bg-white":"bg-purple-50/30"}`}>
-                    <td className="px-3 py-2 font-semibold max-w-[200px] truncate">{p.punto}</td>
-                    <td className="px-3 py-2 text-gray-500">{p.ciudad}</td>
-                    <td className="px-3 py-2">{p.turnos}</td>
-                    <td className="px-3 py-2 font-bold" style={{color:SEM[p.color]}}>{p.coloc.toFixed(1)}%</td>
-                    <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-white text-xs font-bold" style={{background:SEM[p.color]}}>{p.color === "rojo" ? "Crítico" : p.color === "verde" ? "Excelente" : "Moderado"}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {detallePuntos.length > 30 && <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 30 de {detallePuntos.length} puntos</p>}
-          </div>
-        </div>
-      )}
 
       {/* Recomendaciones */}
       {alerts.length > 0 && (
@@ -1208,13 +1207,14 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
                 <button onClick={() => {
                   try {
                     const fmtMoney = (v) => Math.round(v).toLocaleString("es-CO");
-                    const csvRows = [["#","Piloto","ID","Ciudad","Turnos (mes ant.)","Colocados (SI)","Cancelaciones","GMV Estimado"].join(",")];
+                    const csvRows = [["#","Piloto","ID","Teléfono","Ciudad","Turnos (mes ant.)","Colocados (SI)","Cancelaciones","GMV Estimado"].join(",")];
                     analisisNuevos.allPerdidos.forEach((p, i) => {
                       const nombre = String(p.nombre || "").replace(/"/g, '""');
                       csvRows.push([
                         i + 1,
                         `"${nombre}"`,
                         `"${p.id || ""}"`,
+                        `"${p.telefono || ""}"`,
                         `"${p.ciudad || ""}"`,
                         p.turnos || 0,
                         p.si || 0,
@@ -1258,9 +1258,632 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
           )}
         </div>
       )}
+      {/* Pilotos ausentes 2 meses consecutivos */}
+      {analisisAusentes2Meses && analisisAusentes2Meses.ausentes.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-700">⏰ Pilotos sin turno 2 meses consecutivos</h3>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                Sin actividad en {analisisAusentes2Meses.base} ni en {insPrevKey} · tampoco en {mesSel}
+              </p>
+            </div>
+            <button onClick={() => {
+              try {
+                const csvRows = [["#","Piloto","ID","Teléfono","Ciudad","Turnos (base mes)","Colocados (SI)","Cancelaciones"].join(",")];
+                analisisAusentes2Meses.ausentes.forEach((p, i) => {
+                  const nombre = String(p.nombre || "").replace(/"/g, '""');
+                  csvRows.push([
+                    i + 1,
+                    `"${nombre}"`,
+                    `"${p.id || ""}"`,
+                    `"${p.telefono || ""}"`,
+                    `"${p.ciudad || ""}"`,
+                    p.turnos || 0,
+                    p.si || 0,
+                    p.cancela || 0,
+                  ].join(","));
+                });
+                const blob = new Blob(["﻿" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `Pilotos_Ausentes_2meses_${mesSel.replace(/ /g, "_")}.csv`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              } catch (e) { alert("Error: " + e.message); }
+            }} className="px-2 py-1 rounded-lg text-[10px] font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 transition whitespace-nowrap">
+              📥 Descargar todos ({analisisAusentes2Meses.ausentes.length})
+            </button>
+          </div>
+          <div className="space-y-2">
+            {analisisAusentes2Meses.top5.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-3 bg-orange-50/40 rounded-lg px-3 py-2">
+                <span className="text-lg font-bold text-orange-300 w-6">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate">{p.nombre || p.id}</p>
+                  <p className="text-[10px] text-gray-400">{p.ciudad} · {p.turnos} turnos · {p.si} colocados</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-orange-700">{p.si} SI</p>
+                  {p.cancela > 0 && (
+                    <p className="text-[10px] text-red-500">{p.cancela} cancel.</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {isAdmin && insRows && !ins2PrevRows && ins2PrevKey && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-center text-orange-600 text-sm">
+          Para ver pilotos ausentes 2 meses, sube también el reporte de <b>{ins2PrevKey}</b> en la pestaña Tráfico Pilotos.
+        </div>
+      )}
       {isAdmin && insRows && !insPrevRows && insPrevKey && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center text-purple-600 text-sm">
           Para ver el análisis de pilotos nuevos, sube también el reporte de <b>{insPrevKey}</b> en la pestaña Tráfico Pilotos.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  TAB: POR CIUDAD                                                          */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
+  const cityRef = useRef(null);
+  const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  const trafMeses = Object.keys(trafIndex).sort().reverse();
+  const [mesSel, setMesSel] = useState(trafMeses[0] || "");
+  const [ciudadSel, setCiudadSel] = useState("");
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaFin, setFechaFin] = useState("");
+  const [puntoSel, setPuntoSel] = useState("");
+  const [rows, setRows] = useState(null);
+
+  // mes anterior para "Comparando vs"
+  const prevMesKey = useMemo(() => {
+    if (!mesSel) return null;
+    const parts = mesSel.split(" ");
+    if (parts.length !== 2) return null;
+    const mi = ML.indexOf(parts[0]), yr = parseInt(parts[1]);
+    if (mi <= 0 || isNaN(yr)) return null;
+    return `${ML[mi === 1 ? 12 : mi - 1]} ${mi === 1 ? yr - 1 : yr}`;
+  }, [mesSel]);
+
+  useEffect(() => {
+    setRows(null);
+    if (!mesSel) return;
+    if (isAdmin) {
+      idbLoadRows(SK_TRAF_MES(mesSel)).then(r => setRows(r || null));
+    } else {
+      const imp = importedData?.meses?.[`traf_${mesSel}`];
+      const fb = tadaInicial.meses?.[`traf_${mesSel}`];
+      setRows(imp?.rows || fb?.rows || null);
+    }
+  }, [mesSel, isAdmin, importedData]);
+
+  // Ciudades disponibles (desde datos agregados)
+  const trafData = useMemo(() => {
+    const d = importedData?.meses?.[`traf_${mesSel}`] || loadTrafMes(mesSel);
+    return d?.data || null;
+  }, [mesSel, loadTrafMes, importedData]);
+
+  const ciudades = useMemo(() => {
+    if (!trafData?.ciudadMap) return [];
+    return Object.keys(trafData.ciudadMap).sort();
+  }, [trafData]);
+
+  useEffect(() => {
+    if (ciudades.length > 0 && (!ciudadSel || !ciudades.includes(ciudadSel))) {
+      setCiudadSel(ciudades[0]);
+    }
+  }, [ciudades]);
+
+  // Rows filtrados por ciudad — comparación case-insensitive + trim + normalización
+  const rowsByCiudad = useMemo(() => {
+    if (!rows?.length || !ciudadSel) return [];
+    const normalize = (s) => String(s || "").trim().toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const cNorm = normalize(ciudadSel);
+    return rows.filter(r => normalize(r["CIUDAD"]) === cNorm);
+  }, [rows, ciudadSel]);
+
+  // Indica si los rows ya están cargados Y tienen datos de ciudad
+  const rowsLoaded = rows !== null && rowsByCiudad.length > 0;
+
+  // Puntos disponibles en la ciudad seleccionada
+  const puntosDisponibles = useMemo(() => {
+    const set = new Set();
+    for (const r of rowsByCiudad) {
+      const p = String(r["PUNTO"] || "").trim();
+      if (p) set.add(p);
+    }
+    return [...set].sort();
+  }, [rowsByCiudad]);
+
+  // Rows con todos los filtros aplicados
+  const filteredRows = useMemo(() => {
+    return rowsByCiudad.filter(r => {
+      if (fechaInicio && r._fecha && r._fecha < fechaInicio) return false;
+      if (fechaFin && r._fecha && r._fecha > fechaFin) return false;
+      if (puntoSel && String(r["PUNTO"] || "").trim() !== puntoSel) return false;
+      return true;
+    });
+  }, [rowsByCiudad, fechaInicio, fechaFin, puntoSel]);
+
+  const filtroActivo = !!(fechaInicio || fechaFin || puntoSel);
+  // Sin resultados con filtro activo (para mostrar mensaje en lugar de datos en cero)
+  const sinResultadosFiltro = filtroActivo && rowsLoaded && filteredRows.length === 0;
+
+  // KPIs: cuando rows están cargados, computa desde filteredRows; si no hay coincidencias
+  // de ciudad en IDB, cae al dato agregado de trafData (no filtrable por fecha)
+  const cityAgg = useMemo(() => {
+    if (rowsLoaded) {
+      let turnos = 0, si = 0, no = 0, punt = 0, puntTurnos = 0;
+      for (const r of filteredRows) {
+        const estado = String(r["ESTADO"] || "").trim().toLowerCase();
+        if (estado.includes("cliente cancela")) continue;
+        const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
+        const puntVal = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
+        const excluido = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estado === e);
+        turnos++;
+        if (coloc === "SI") si++;
+        if (coloc === "NO") no++;
+        if (!excluido) { puntTurnos++; if (puntVal === "SI CUMPLE") punt++; }
+      }
+      return { turnos, si, no, punt, puntTurnos, _fromRows: true };
+    }
+    // Sin rows con datos de ciudad: usa dato agregado (no filtrable por fecha)
+    if (!ciudadSel || !trafData?.ciudadMap) return null;
+    return trafData.ciudadMap[ciudadSel] || null;
+  }, [rowsLoaded, filteredRows, ciudadSel, trafData]);
+
+  // Puntos table: cuando rows cargados, computa desde rowsByCiudad + filtro fecha
+  // (no filtra por puntoSel para que siempre se vean todos los puntos)
+  const cityPuntos = useMemo(() => {
+    if (rowsLoaded) {
+      const source = rowsByCiudad.filter(r => {
+        if (fechaInicio && r._fecha && r._fecha < fechaInicio) return false;
+        if (fechaFin && r._fecha && r._fecha > fechaFin) return false;
+        return true;
+      });
+      const map = {};
+      for (const r of source) {
+        const estado = String(r["ESTADO"] || "").trim().toLowerCase();
+        if (estado.includes("cliente cancela")) continue;
+        const nombre = String(r["PUNTO"] || "").trim();
+        if (!nombre) continue;
+        const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
+        const puntVal = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
+        const excluido = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estado === e);
+        if (!map[nombre]) map[nombre] = { nombre, turnos: 0, si: 0, no: 0, punt: 0, puntTurnos: 0 };
+        map[nombre].turnos++;
+        if (coloc === "SI") map[nombre].si++;
+        if (coloc === "NO") map[nombre].no++;
+        if (!excluido) { map[nombre].puntTurnos++; if (puntVal === "SI CUMPLE") map[nombre].punt++; }
+      }
+      return Object.values(map)
+        .map(p => ({ ...p, pctColoc: p.turnos > 0 ? (p.si / p.turnos * 100) : 0, pctPunt: p.puntTurnos > 0 ? (p.punt / p.puntTurnos * 100) : null }))
+        .sort((a, b) => b.turnos - a.turnos);
+    }
+    // Sin rows: usa puntoMap agregado
+    if (!ciudadSel || !trafData?.puntoMap) return [];
+    return Object.entries(trafData.puntoMap)
+      .filter(([, v]) => v.ciudad === ciudadSel)
+      .map(([nombre, v]) => ({ nombre, turnos: v.turnos, si: v.si, no: v.no, pctColoc: v.turnos > 0 ? (v.si / v.turnos * 100) : 0, pctPunt: (v.puntTurnos || 0) > 0 ? (v.punt / v.puntTurnos * 100) : null }))
+      .sort((a, b) => b.turnos - a.turnos);
+  }, [rowsLoaded, rowsByCiudad, fechaInicio, fechaFin, ciudadSel, trafData]);
+
+  // Pilotos
+  const cityPilotos = useMemo(() => {
+    if (!filteredRows.length) return [];
+    const map = {};
+    for (const r of filteredRows) {
+      const id = String(r["ID PILOTO"] || "").trim();
+      const nombre = String(r["NOMBRE PILOTO"] || "").trim();
+      const estado = String(r["ESTADO"] || "").trim();
+      const estadoLower = estado.toLowerCase();
+      const esClienteCancela = estadoLower.includes("cliente cancela");
+      const esExcluidoPunt = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estadoLower === e);
+      const esCancela = estadoLower === "piloto cancela" || estadoLower === "adicional cancelado";
+      const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
+      const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
+      const key = id || nombre;
+      if (!key) continue;
+      if (!map[key]) map[key] = { id, nombre, turnos: 0, si: 0, no: 0, puntSI: 0, puntNO: 0, puntTotal: 0, cancela: 0 };
+      if (nombre && nombre.length > (map[key].nombre || "").length) map[key].nombre = nombre;
+      map[key].turnos++;
+      if (esClienteCancela) continue;
+      if (coloc === "SI") map[key].si++;
+      if (coloc === "NO") map[key].no++;
+      if (!esExcluidoPunt) {
+        if (punt === "SI CUMPLE") { map[key].puntSI++; map[key].puntTotal++; }
+        if (punt === "NO CUMPLE") { map[key].puntNO++; map[key].puntTotal++; }
+      }
+      if (esCancela) map[key].cancela++;
+    }
+    return Object.values(map)
+      .map(p => ({ ...p, pctColoc: (p.si + p.no) > 0 ? (p.si / (p.si + p.no) * 100) : null, pctPunt: p.puntTotal > 0 ? (p.puntSI / p.puntTotal * 100) : null }))
+      .sort((a, b) => b.turnos - a.turnos);
+  }, [filteredRows]);
+
+  // Tendencia semanal
+  const cityPorSemana = useMemo(() => {
+    if (!filteredRows.length) return [];
+    const map = {};
+    for (const r of filteredRows) {
+      const semana = String(r["SEMANA"] || "").trim();
+      if (!semana) continue;
+      const estado = String(r["ESTADO"] || "").trim().toLowerCase();
+      if (estado.includes("cliente cancela")) continue;
+      const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
+      const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
+      const excluido = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estado === e);
+      if (!map[semana]) map[semana] = { semana, turnos: 0, si: 0, puntSI: 0, puntTotal: 0 };
+      map[semana].turnos++;
+      if (coloc === "SI") map[semana].si++;
+      if (!excluido && punt === "SI CUMPLE") { map[semana].puntSI++; map[semana].puntTotal++; }
+      if (!excluido && punt === "NO CUMPLE") map[semana].puntTotal++;
+    }
+    return Object.values(map)
+      .map(s => ({ ...s, pctColoc: s.turnos > 0 ? (s.si / s.turnos * 100) : 0, pctPunt: s.puntTotal > 0 ? (s.puntSI / s.puntTotal * 100) : 0 }))
+      .sort((a, b) => Number(a.semana) - Number(b.semana) || String(a.semana).localeCompare(String(b.semana)));
+  }, [filteredRows]);
+
+  // Turnos por hora
+  const cityPorHora = useMemo(() => {
+    if (!filteredRows.length) return [];
+    const map = {};
+    for (const r of filteredRows) {
+      const estado = String(r["ESTADO"] || "").trim().toLowerCase();
+      if (estado.includes("cliente cancela")) continue;
+      const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
+      const inicioVal = r["INICIO_TURNO"] || "";
+      const inicioRaw = Number(inicioVal);
+      let horaLabel = null;
+      if (inicioRaw > 0 && inicioRaw <= 1) horaLabel = `${String(Math.floor(inicioRaw * 24)).padStart(2,"0")}:00`;
+      else { const hm = String(inicioVal).match(/^(\d{1,2}):/); if (hm) horaLabel = `${hm[1].padStart(2,"0")}:00`; }
+      if (!horaLabel) continue;
+      if (!map[horaLabel]) map[horaLabel] = { hora: horaLabel, turnos: 0, si: 0 };
+      map[horaLabel].turnos++;
+      if (coloc === "SI") map[horaLabel].si++;
+    }
+    return Object.values(map).sort((a, b) => a.hora.localeCompare(b.hora));
+  }, [filteredRows]);
+
+  // Heatmap día × hora
+  const cityPorHoraDia = useMemo(() => {
+    if (!filteredRows.length) return [];
+    const map = {};
+    for (const r of filteredRows) {
+      const estado = String(r["ESTADO"] || "").trim().toLowerCase();
+      if (estado.includes("cliente cancela")) continue;
+      const dia = String(r["DIA"] || "").trim();
+      if (!dia) continue;
+      const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
+      const inicioVal = r["INICIO_TURNO"] || "";
+      const inicioRaw = Number(inicioVal);
+      let horaLabel = null;
+      if (inicioRaw > 0 && inicioRaw <= 1) horaLabel = `${String(Math.floor(inicioRaw * 24)).padStart(2,"0")}:00`;
+      else { const hm = String(inicioVal).match(/^(\d{1,2}):/); if (hm) horaLabel = `${hm[1].padStart(2,"0")}:00`; }
+      if (!horaLabel) continue;
+      const key = `${dia}|${horaLabel}`;
+      if (!map[key]) map[key] = { dia, hora: horaLabel, turnos: 0, si: 0 };
+      map[key].turnos++;
+      if (coloc === "SI") map[key].si++;
+    }
+    return Object.values(map);
+  }, [filteredRows]);
+
+  if (trafMeses.length === 0) return (
+    <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="bg-purple-50 border border-purple-100 rounded-xl p-8 text-center text-purple-700">
+        <p className="text-2xl mb-2">📍</p>
+        <p className="text-sm font-medium">Sube datos de tráfico para ver el análisis por ciudad.</p>
+      </div>
+    </div>
+  );
+
+  const pctColoc = cityAgg && cityAgg.turnos > 0 ? (cityAgg.si / cityAgg.turnos * 100) : null;
+  const pctPunt = cityAgg && (cityAgg.puntTurnos || 0) > 0 ? (cityAgg.punt / cityAgg.puntTurnos * 100) : null;
+  const SEM_C = { rojo: "#DC2626", amarillo: "#D97706", verde: "#16A34A" };
+  const semColor = (v) => v >= 90 ? "verde" : v >= 70 ? "amarillo" : "rojo";
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      {/* ── Barra de filtros ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Descargar PDF */}
+          {cityAgg && (
+            <button onClick={() => printSection(cityRef, `Ciudad ${ciudadSel} — ${mesSel}`)}
+              className="px-3 py-2 rounded-lg text-xs font-semibold text-white shadow hover:shadow-md transition"
+              style={{ background: BRAND_GRADIENT }}>
+              📄 Descargar PDF
+            </button>
+          )}
+          {/* Mes */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
+            <select value={mesSel} onChange={e => { setMesSel(e.target.value); setFechaInicio(""); setFechaFin(""); setPuntoSel(""); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+              {trafMeses.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          {/* Ciudad */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">📍 Ciudad</label>
+            <select value={ciudadSel} onChange={e => { setCiudadSel(e.target.value); setFechaInicio(""); setFechaFin(""); setPuntoSel(""); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          {/* Filtros de fecha y punto (sólo cuando hay rows cargados) */}
+          {rowsLoaded && (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">📆 Desde</label>
+                <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">📆 Hasta</label>
+                <input type="date" value={fechaFin} onChange={e => setFechaFin(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">📍 Punto</label>
+                <select value={puntoSel} onChange={e => setPuntoSel(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 max-w-[200px]">
+                  <option value="">Todos</option>
+                  {puntosDisponibles.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+                  {filtroActivo && (
+                <button onClick={() => { setFechaInicio(""); setFechaFin(""); setPuntoSel(""); }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
+                  Limpiar filtros
+                </button>
+              )}
+            </>
+          )}
+          {/* Comparando vs / Filtro activo pill */}
+          {prevMesKey && !filtroActivo && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>
+              📊 Comparando vs <b className="ml-1">{prevMesKey}</b>
+            </div>
+          )}
+          {filtroActivo && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold flex-wrap"
+              style={{ background: "linear-gradient(135deg,#D97706 0%,#F59E0B 100%)" }}>
+              🔍 Filtro activo:
+              {(fechaInicio || fechaFin) && <span>{fechaInicio || "..."} → {fechaFin || "..."}</span>}
+              {puntoSel && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">📍 {puntoSel}</span>}
+              {cityAgg && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">{cityAgg.turnos} turnos</span>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {sinResultadosFiltro ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
+          <p className="text-3xl mb-2">🔍</p>
+          <p className="text-sm font-semibold text-amber-800 mb-1">Sin turnos en el rango seleccionado</p>
+          <p className="text-xs text-amber-600 mb-4">
+            {ciudadSel} · {mesSel}
+            {fechaInicio && ` · Desde ${fechaInicio}`}
+            {fechaFin && ` · Hasta ${fechaFin}`}
+            {puntoSel && ` · Punto: ${puntoSel}`}
+            {` · ${rowsByCiudad.length} turnos en el mes completo`}
+          </p>
+          <button onClick={() => { setFechaInicio(""); setFechaFin(""); setPuntoSel(""); }}
+            className="px-4 py-2 rounded-lg text-xs font-semibold text-white shadow transition"
+            style={{ background: BRAND_GRADIENT }}>
+            Limpiar filtros y ver el mes completo
+          </button>
+        </div>
+      ) : cityAgg && ciudadSel ? (
+        <div ref={cityRef} className="space-y-6">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <KpiCard icon="📋" label="Turnos totales" value={cityAgg.turnos.toLocaleString()} borderColor={PIBOX_PURPLE} />
+            <KpiCard icon="✅" label="Colocación"
+              value={pctColoc !== null ? `${pctColoc.toFixed(1)}%` : "—"}
+              borderColor={pctColoc !== null ? colocColor(pctColoc) : PIBOX_PURPLE}
+              sub={`${cityAgg.si} SI · ${cityAgg.no} NO`} />
+            <KpiCard icon="⏱️" label="Puntualidad"
+              value={pctPunt !== null ? `${pctPunt.toFixed(1)}%` : "—"}
+              borderColor={pctPunt !== null ? colocColor(pctPunt) : PIBOX_PURPLE}
+              sub={`${cityAgg.punt ?? "—"} cumplen`} />
+            <KpiCard icon="👤" label="Pilotos" value={cityPilotos.length || "—"}
+              borderColor={PIBOX_PINK} sub={`${cityPuntos.length} puntos`} />
+          </div>
+
+          {/* Tendencia semanal */}
+          {cityPorSemana.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="text-sm font-bold text-gray-700 mb-4">📈 Tendencia Semanal — {ciudadSel}</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <ComposedChart data={cityPorSemana} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                  <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={v => `${v}%`} />
+                  <Tooltip content={<TT />} />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="turnos" name="Turnos" fill={PIBOX_PURPLE} radius={[3,3,0,0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="pctColoc" name="Colocación %" stroke={SEM_VERDE} strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="pctPunt" name="Puntualidad %" stroke={SEM_AMARILLO} strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 2" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Turnos por Hora + Heatmap Día×Hora */}
+          {cityPorHora.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-4">⏰ Turnos por Hora de Inicio</h3>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={cityPorHora}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                    <XAxis dataKey="hora" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} />
+                    <Tooltip formatter={(v, n) => [v, n === "turnos" ? "Turnos" : "Colocados"]} />
+                    <Legend />
+                    <Bar dataKey="turnos" name="Turnos" fill={PIBOX_PURPLE} radius={[4,4,0,0]} />
+                    <Bar dataKey="si" name="Colocados" fill={SEM_VERDE} radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              {cityPorHoraDia.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                  <h3 className="text-sm font-bold text-gray-700 mb-4">📊 Turnos por Día y Hora</h3>
+                  <div className="overflow-x-auto">
+                    {(() => {
+                      const diasOrden = ["Lunes","Martes","Miercoles","Miércoles","Jueves","Viernes","Sabado","Sábado","Domingo"];
+                      const dias = [...new Set(cityPorHoraDia.map(d => d.dia))].sort((a, b) => {
+                        const ia = diasOrden.findIndex(d => d.toLowerCase() === a.toLowerCase());
+                        const ib = diasOrden.findIndex(d => d.toLowerCase() === b.toLowerCase());
+                        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+                      });
+                      const horas = [...new Set(cityPorHoraDia.map(d => d.hora))].sort();
+                      const maxT = Math.max(...cityPorHoraDia.map(d => d.turnos), 1);
+                      const getVal = (dia, hora) => cityPorHoraDia.find(d => d.dia === dia && d.hora === hora);
+                      return (
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr>
+                              <th className="px-2 py-1.5 text-left text-gray-500 font-semibold whitespace-nowrap">Día / Hora</th>
+                              {horas.map(h => <th key={h} className="px-2 py-1.5 text-center text-gray-500 font-semibold">{h}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dias.map(dia => (
+                              <tr key={dia} className="border-t border-gray-100">
+                                <td className="px-2 py-1.5 font-semibold text-gray-700 whitespace-nowrap">{dia}</td>
+                                {horas.map(hora => {
+                                  const v = getVal(dia, hora);
+                                  const t = v?.turnos || 0;
+                                  const intensity = t > 0 ? Math.max(0.15, t / maxT) : 0;
+                                  return (
+                                    <td key={hora} className="px-1 py-1 text-center" title={`${dia} ${hora}: ${t} turnos`}>
+                                      {t > 0 ? (
+                                        <div className="rounded-md px-1 py-1 text-xs font-bold" style={{ backgroundColor: `rgba(124,34,212,${intensity})`, color: intensity > 0.5 ? "#fff" : "#7C22D4" }}>{t}</div>
+                                      ) : <span className="text-gray-200">—</span>}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Puntos */}
+          {cityPuntos.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">🏪 Puntos en {ciudadSel} ({cityPuntos.length})</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-purple-600 text-white">
+                      {["Punto","Turnos","SI","NO","Colocación %","Puntualidad %","Estado"].map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cityPuntos.map((p, i) => {
+                      const col = semColor(p.pctColoc);
+                      return (
+                        <tr key={p.nombre} className={`border-t border-gray-100 ${i%2===0?"bg-white":"bg-purple-50/30"}`}>
+                          <td className="px-3 py-2 font-semibold max-w-[200px] truncate" title={p.nombre}>{p.nombre}</td>
+                          <td className="px-3 py-2 text-center">{p.turnos}</td>
+                          <td className="px-3 py-2 text-center font-bold text-green-600">{p.si}</td>
+                          <td className="px-3 py-2 text-center text-red-500">{p.no}</td>
+                          <td className="px-3 py-2 text-center font-bold" style={{ color: SEM_C[col] }}>{p.pctColoc.toFixed(1)}%</td>
+                          <td className="px-3 py-2 text-center">{p.pctPunt !== null ? `${p.pctPunt.toFixed(1)}%` : "—"}</td>
+                          <td className="px-3 py-2">
+                            <span className="px-2 py-0.5 rounded-full text-white text-xs font-bold" style={{ background: SEM_C[col] }}>
+                              {col === "rojo" ? "Crítico" : col === "verde" ? "Excelente" : "Moderado"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Pilotos */}
+          {rowsLoaded ? (
+            cityPilotos.length > 0 ? (
+              <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-3">👤 Pilotos en {ciudadSel} ({cityPilotos.length})</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-purple-600 text-white">
+                        {["#","Piloto","ID","Turnos","Coloc. SI","Coloc. NO","Coloc. %","Punt. SI","Punt. NO","Punt. %","Cancelaciones"].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cityPilotos.map((p, i) => (
+                        <tr key={p.id || p.nombre} className={`border-t border-gray-100 ${i%2===0?"bg-white":"bg-purple-50/30"} hover:bg-purple-50`}>
+                          <td className="px-3 py-2 text-gray-400">{i+1}</td>
+                          <td className="px-3 py-2 font-semibold">{p.nombre || "—"}</td>
+                          <td className="px-3 py-2 text-gray-500">{p.id || "—"}</td>
+                          <td className="px-3 py-2 text-center">{p.turnos}</td>
+                          <td className="px-3 py-2 text-center font-bold text-green-600">{p.si}</td>
+                          <td className="px-3 py-2 text-center text-red-500">{p.no}</td>
+                          <td className="px-3 py-2 text-center font-bold" style={{ color: p.pctColoc !== null ? colocColor(p.pctColoc) : "#9CA3AF" }}>
+                            {p.pctColoc !== null ? `${p.pctColoc.toFixed(1)}%` : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-center text-green-600">{p.puntSI}</td>
+                          <td className="px-3 py-2 text-center text-red-500">{p.puntNO}</td>
+                          <td className="px-3 py-2 text-center font-bold" style={{ color: p.pctPunt !== null ? colocColor(p.pctPunt) : "#9CA3AF" }}>
+                            {p.pctPunt !== null ? `${p.pctPunt.toFixed(1)}%` : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {p.cancela > 0
+                              ? <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-bold">{p.cancela}</span>
+                              : <span className="text-gray-300">0</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-2xl p-6 text-center text-gray-400 text-sm">
+                Sin pilotos encontrados en {ciudadSel} para {mesSel}
+              </div>
+            )
+          ) : (
+            <div className="bg-gray-50 rounded-2xl p-6 text-center text-gray-400 text-sm">
+              Cargando detalle de pilotos…
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-purple-50 border border-purple-100 rounded-xl p-8 text-center text-purple-700">
+          <p className="text-sm font-medium">Sin datos para {mesSel}</p>
         </div>
       )}
     </div>
@@ -1684,6 +2307,7 @@ export default function InformeTada({ isAdmin }) {
 
   const TABS_TADA = [
     { id: "trafico", label: "📊 Tráfico Pilotos" },
+    { id: "ciudad", label: "📍 Por Ciudad" },
     { id: "facturacion", label: "💰 Facturación" },
     { id: "insights", label: "💡 Insights" },
     { id: "notas", label: "📝 Notas y Tareas" },
@@ -1974,6 +2598,9 @@ export default function InformeTada({ isAdmin }) {
 
       {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
       {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} importedData={importedData} />}
+
+      {/* ── TAB: POR CIUDAD ─────────────────────────────────────────── */}
+      {tab === "ciudad" && <CiudadTab trafIndex={trafIndex} isAdmin={isAdmin} importedData={importedData} loadTrafMes={_loadTrafMes} />}
 
       {/* ── TAB: NOTAS Y TAREAS ──────────────────────────────────────── */}
       {tab === "notas" && <NotasTareas />}
@@ -2527,7 +3154,7 @@ export default function InformeTada({ isAdmin }) {
                 📥 Descargar CSV
               </button>
             </div>
-            <p className="text-xs text-gray-400 mb-3">Pilotos programados este mes que no aparecieron en {trafPrevKey}. Total: <b className="text-purple-600">{pilotosNuevos.length}</b></p>
+            <p className="text-xs text-gray-400 mb-3">Pilotos programados este mes que no aparecieron en {trafPrevKey}. Total: <b className="text-purple-600">{pilotosNuevos.length}</b> · Mostrando top 10 con más turnos · descarga el CSV para ver todos.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -2546,7 +3173,7 @@ export default function InformeTada({ isAdmin }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {pilotosNuevos.map((p, i) => (
+                  {pilotosNuevos.slice(0, 10).map((p, i) => (
                     <tr key={p.id} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
                       <td className="px-3 py-2 text-purple-400 font-bold">{i + 1}</td>
                       <td className="px-3 py-2 font-semibold text-gray-800">{p.nombre || "Sin nombre"}</td>

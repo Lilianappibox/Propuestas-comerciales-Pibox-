@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, CartesianGrid, Legend,
+  ReferenceLine, ComposedChart, Area,
 } from "recharts";
 import {
-  loadMesData, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtFull,
+  loadMesData, loadMesDataAsync, mesesDisponibles, calcularScore, fmtM, fmtPct, fmtFull,
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT,
 } from "./utils";
@@ -65,6 +66,27 @@ export default function MetricasRiesgo() {
   const umb         = getUmbrales();
 
   const [mesKey, setMesKey]           = useState(meses[meses.length-1]?.key || "");
+  const [historialGlobal, setHistorialGlobal] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const allMeses = mesesDisponibles();
+      const result   = [];
+      for (const m of allMeses) {
+        const d = await loadMesDataAsync(m.key);
+        if (!d?.empresas) continue;
+        result.push({
+          key:   m.key,
+          label: m.label,
+          gmv:   d.empresas.reduce((s, e) => s + e.gmv,   0),
+          total: d.empresas.reduce((s, e) => s + e.total, 0),
+        });
+      }
+      if (!cancelled) setHistorialGlobal(result.sort((a, b) => a.key < b.key ? -1 : 1));
+    })();
+    return () => { cancelled = true; };
+  }, [mesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mes anterior automático
   const idxActual   = meses.findIndex(m=>m.key===mesKey);
@@ -216,6 +238,186 @@ export default function MetricasRiesgo() {
           deltaLabel={mesPrevMeta ? "Sin variación" : "Sin mes anterior"}
         />
       </div>
+
+      {/* GMV Diario */}
+      {(() => {
+        const daily = tot?.daily;
+        if (!daily?.length) return (
+          <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-5 text-center text-xs text-gray-400">
+            📆 La gráfica de GMV diario estará disponible al volver a subir los datos del mes desde <b>⚙️ Configuración</b>.
+          </div>
+        );
+
+        // MA-7 y acumulado
+        let acum = 0;
+        const chartDaily = daily.map((d, i, arr) => {
+          const ventana = arr.slice(Math.max(0, i - 6), i + 1);
+          const ma7 = ventana.reduce((s, w) => s + w.gmv, 0) / ventana.length;
+          acum += d.gmv;
+          return { ...d, ma7, acum };
+        });
+
+        const maxGmvDia  = Math.max(...chartDaily.map(d => d.gmv));
+        const avgGmvDia  = chartDaily.reduce((s, d) => s + d.gmv, 0) / chartDaily.length;
+        const topDia     = chartDaily.reduce((m, d) => d.gmv > m.gmv ? d : m, chartDaily[0]);
+        const minDia     = chartDaily.reduce((m, d) => d.gmv < m.gmv ? d : m, chartDaily[0]);
+        const gmvAcumFinal = acum;
+
+        // Tick X: mostrar solo cada ~5 días
+        const tickCount = chartDaily.length;
+        const step = tickCount <= 15 ? 1 : tickCount <= 25 ? 3 : 5;
+
+        return (
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
+              <div>
+                <h3 className="font-bold text-gray-700 text-sm">📆 GMV Diario</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Barras: GMV del día · Línea: media móvil 7 días · {chartDaily.length} días con datos
+                </p>
+              </div>
+              {/* Mini KPIs de la gráfica */}
+              <div className="flex flex-wrap gap-3 text-xs">
+                <div className="bg-purple-50 rounded-xl px-3 py-1.5 border border-purple-100">
+                  <span className="text-gray-500">Prom/día </span>
+                  <span className="font-bold text-purple-700">{fmtFull(avgGmvDia)}</span>
+                </div>
+                <div className="bg-green-50 rounded-xl px-3 py-1.5 border border-green-100">
+                  <span className="text-gray-500">Mejor día </span>
+                  <span className="font-bold text-green-700">{topDia.label} · {fmtFull(topDia.gmv)}</span>
+                </div>
+                <div className="bg-red-50 rounded-xl px-3 py-1.5 border border-red-100">
+                  <span className="text-gray-500">Menor día </span>
+                  <span className="font-bold text-red-600">{minDia.label} · {fmtFull(minDia.gmv)}</span>
+                </div>
+                <div className="bg-blue-50 rounded-xl px-3 py-1.5 border border-blue-100">
+                  <span className="text-gray-500">Acumulado </span>
+                  <span className="font-bold text-blue-700">{fmtFull(gmvAcumFinal)}</span>
+                </div>
+              </div>
+            </div>
+
+            <ResponsiveContainer width="100%" height={260}>
+              <ComposedChart data={chartDaily} margin={{top:8,right:60,left:0,bottom:20}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" vertical={false}/>
+                <XAxis
+                  dataKey="label"
+                  tick={{fontSize:9}}
+                  angle={-45}
+                  textAnchor="end"
+                  height={45}
+                  interval={step - 1}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tick={{fontSize:9}}
+                  tickFormatter={fmtM}
+                  width={55}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{fontSize:9}}
+                  tickFormatter={fmtM}
+                  width={55}
+                />
+                <Tooltip
+                  content={({active, payload, label}) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0]?.payload;
+                    return (
+                      <div className="bg-white border border-purple-100 rounded-xl shadow-lg px-3 py-2.5 text-xs space-y-1 min-w-[180px]">
+                        <p className="font-bold text-purple-700 mb-1">📅 {d?.date}</p>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-gray-500">GMV del día</span>
+                          <span className="font-bold" style={{color:PIBOX_PURPLE}}>{fmtFull(d?.gmv)}</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-gray-500">MA-7</span>
+                          <span className="font-bold" style={{color:PIBOX_PINK}}>{fmtFull(d?.ma7)}</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-gray-500">Acumulado</span>
+                          <span className="font-bold text-blue-600">{fmtFull(d?.acum)}</span>
+                        </div>
+                        <div className="border-t border-gray-100 pt-1 mt-1 flex justify-between gap-4">
+                          <span className="text-gray-500">Servicios</span>
+                          <span className="font-semibold text-gray-700">{d?.servicios?.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-gray-500">Completados</span>
+                          <span className="font-semibold text-green-600">{d?.completados?.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                {/* Área acumulado (eje derecho, fondo suave) */}
+                <Area
+                  yAxisId="right"
+                  dataKey="acum"
+                  name="Acumulado"
+                  fill="#DBEAFE"
+                  stroke="#93C5FD"
+                  strokeWidth={1.5}
+                  fillOpacity={0.4}
+                  dot={false}
+                  activeDot={false}
+                />
+                {/* Barras GMV diario */}
+                <Bar
+                  yAxisId="left"
+                  dataKey="gmv"
+                  name="GMV día"
+                  fill={PIBOX_PURPLE}
+                  fillOpacity={0.85}
+                  radius={[3,3,0,0]}
+                  maxBarSize={28}
+                />
+                {/* Línea MA-7 */}
+                <Line
+                  yAxisId="left"
+                  dataKey="ma7"
+                  name="MA-7"
+                  stroke={PIBOX_PINK}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{r:4, strokeWidth:0}}
+                  strokeDasharray="5 3"
+                />
+                {/* Línea de promedio */}
+                <ReferenceLine
+                  yAxisId="left"
+                  y={avgGmvDia}
+                  stroke="#9CA3AF"
+                  strokeDasharray="3 2"
+                  label={{value:"Prom.", position:"insideTopRight", fontSize:9, fill:"#9CA3AF"}}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+
+            {/* Leyenda */}
+            <div className="flex flex-wrap justify-center gap-4 mt-1 text-[10px] text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PURPLE, opacity:0.85}}/>
+                GMV diario
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-6 border-t-2 inline-block" style={{borderColor:PIBOX_PINK, borderStyle:"dashed"}}/>
+                Media móvil 7 días
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-sm inline-block bg-blue-200"/>
+                GMV acumulado (eje der.)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-6 border-t inline-block border-gray-400" style={{borderStyle:"dashed"}}/>
+                Promedio diario
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* KPIs riesgo + gráfica distribución alineados */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
@@ -880,6 +1082,172 @@ export default function MetricasRiesgo() {
               );
             })()}
             </div>
+
+            {/* Proyección de Cierre */}
+            {(() => {
+              const nowDate  = new Date();
+              const nowKey   = `${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,"0")}`;
+              const esMesAct = mesKey === nowKey;
+
+              const [yr, mo] = mesKey.split("-").map(Number);
+              const totalDias = new Date(yr, mo, 0).getDate();
+
+              let ultimoDia = 0;
+              if (tot?.weekly?.length) {
+                const lastLabel = tot.weekly[tot.weekly.length - 1]?.label || "";
+                const mMatch = lastLabel.match(/[–\-](\d{1,2})\/\d{2}/);
+                if (mMatch) ultimoDia = parseInt(mMatch[1], 10);
+              }
+
+              const diasConDatos = esMesAct
+                ? (ultimoDia > 0 ? ultimoDia : nowDate.getDate())
+                : totalDias;
+              const pct      = diasConDatos / totalDias;
+              const gmvProy  = pct > 0 ? gmvTotal / pct : gmvTotal;
+
+              const histPrev = historialGlobal.filter(h => h.key < mesKey);
+
+              let halfRange = 0.12;
+              if (histPrev.length >= 2) {
+                const vals = histPrev.map(h => h.gmv).filter(v => v > 0);
+                if (vals.length >= 2) {
+                  const avgGmvH = vals.reduce((s, v) => s + v, 0) / vals.length;
+                  const maxGmv  = Math.max(...vals);
+                  const minGmv  = Math.min(...vals);
+                  if (avgGmvH > 0) halfRange = Math.min((maxGmv - minGmv) / (2 * avgGmvH), 0.35);
+                }
+              }
+
+              const gmvOpt   = gmvProy * (1 + halfRange);
+              const gmvCons  = gmvProy * (1 - halfRange);
+              const avgHist  = histPrev.length
+                ? histPrev.reduce((s, h) => s + h.gmv, 0) / histPrev.length
+                : 0;
+              const deltaVsAvg = avgHist > 0 ? (gmvProy - avgHist) / avgHist : null;
+
+              const shortLabel = (l="") => l.replace(/^(\w{3})\w*\s(\d{4})$/, "$1. $2");
+
+              const chartData = [
+                ...histPrev.slice(-5).map(h => ({
+                  label: shortLabel(h.label),
+                  gmvHist: h.gmv,
+                  gmvProy: null,
+                })),
+                {
+                  label: shortLabel(dataMes?.label || mesKey),
+                  gmvHist: null,
+                  gmvProy,
+                },
+              ];
+
+              const totalServProy = pct > 0 ? Math.round(totalServicios / pct) : totalServicios;
+              const gmvPorDia     = diasConDatos > 0 ? gmvTotal / diasConDatos : 0;
+              const gmvPorServ    = totalServicios > 0 ? gmvTotal / totalServicios : 0;
+
+              return (
+                <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                  <div className="flex flex-wrap items-center justify-between mb-4">
+                    <h3 className="font-bold text-gray-700 text-sm">📈 Proyección de Cierre</h3>
+                    {esMesAct ? (
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-gray-500">Día {diasConDatos} de {totalDias}</div>
+                        <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full"
+                               style={{width:`${Math.min(pct*100,100).toFixed(1)}%`,background:BRAND_GRADIENT}}/>
+                        </div>
+                        <div className="text-xs font-bold text-purple-600">{(pct*100).toFixed(1)}%</div>
+                      </div>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold text-white"
+                            style={{background:PIBOX_PURPLE}}>Mes completado</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+                         style={{borderLeft:`3px solid ${PIBOX_PURPLE}`}}>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">GMV acumulado</p>
+                      <p className="text-lg font-extrabold mt-1" style={{color:PIBOX_PURPLE}}>{fmtFull(gmvTotal)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{(pct*100).toFixed(1)}% del mes</p>
+                    </div>
+                    <div className="rounded-xl p-3 border border-purple-200"
+                         style={{background:BRAND_GRADIENT}}>
+                      <p className="text-xs text-white/80 uppercase tracking-wide">Proyección al cierre</p>
+                      <p className="text-lg font-extrabold mt-1 text-white">{fmtFull(gmvProy)}</p>
+                      {deltaVsAvg !== null && (
+                        <p className="text-xs font-semibold mt-0.5 text-white/80">
+                          {deltaVsAvg >= 0 ? "▲" : "▼"} {Math.abs(deltaVsAvg*100).toFixed(1)}% vs prom. hist.
+                        </p>
+                      )}
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+                         style={{borderLeft:`3px solid #16a34a`}}>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">↑ Optimista</p>
+                      <p className="text-lg font-extrabold mt-1" style={{color:"#16a34a"}}>{fmtFull(gmvOpt)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">+{(halfRange*100).toFixed(0)}% rango</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+                         style={{borderLeft:`3px solid #d97706`}}>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">↓ Conservador</p>
+                      <p className="text-lg font-extrabold mt-1" style={{color:"#d97706"}}>{fmtFull(gmvCons)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">-{(halfRange*100).toFixed(0)}% rango</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-2">
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={chartData} margin={{top:16,right:40,left:0,bottom:0}}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
+                          <XAxis dataKey="label" tick={{fontSize:10}}/>
+                          <YAxis tick={{fontSize:10}} tickFormatter={fmtM}/>
+                          <Tooltip formatter={v=>fmtFull(v)}/>
+                          <Bar dataKey="gmvHist" name="GMV histórico" fill="#DDD6FE" radius={[4,4,0,0]}/>
+                          <Bar dataKey="gmvProy"  name="Proyección"    fill={PIBOX_PURPLE} radius={[4,4,0,0]}/>
+                          {avgHist > 0 && (
+                            <ReferenceLine y={avgHist} stroke="#9CA3AF" strokeDasharray="4 2"
+                              label={{value:"Prom.",position:"right",fontSize:9,fill:"#9CA3AF"}}/>
+                          )}
+                          <ReferenceLine y={gmvOpt}  stroke="#16a34a" strokeDasharray="4 2"
+                            label={{value:"Opt.",position:"right",fontSize:9,fill:"#16a34a"}}/>
+                          <ReferenceLine y={gmvCons} stroke="#d97706" strokeDasharray="4 2"
+                            label={{value:"Cons.",position:"right",fontSize:9,fill:"#d97706"}}/>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        <p className="text-xs text-gray-500">Promedio hist. mensual</p>
+                        <p className="font-bold text-gray-800">{avgHist > 0 ? fmtFull(avgHist) : "—"}</p>
+                        {deltaVsAvg !== null && (
+                          <p className="text-xs font-semibold mt-0.5"
+                             style={{color: deltaVsAvg >= 0 ? "#16a34a" : "#d97706"}}>
+                            {deltaVsAvg >= 0 ? "▲" : "▼"} {Math.abs(deltaVsAvg*100).toFixed(1)}% proy. vs hist.
+                          </p>
+                        )}
+                      </div>
+                      <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        <p className="text-xs text-gray-500">Servicios proyectados</p>
+                        <p className="font-bold text-gray-800">{totalServProy.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        <p className="text-xs text-gray-500">GMV / día</p>
+                        <p className="font-bold text-gray-800">{fmtFull(gmvPorDia)}</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        <p className="text-xs text-gray-500">GMV / servicio</p>
+                        <p className="font-bold text-gray-800">{fmtFull(gmvPorServ)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-gray-400 mt-3">
+                    Proyección lineal sobre {diasConDatos} días transcurridos ({(pct*100).toFixed(1)}% del mes).
+                    Rango ±{(halfRange*100).toFixed(0)}% estimado de la varianza de {histPrev.length} mes{histPrev.length !== 1 ? "es" : ""} anteriores.
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* Cancelados por Pasajero y Expirados — side by side */}
             {(() => {

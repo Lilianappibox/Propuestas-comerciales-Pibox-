@@ -1,37 +1,42 @@
 import { useState, useMemo } from "react";
 
-const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
-const PIBOX_PURPLE = "#7C22D4";
+const BRAND_GRADIENT = "linear-gradient(135deg,#00897B 0%,#00BCD4 100%)";
+const BRAND_COLOR     = "#00897B";
 
-const SK_NOTAS = "pibox_tada_notas";
-const SK_TAREAS = "pibox_tada_tareas";
-const SK_MEETINGS = "pibox_tada_meetings";
-const SK_HIDDEN_MEETINGS = "pibox_tada_hidden_meetings";
+const SK_NOTAS           = "pibox_cv_notas";
+const SK_TAREAS          = "pibox_cv_tareas";
+const SK_MEETINGS        = "pibox_cv_meetings";
+const SK_HIDDEN_MEETINGS = "pibox_cv_hidden_meetings";
 
 const CLIENT_EMAILS = [
-  "jgonzalez@bogotabeercompany.com",
-  "echoconta@tiendasya.com.co",
-  "jonathan.garibello@ab-inbev.com",
-  "alejandro.choconta-ext@ab-inbev.com",
-  "camilo.mosquera-ext@ab-inbev.com",
-  "jesus.gonzalezr@ab-inbev.com",
-  "johanna.alvarez-ext@ab-inbev.com",
-  "xiomara.sanchez-ext@ab-inbev.com",
+  "jhon.potier@cruzverde.com.co",
+  "blanca.almanza@cruzverde.com.co",
+  "ivan.agreda@cruzverde.com.co",
+  "juan.romero@cruzverde.com.co",
+  "cromero@pibox.app",
+  "nolivera@pibox.app",
+  "mrincon@pibox.app",
+  "gestorcomercial@pibox.app",
 ];
 
-// Reuniones extraídas desde Google Calendar (Tráfico TaDa / Pibox — recurrente semanal)
 const BUILTIN_MEETINGS = [
-  { fecha: "2026-06-23", label: "23 jun 2026", docId: "1DJndvhnCMsYpEgPLzaCyC61rOImNE3q_Ex-9wWhwTeo" },
-  { fecha: "2026-06-10", label: "10 jun 2026", docId: "1pIoXqr1yMN6EY18T-nqEJY85KBHUXbFtcZr_dRj7po4" },
-  { fecha: "2026-06-02", label: "2 jun 2026",  docId: "1gZ6s800hWt2xFoID6bUsXHDRihJDfj_w5NmN1IygQRc" },
-  { fecha: "2026-05-26", label: "26 may 2026", docId: "1dSyzh4wM__htO8UnkoIWvRc4Lt5j5gCDJTIAcizRSDo" },
-  { fecha: "2026-05-20", label: "20 may 2026", docId: "1G9Dbg4liS5t-scG-Qgb3P7HvpJkx1lHqDxujPkkGFPE" },
-  { fecha: "2026-05-12", label: "12 may 2026", docId: "1cvBRi57sS-e-A6CI1DZ00CaF84ow_SH2GbNiE3jQMs4" },
-  { fecha: "2026-05-05", label: "5 may 2026",  docId: "1hAt4fZXI-pk_yhNtNZS-L51R9ivyJQMK7f-0W7bYIj0" },
-  { fecha: "2026-04-28", label: "28 abr 2026", docId: "13SQzxi7_UOcEUYSZcp1414jYCHYY8pgPsgKfSqKmCE4" },
-  { fecha: "2026-04-21", label: "21 abr 2026", docId: "1Uz0D43CCmSMD5Ov9KWlSzdb0VOxJdPkB2TnXdc9lSaw" },
-  { fecha: "2026-04-14", label: "14 abr 2026", docId: "1_qE16LaibPAOpm3mr0UOTqAke5kczpGbSAt6rmaB5wY"  },
-  { fecha: "2026-04-07", label: "7 abr 2026",  docId: "11iTor7nVdPI3AQ4LGq2XNbORrZlcMp_znTQdh0IIc2Q" },
+  { fecha: "2026-06-23", label: "23 jun 2026", docId: "1BmuFi2xuCSY93E6rkf1AOdUovDBdnMvOc0iKSJM842A" },
+  { fecha: "2026-06-17", label: "17 jun 2026", docId: "1u63nfsirhRXHmsxs-qvdcNNqyc0pmxbTdraZzaTt3xQ" },
+  { fecha: "2026-06-10", label: "10 jun 2026", docId: "17XHdgpzMcxv8iXYxZ--VeGqG6bJkziKC3YeP82TXMjE" },
+  { fecha: "2026-06-02", label: "2 jun 2026",  docId: "1fWfvaRSx1KP3paF3KZ4am9Z6Ijn5LG1mgfyCdKR5pnQ" },
+  { fecha: "2026-05-26", label: "26 may 2026", docId: "1lyo2UdzrjP-mP6KvGF4xwkZG0MueR1m9GkA3GbQNbAE" },
+  { fecha: "2026-05-21", label: "21 may 2026", docId: "1iYUxZ7KoK75neoMjBlS-UjVYCpodlLENd2v55f0p-Ts" },
+  { fecha: "2026-05-12", label: "12 may 2026", docId: "1rKPw2-GaWYxJmCPSNf6tvk9AuC4Y9vl4vgNeI1WnjKI" },
+  { fecha: "2026-05-05", label: "5 may 2026",  docId: "105myGXYNye-jK8wWLrVjAMdDUWTSYK00W-bj4aegEjI" },
+  { fecha: "2026-04-28", label: "28 abr 2026", docId: "18uaNrBdQCrsId14mHv8mNPNFK-ZKVMWbC_pp8044IeA" },
+  { fecha: "2026-04-21", label: "21 abr 2026", docId: "1tA5TV4ZigUizle-SaXRWd432R9ci6__crlgABIEfYc8" },
+  { fecha: "2026-04-14", label: "14 abr 2026", docId: "1VN_jdI4n3SWyAZa7pBkd4rvPJyATN45uqVov0w2Kql0" },
+  { fecha: "2026-04-07", label: "7 abr 2026",  docId: "1dZWbH9My_d8QZAMfsvkQpvTOdfuJSQYXb0vk773louM" },
+  { fecha: "2026-03-31", label: "31 mar 2026", docId: "1n7iqtn6FO0aO84sxJMF0EFvSSVEBdk2sAoLz59SUJho" },
+  { fecha: "2026-03-24", label: "24 mar 2026", docId: "10XxmuI3FRYcz4z0Z9OfLfEP39-9-xWDNWeos5k73RPM" },
+  { fecha: "2026-03-17", label: "17 mar 2026", docId: "1puNtZYi4kxcNFM_PawjRB22gAiLcAa-hW-GUffh5hTU" },
+  { fecha: "2026-03-10", label: "10 mar 2026", docId: "1FnDWi6-VgGmLjUXv5RoBRSNywtcHKvfNg48pNZwbEm0" },
+  { fecha: "2026-02-24", label: "24 feb 2026", docId: "1cB7PBWZRdBb4XeZbYfdxc3zIaiSpsGd-REgUxGPBhaY" },
 ];
 
 function extractDocId(url) {
@@ -65,15 +70,14 @@ function saveMeetings(list) {
   localStorage.setItem(SK_MEETINGS, JSON.stringify(extra));
 }
 
-function loadNotas() { try { return JSON.parse(localStorage.getItem(SK_NOTAS) || "[]"); } catch { return []; } }
-function saveNotas(n) { localStorage.setItem(SK_NOTAS, JSON.stringify(n)); }
-function loadTareas() { try { return JSON.parse(localStorage.getItem(SK_TAREAS) || "[]"); } catch { return []; } }
+function loadNotas()  { try { return JSON.parse(localStorage.getItem(SK_NOTAS)  || "[]"); } catch { return []; } }
+function saveNotas(n) { localStorage.setItem(SK_NOTAS,  JSON.stringify(n)); }
+function loadTareas()  { try { return JSON.parse(localStorage.getItem(SK_TAREAS) || "[]"); } catch { return []; } }
 function saveTareas(t) { localStorage.setItem(SK_TAREAS, JSON.stringify(t)); }
 
-function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+function uid()   { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 function today() { return new Date().toISOString().slice(0, 10); }
 
-// Extraer texto de PDF reconstruyendo líneas por posición Y
 async function extractPdfText(file) {
   const pdfjsLib = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
@@ -99,9 +103,7 @@ async function extractPdfText(file) {
   return allLines.join("\n");
 }
 
-// Detecta si una línea es cabecera de sección de tareas/próximos pasos en notas Gemini
 function esCabeceraPasos(rawLine) {
-  // Quitar caracteres decorativos iniciales (bullets, emojis, números, checkboxes)
   const lower = rawLine.replace(/^[\s•●·\-\*>☐✓✗✔☐☑☒·\d\.\)\(📌🗒️]+/, "").trim().toLowerCase();
   return lower.startsWith("próximos pasos") || lower.startsWith("proximos pasos") ||
     lower.startsWith("elementos de acción") || lower.startsWith("elementos de accion") ||
@@ -111,30 +113,20 @@ function esCabeceraPasos(rawLine) {
     lower === "tareas" || lower === "pendientes";
 }
 
-// Intenta parsear una línea como tarea en cualquiera de los formatos de Gemini
 function parsearLineaTarea(raw) {
-  // Quitar decoración inicial (bullets, checkboxes, números)
   let l = raw.replace(/^[\s•●·\-\*>☐✓✗✔☐☑☒]+/, "").trim();
   l = l.replace(/^\d+[\.\)]\s+/, "").trim();
   if (!l || l.length < 5) return null;
-
-  // Formato 1: [Responsable] tarea
   const m1 = l.match(/^\[([^\]]{2,50})\]\s+(.+)/);
   if (m1) return { responsable: m1[1].trim(), tarea: m1[2].trim() };
-
-  // Formato 2: tarea — Responsable: Nombre  (formato del correo / notas Gemini en español)
   const m2 = l.match(/^(.+?)\s*[—–]+\s*Responsable:\s*(.+?)(?:\s*\(\d+.*?)?\s*$/i);
   if (m2) return { responsable: m2[2].trim(), tarea: m2[1].trim() };
-
-  // Formato 3: Responsable: tarea  (nombre corto antes del colon)
   const m3 = l.match(/^([A-ZÁÉÍÓÚÑ][^:]{1,39}):\s+(.{5,})/);
   if (m3 && !m3[1].toLowerCase().includes("http") && !m3[1].toLowerCase().includes("www"))
     return { responsable: m3[1].trim(), tarea: m3[2].trim() };
-
   return null;
 }
 
-// Búsqueda de alta confianza en línea completa (sólo patrones inequívocos)
 function parsearLineaTareaEstricto(raw) {
   let l = raw.replace(/^[\s•●·\-\*>☐✓✗✔☐☑☒]+/, "").replace(/^\d+[\.\)]\s+/, "").trim();
   if (!l || l.length < 5) return null;
@@ -147,7 +139,7 @@ function parsearLineaTareaEstricto(raw) {
 
 function parseGeminiNotes(text) {
   const lines = text.split("\n");
-  let titulo = "Tráfico TaDa / Pibox";
+  let titulo = "WEEKLY CRUZ VERDE/PIBOX";
   let fecha = today();
   for (const l of lines.slice(0, 10)) {
     const dateMatch = l.match(/(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\.?\s+(\d{1,2}),?\s*(\d{4})/i);
@@ -156,7 +148,8 @@ function parseGeminiNotes(text) {
       const m = meses[dateMatch[1].slice(0, 3).toLowerCase()];
       if (m) fecha = `${dateMatch[3]}-${String(m).padStart(2, "0")}-${String(dateMatch[2]).padStart(2, "0")}`;
     }
-    if (l.includes("Tráfico") && l.includes("TaDa")) titulo = l.trim();
+    const lower = l.toLowerCase();
+    if (lower.includes("cruz verde") || lower.includes("weekly")) titulo = l.trim();
   }
   const sections = { resumen: "", pasos: "", detalles: "" };
   let currentSection = "header";
@@ -172,7 +165,6 @@ function parseGeminiNotes(text) {
     if (currentSection === "detalles") sections.detalles += l + "\n";
   }
 
-  // Intentar extraer tareas de la sección detectada
   let tareas = [];
   let currentTask = null;
   for (const l of pasosLines) {
@@ -186,8 +178,6 @@ function parseGeminiNotes(text) {
   }
   if (currentTask) tareas.push(currentTask);
 
-  // Fallback: si no se encontró ninguna tarea, buscar en TODO el documento
-  // (sólo con patrones de alta confianza para evitar falsos positivos)
   if (tareas.length === 0) {
     for (const l of lines) {
       const parsed = parsearLineaTareaEstricto(l);
@@ -197,13 +187,12 @@ function parseGeminiNotes(text) {
 
   const contenido = (sections.resumen.trim() ? "RESUMEN:\n" + sections.resumen.trim() : "") +
     (sections.detalles.trim() ? "\n\nDETALLES:\n" + sections.detalles.trim() : "");
-  // rawPasosLines: si la sección fue detectada, mostrar esas líneas; si no, el texto completo
   const rawPasosLines = pasosLines.length > 0 ? pasosLines : lines;
   return { titulo, fecha, contenido, tareas, rawPasosLines };
 }
 
-export default function NotasTareas() {
-  /* ── Reuniones TaDa/Pibox ───────────────────────────────────────────── */
+export default function NotasTareasCruzVerde() {
+  /* ── Reuniones Cruz Verde ───────────────────────────────────────────── */
   const [meetings, setMeetings] = useState(loadMeetings);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showAddMeeting, setShowAddMeeting] = useState(false);
@@ -214,7 +203,6 @@ export default function NotasTareas() {
 
   const selectedMeeting = meetings[selectedIdx] || null;
 
-  // Estado para importar PDF de la reunión seleccionada
   const [showImport, setShowImport] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [importMsg, setImportMsg] = useState("");
@@ -266,11 +254,9 @@ export default function NotasTareas() {
     try {
       const text = await extractPdfText(file);
       const parsed = parseGeminiNotes(text);
-      // Pre-poblar editor de notas
-      setTitulo(parsed.titulo || selectedMeeting?.label || "Tráfico TaDa / Pibox");
+      setTitulo(parsed.titulo || selectedMeeting?.label || "WEEKLY CRUZ VERDE/PIBOX");
       setFecha(parsed.fecha || selectedMeeting?.fecha || today());
       if (parsed.contenido) setContenido(parsed.contenido);
-      // Importar tareas al tablero
       if (parsed.tareas.length > 0) {
         const newTareas = parsed.tareas.map(t => ({
           id: uid(), tarea: t.tarea, responsable: t.responsable,
@@ -285,7 +271,6 @@ export default function NotasTareas() {
         });
         setImportMsg(`✅ ${parsed.tareas.length} tareas importadas al tablero.`);
       } else {
-        // Mostrar texto crudo para revisión manual
         const rawLines = parsed.rawPasosLines || [];
         const raw = rawLines.join("\n");
         setRawPasosText(raw);
@@ -322,7 +307,7 @@ export default function NotasTareas() {
 
   /* ── Notas ──────────────────────────────────────────────────────────── */
   const [notas, setNotas] = useState(loadNotas);
-  const [titulo, setTitulo] = useState("Tráfico TaDa / Pibox");
+  const [titulo, setTitulo] = useState("WEEKLY CRUZ VERDE/PIBOX");
   const [fecha, setFecha] = useState(today);
   const [contenido, setContenido] = useState("");
   const [expandedId, setExpandedId] = useState(null);
@@ -363,7 +348,7 @@ export default function NotasTareas() {
   }
 
   function limpiarDocumento() {
-    setTitulo("Tráfico TaDa / Pibox");
+    setTitulo("WEEKLY CRUZ VERDE/PIBOX");
     setFecha(today());
     setContenido("");
     setPdfMsg("");
@@ -424,7 +409,7 @@ export default function NotasTareas() {
     const pendientes = tareas.filter(t => !t.completada);
     const completadas = tareas.filter(t => t.completada);
     const fechaHoy = new Date().toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric" });
-    let cuerpo = `Reporte de tareas - Tráfico TaDa / Pibox\nFecha: ${fechaHoy}\n`;
+    let cuerpo = `Reporte de tareas - WEEKLY CRUZ VERDE/PIBOX\nFecha: ${fechaHoy}\n`;
     if (pendientes.length > 0) {
       cuerpo += `\nTAREAS PENDIENTES (${pendientes.length}):\n`;
       pendientes.forEach((t, i) => {
@@ -445,7 +430,7 @@ export default function NotasTareas() {
       });
     }
     const to = CLIENT_EMAILS.join(",");
-    const subject = encodeURIComponent(`Reporte de tareas - Tráfico TaDa / Pibox - ${fechaHoy}`);
+    const subject = encodeURIComponent(`Reporte de tareas - WEEKLY CRUZ VERDE/PIBOX - ${fechaHoy}`);
     const body = encodeURIComponent(cuerpo);
     window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
   }
@@ -454,10 +439,10 @@ export default function NotasTareas() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
 
-      {/* ── Reuniones TaDa / Pibox ───────────────────────────────────── */}
+      {/* ── Reuniones Cruz Verde / Pibox ─────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm flex items-center justify-between" style={{ background: BRAND_GRADIENT }}>
-          <span>📅 Tráfico TaDa / Pibox — Notas de Gemini</span>
+          <span>📅 WEEKLY CRUZ VERDE/PIBOX — Notas de Gemini</span>
           <button
             onClick={() => { setShowAddMeeting(v => !v); setAddMeetingErr(""); }}
             className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition">
@@ -466,33 +451,31 @@ export default function NotasTareas() {
         </div>
         <div className="p-5 space-y-4">
 
-          {/* Agregar nueva reunión */}
           {showAddMeeting && (
-            <div className="border border-purple-200 bg-purple-50 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-purple-700">Nueva reunión — pega el link de Google Docs de Gemini</p>
+            <div className="border border-teal-200 bg-teal-50 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-teal-700">Nueva reunión — pega el link de Google Docs de Gemini</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha</label>
                   <input type="date" value={newMeetingFecha} onChange={e => setNewMeetingFecha(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-600 mb-1">URL de Google Docs (Notas de Gemini)</label>
                   <input value={newMeetingUrl} onChange={e => setNewMeetingUrl(e.target.value)}
                     placeholder="https://docs.google.com/document/d/..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
                 </div>
               </div>
               {addMeetingErr && <p className="text-xs text-red-500">{addMeetingErr}</p>}
               <button onClick={addMeeting}
                 className="px-5 py-2 rounded-lg text-white text-sm font-semibold shadow transition"
-                style={{ background: PIBOX_PURPLE }}>
+                style={{ background: BRAND_COLOR }}>
                 Guardar reunión
               </button>
             </div>
           )}
 
-          {/* Selector de reuniones */}
           <div className="flex flex-wrap gap-2">
             {meetings.map((m, i) => (
               <div key={m.fecha + m.docId} className="group relative inline-flex">
@@ -501,9 +484,9 @@ export default function NotasTareas() {
                   className={`pl-3 pr-7 py-1.5 rounded-full text-xs font-semibold transition border ${
                     i === selectedIdx
                       ? "text-white border-transparent shadow"
-                      : "text-gray-500 bg-gray-50 border-gray-200 hover:border-purple-300 hover:text-purple-700"
+                      : "text-gray-500 bg-gray-50 border-gray-200 hover:border-teal-300 hover:text-teal-700"
                   }`}
-                  style={i === selectedIdx ? { background: PIBOX_PURPLE } : {}}>
+                  style={i === selectedIdx ? { background: BRAND_COLOR } : {}}>
                   {m.label}
                 </button>
                 <button
@@ -520,7 +503,6 @@ export default function NotasTareas() {
             ))}
           </div>
 
-          {/* Documento embebido */}
           {selectedMeeting && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -530,7 +512,8 @@ export default function NotasTareas() {
                 <a
                   href={`https://docs.google.com/document/d/${selectedMeeting.docId}/edit`}
                   target="_blank" rel="noreferrer"
-                  className="text-xs font-semibold text-purple-600 hover:text-purple-800 transition flex items-center gap-1">
+                  className="text-xs font-semibold hover:opacity-80 transition flex items-center gap-1"
+                  style={{ color: BRAND_COLOR }}>
                   Abrir en Google Docs ↗
                 </a>
               </div>
@@ -542,7 +525,6 @@ export default function NotasTareas() {
                 title={`Notas Gemini ${selectedMeeting.label}`}
               />
 
-              {/* Importar tareas al tablero */}
               <div className="mt-3 border-t border-gray-100 pt-3">
                 {!showImport ? (
                   <button onClick={() => { setShowImport(true); setImportMsg(""); }}
@@ -551,19 +533,19 @@ export default function NotasTareas() {
                     📥 Importar notas y tareas al tablero
                   </button>
                 ) : (
-                  <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-3">
-                    <p className="text-xs font-semibold text-purple-700">
+                  <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-semibold text-teal-700">
                       Descarga el PDF de esta reunión y súbelo para extraer las tareas automáticamente:
                     </p>
                     <div className="flex flex-wrap gap-3 items-center">
                       <a
                         href={`https://docs.google.com/document/d/${selectedMeeting.docId}/export?format=pdf`}
                         target="_blank" rel="noreferrer"
-                        className="px-4 py-2 rounded-lg text-xs font-semibold text-purple-700 bg-white border border-purple-300 hover:bg-purple-100 transition flex items-center gap-1">
+                        className="px-4 py-2 rounded-lg text-xs font-semibold text-teal-700 bg-white border border-teal-300 hover:bg-teal-100 transition flex items-center gap-1">
                         ⬇️ Descargar PDF de esta reunión
                       </a>
                       <label className="px-4 py-2 rounded-lg text-white text-xs font-semibold shadow cursor-pointer transition flex items-center gap-2"
-                        style={{ background: PIBOX_PURPLE }}>
+                        style={{ background: BRAND_COLOR }}>
                         {importLoading ? "Procesando..." : "📄 Subir PDF"}
                         <input type="file" accept=".pdf" className="hidden" onChange={handleMeetingPdfUpload} disabled={importLoading} />
                       </label>
@@ -577,7 +559,6 @@ export default function NotasTareas() {
                         {importMsg}
                       </p>
                     )}
-                    {/* Entrada manual de tareas cuando el parser no las reconoce */}
                     {(rawPasosText !== "" || (!importMsg.startsWith("✅") && importMsg.startsWith("⚠️"))) && (
                       <div className="space-y-2 mt-2">
                         <p className="text-xs text-gray-500">
@@ -587,14 +568,14 @@ export default function NotasTareas() {
                           value={manualTareasText}
                           onChange={e => setManualTareasText(e.target.value)}
                           rows={6}
-                          placeholder={"Liliana: Revisar cifras de puntualidad\nCamilo: Enviar reporte actualizado\nAnderson: Coordinar con Bavaria"}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-purple-300 outline-none resize-y"
+                          placeholder={"Liliana: Revisar cifras de puntualidad\nCamilo: Enviar reporte actualizado\nIván: Confirmar estrategia piloto"}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-teal-300 outline-none resize-y"
                         />
                         <button
                           onClick={importarDesdeTextoManual}
                           disabled={!manualTareasText.trim()}
                           className="px-4 py-2 rounded-lg text-white text-xs font-semibold shadow transition disabled:opacity-40"
-                          style={{ background: PIBOX_PURPLE }}>
+                          style={{ background: BRAND_COLOR }}>
                           ✅ Agregar tareas al tablero
                         </button>
                       </div>
@@ -607,7 +588,7 @@ export default function NotasTareas() {
         </div>
       </div>
 
-      {/* ── Agregar Nota (otras reuniones / fuentes) ─────────────────── */}
+      {/* ── Agregar Nota ─────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm" style={{ background: BRAND_GRADIENT }}>
           📝 Agregar Nota
@@ -617,19 +598,19 @@ export default function NotasTareas() {
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Título</label>
               <input value={titulo} onChange={e => setTitulo(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 focus:border-purple-400 outline-none" />
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 focus:border-teal-400 outline-none" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha</label>
               <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 focus:border-purple-400 outline-none" />
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 focus:border-teal-400 outline-none" />
             </div>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Contenido de la nota</label>
             <textarea value={contenido} onChange={e => setContenido(e.target.value)} rows={6}
               placeholder="Pega aquí las notas de Gemini u otra fuente..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 focus:border-purple-400 outline-none resize-y" />
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 focus:border-teal-400 outline-none resize-y" />
           </div>
           <div className="flex flex-wrap gap-3 items-center">
             {!pdfCargado && (
@@ -642,7 +623,7 @@ export default function NotasTareas() {
             {contenido.trim() && (
               <button onClick={() => { guardarNota(); setPdfMsg("✅ Nota guardada en historial."); }}
                 className="px-5 py-2 rounded-lg text-white text-sm font-semibold shadow hover:shadow-md transition"
-                style={{ background: PIBOX_PURPLE }}>
+                style={{ background: BRAND_COLOR }}>
                 💾 Guardar en historial
               </button>
             )}
@@ -664,7 +645,7 @@ export default function NotasTareas() {
           <div className="flex gap-2">
             <button onClick={enviarReporte}
               className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition"
-              title="Enviar reporte por email a los clientes de TaDa">
+              title="Enviar reporte por email al equipo Cruz Verde">
               📧 Enviar reporte
             </button>
             <button onClick={() => setShowNewTask(v => !v)}
@@ -675,28 +656,28 @@ export default function NotasTareas() {
         </div>
         <div className="p-5 space-y-4">
           {showNewTask && (
-            <div className="border border-purple-200 bg-purple-50 rounded-xl p-4 space-y-3">
+            <div className="border border-teal-200 bg-teal-50 rounded-xl p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Descripción</label>
                   <input value={newTarea} onChange={e => setNewTarea(e.target.value)} placeholder="Descripción de la tarea..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Responsable</label>
                   <input value={newResp} onChange={e => setNewResp(e.target.value)} placeholder="Nombre..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
                 </div>
               </div>
               <div className="flex items-end gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Fecha límite</label>
                   <input type="date" value={newFechaLim} onChange={e => setNewFechaLim(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
                 </div>
                 <button onClick={agregarTarea} disabled={!newTarea.trim()}
                   className="px-4 py-2 rounded-lg text-white text-sm font-semibold shadow transition disabled:opacity-40"
-                  style={{ background: PIBOX_PURPLE }}>
+                  style={{ background: BRAND_COLOR }}>
                   Agregar
                 </button>
                 <button onClick={() => setShowNewTask(false)}
@@ -710,8 +691,8 @@ export default function NotasTareas() {
           <div className="flex gap-2">
             {[["todas", "Todas"], ["pendientes", "Pendientes"], ["completadas", "Completadas"]].map(([k, l]) => (
               <button key={k} onClick={() => setFiltro(k)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${filtro === k ? "text-white shadow" : "text-gray-500 hover:bg-purple-50"}`}
-                style={filtro === k ? { background: PIBOX_PURPLE } : {}}>
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${filtro === k ? "text-white shadow" : "text-gray-500 hover:bg-teal-50"}`}
+                style={filtro === k ? { background: BRAND_COLOR } : {}}>
                 {l}
               </button>
             ))}
@@ -747,7 +728,7 @@ export default function NotasTareas() {
                         </td>
                         <td className="py-2 px-2 text-center">
                           <input type="checkbox" checked={t.completada} onChange={() => toggleTarea(t.id)}
-                            className="w-4 h-4 rounded cursor-pointer" style={{ accentColor: PIBOX_PURPLE }} />
+                            className="w-4 h-4 rounded cursor-pointer" style={{ accentColor: BRAND_COLOR }} />
                         </td>
                         <td className="py-2 px-2 text-center">
                           <button onClick={() => eliminarTarea(t.id)} className="text-red-400 hover:text-red-600 text-xs font-semibold transition">
@@ -780,7 +761,7 @@ export default function NotasTareas() {
                 <div key={n.id} className="border border-gray-100 rounded-xl overflow-hidden">
                   <div className="flex items-center">
                     <button onClick={() => setExpandedId(expanded ? null : n.id)}
-                      className="flex-1 text-left px-4 py-3 flex items-center justify-between hover:bg-purple-50/50 transition">
+                      className="flex-1 text-left px-4 py-3 flex items-center justify-between hover:bg-teal-50/50 transition">
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-800 text-sm truncate">{n.titulo}</p>
                         <p className="text-xs text-gray-400">{n.fecha} · hace {diasNota} días</p>

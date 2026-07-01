@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import NotasTareasCruzVerde from "./NotasTareasCruzVerde";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend, LineChart, Line,
@@ -64,9 +65,11 @@ function horaMin(dateStr) {
 }
 
 function getLinea(row) {
-  if (isInteg(row.nombre_usuario)) {
-    return row.next_day === "Next Day" ? "integ_nd" : "integ_sd";
-  }
+  const empresa = String(row.nombre_empresa || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const tipo    = String(row.tipo_servicio  || "").trim().toLowerCase();
+  const esCruzVerde = empresa === "cruz verde integracion";
+  if (esCruzVerde && tipo === "next day") return "integ_nd";
+  if (esCruzVerde || isInteg(row.nombre_usuario)) return "integ_sd";
   return "mostrador";
 }
 
@@ -78,11 +81,22 @@ function normalizeDireccion(str) {
 // ── Parseo de tiempo Excel ─────────────────────────────────────────────────
 function excelTimeToMinutes(val) {
   if (val == null || val === "") return null;
-  const str = String(val).toLowerCase();
-  if (str.includes("24 hora") || str.includes("24hora")) return "24h";
+  const str = String(val).toLowerCase().trim();
+  if (str.includes("24 hora") || str.includes("24hora") || str === "24 hours") return "24h";
+  // Texto "8:00:00 a.m." / "10:00 p.m."
+  const ampm = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)$/i);
+  if (ampm) {
+    let h = parseInt(ampm[1]);
+    const m = parseInt(ampm[2]);
+    const isPm = ampm[3].replace(/\./g, "").toLowerCase() === "pm";
+    if (h === 12) h = isPm ? 12 : 0;
+    else if (isPm) h += 12;
+    return h * 60 + m;
+  }
+  // Serial numérico de Excel (0.333 = 8am)
   const num = parseFloat(val);
-  if (isNaN(num)) return null;
-  return Math.round(num * 24 * 60);
+  if (!isNaN(num) && num >= 0 && num < 1) return Math.round(num * 24 * 60);
+  return null;
 }
 
 function minutesToHHMM(min) {
@@ -97,14 +111,21 @@ function buildHorariosMap(horarios) {
   const map = {};
   for (const h of (horarios || [])) {
     const key = normalizeDireccion(h.direccion);
-    const parseEntry = (apertura, es24h) => ({ apertura, es24h });
-    const lvAp = excelTimeToMinutes(h.lv_apertura);
-    const sabAp = excelTimeToMinutes(h.sab_apertura);
-    const domAp = excelTimeToMinutes(h.dom_apertura);
+    if (!key) continue;
+    const toSlot = (ap, ci) => {
+      const apertura = excelTimeToMinutes(ap);
+      const cierre   = excelTimeToMinutes(ci);
+      return apertura === "24h"
+        ? { apertura: null, cierre: null, es24h: true }
+        : { apertura: apertura ?? null, cierre: cierre === "24h" ? null : (cierre ?? null), es24h: false };
+    };
     map[key] = {
-      lv:  { apertura: lvAp === "24h" ? null : lvAp, es24h: lvAp === "24h" },
-      sab: { apertura: sabAp === "24h" ? null : sabAp, es24h: sabAp === "24h" },
-      dom: { apertura: domAp === "24h" ? null : domAp, es24h: domAp === "24h" },
+      nombre: h.nombre || "",
+      sucursal: h.sucursal || "",
+      lv:   toSlot(h.lv_apertura,   h.lv_cierre),
+      sab:  toSlot(h.sab_apertura,  h.sab_cierre),
+      dom:  toSlot(h.dom_apertura,  h.dom_cierre),
+      fest: toSlot(h.fest_apertura, h.fest_cierre),
     };
   }
   return map;
@@ -118,46 +139,114 @@ function procesarRows(rawRows) {
     const km = parseFloat(r.distancia_km) || 0;
     let minutos = null;
 
-    if (linea !== "integ_nd") {
-      if (r.salio_de_origen && r.llego_donde_el_cliente) {
-        const t0 = new Date(r.salio_de_origen);
-        const t1 = new Date(r.llego_donde_el_cliente);
-        if (!isNaN(t0) && !isNaN(t1) && t1 > t0) {
-          minutos = (t1 - t0) / 60000;
-        }
+    // Tiempo: desde "asignado" hasta "fecha de entrega" para todos los servicios Finalizado
+    const fechaEntrega = r["fecha de entrega"] || r.fecha_de_entrega || r.llego_donde_el_cliente || "";
+    if (r.asignado && fechaEntrega) {
+      const t0 = new Date(r.asignado);
+      const t1 = new Date(fechaEntrega);
+      if (!isNaN(t0) && !isNaN(t1) && t1 > t0) {
+        minutos = (t1 - t0) / 60000;
       }
     }
 
-    const tsalida = r.salio_de_origen ? new Date(r.salio_de_origen).getTime() : null;
-    const dayOfWeek = r.salio_de_origen ? new Date(r.salio_de_origen).getDay() : null;
+    // tsalida refleja el momento "asignado" (para cruce con horarios de tienda)
+    const tsalida = r.asignado ? new Date(r.asignado).getTime() : null;
+    const dayOfWeek = r.asignado ? new Date(r.asignado).getDay() : null;
+
+    // Buscar idServicio: primero columnas conocidas, luego patrón hex24 en cualquier campo
+    const MONGO_ID = /^[a-f0-9]{24}$/i;
+    let idServicio = String(
+      r.uuid_booking ?? r.id_servicio ?? r._id ?? r.booking_id ??
+      r["id servicio"] ?? r["id de servicio"] ?? r.uuid ?? r.id_booking ??
+      r.servicio_id ?? r.objectid ?? ""
+    ).trim();
+    if (!idServicio) {
+      for (const v of Object.values(r)) {
+        const s = String(v ?? "").trim();
+        if (MONGO_ID.test(s)) { idServicio = s; break; }
+      }
+    }
+
+    // Buscar numeroPaquete: primero columnas conocidas, luego patrón "PEDIDO" en cualquier campo
+    let numeroPaquete = String(
+      r.num_orden ?? r.numero_paquete ?? r.numero_orden ?? r.orden ?? r.guia ??
+      r.referencia ?? r["número de paquete"] ?? r["numero de paquete"] ??
+      r["número orden"] ?? r["numero orden"] ?? r["n° paquete"] ??
+      r.pedido ?? r.numero_pedido ?? r["numero de pedido"] ?? r["número de pedido"] ?? ""
+    ).trim();
+    if (!numeroPaquete) {
+      for (const v of Object.values(r)) {
+        const s = String(v ?? "").trim();
+        if (/^PEDIDO\s/i.test(s)) { numeroPaquete = s; break; }
+      }
+    }
 
     return {
-      uuid:            r.uuid_booking || "",
-      fecha:           toDateStr(r.salio_de_origen || r.iniciado),
-      mes:             toMesLabel(r.salio_de_origen || r.iniciado),
+      uuid:              r.uuid_booking || idServicio,
+      idServicio,
+      numeroPaquete,
+      fecha:             toDateStr(r.asignado || r.iniciado || r.salio_de_origen),
+      mes:               toMesLabel(r.asignado || r.iniciado || r.salio_de_origen),
       estado,
       linea,
-      ciudad:          (r.ciudad || "Sin ciudad").trim(),
-      sucursal:        (r.nombre_usuario || "Sin sucursal").trim(),
+      ciudad:            (r.ciudad || "Sin ciudad").trim(),
+      sucursal:          (r.nombre_usuario || "Sin sucursal").trim(),
       km,
       minutos,
-      horaEntrega:     horaMin(r.llego_donde_el_cliente),
-      esDevolucion:    !!(r.fecha_devolucion_paquete && String(r.fecha_devolucion_paquete).trim()),
-      esPerfecto:      estado === "Finalizado",
+      horaEntrega:       horaMin(fechaEntrega),
+      horaAsignado:      horaMin(r.asignado),
+      esDevolucion:      /^si$/i.test(String(r["finalizado fallido"] ?? r.finalizado_fallido ?? "").trim()),
+      esPerfecto:        estado === "Finalizado",
       tsalida,
       dayOfWeek,
-      direccionOrigen: (r.direccion_origen || "").trim(),
+      direccionOrigen:   (r.direccion_origen || "").trim(),
+      localidadOrigen:   (r.localidad_origen  || r["localidad origen"]  || r.barrio_origen  || r.localidad_recogida  || "").trim(),
+      localidadDestino:  (r.localidad_destino || r["localidad destino"] || r.barrio_destino || r.localidad_entrega   || "").trim(),
+      descripcion:       (r.descripcion || r["descripción"] || r.description || r.detalle || r.observacion || r.observaciones || "").trim(),
+      // Campos para tarjeta de detalle de servicio
+      iniciadoRaw:       r.asignado    ? String(r.asignado)    : "",
+      finalizadoRaw:     fechaEntrega  ? String(fechaEntrega)  : "",
+      fechaCancelacion:  r.fecha_devolucion_paquete ? String(r.fecha_devolucion_paquete) : "",
+      nombrePiloto:      String(r.nombre_piloto ?? r.piloto ?? r.driver ?? "").trim(),
+      idPiloto:          String(r.id_piloto ?? r.piloto_id ?? r.driver_id ?? "").trim(),
+      // GMV — intenta múltiples nombres de columna posibles
+      costo: parseFloat(
+        r.costo_servicio ?? r.costo ?? r.gmv ?? r.valor_servicio ?? r.valor ??
+        r["costo del servicio"] ?? r["valor del servicio"] ?? r["costo servicio"] ?? 0
+      ) || 0,
     };
   });
 }
+
+// ── Festivos Colombia 2024-2026 ────────────────────────────────────────────
+const FESTIVOS_CO = new Set([
+  // 2024
+  "2024-01-01","2024-01-08","2024-03-25","2024-03-28","2024-03-29","2024-04-01",
+  "2024-05-01","2024-05-13","2024-06-03","2024-06-10","2024-07-01","2024-07-20",
+  "2024-08-07","2024-08-19","2024-10-14","2024-11-04","2024-11-11","2024-12-08","2024-12-25",
+  // 2025
+  "2025-01-01","2025-01-06","2025-03-24","2025-04-17","2025-04-18","2025-05-01",
+  "2025-06-02","2025-06-23","2025-06-30","2025-07-20","2025-08-07","2025-08-18",
+  "2025-10-13","2025-11-03","2025-11-17","2025-12-08","2025-12-25",
+  // 2026
+  "2026-01-01","2026-01-12","2026-03-23","2026-04-02","2026-04-03","2026-05-01",
+  "2026-05-18","2026-06-08","2026-06-15","2026-07-20","2026-08-07","2026-08-17",
+  "2026-10-12","2026-11-02","2026-11-16","2026-12-08","2026-12-25",
+]);
+
+// Estados excluidos de todos los indicadores
+const ESTADOS_EXCLUIDOS = new Set(["Status [202] - Sin clasificar"]);
 
 // ── computeRowSla ──────────────────────────────────────────────────────────
 function computeRowSla(row, slaConfig, horariosMap) {
   const cfg = slaConfig || SLA_DEFAULTS;
 
   if (row.linea === "integ_nd") {
-    const slaCumplido = row.esPerfecto && row.horaEntrega !== null && row.horaEntrega <= cfg.nextDayHora * 60;
-    return { slaCumplido: row.esPerfecto && row.horaEntrega !== null ? slaCumplido : null, slaLimite: cfg.nextDayHora * 60, minutosEfectivos: null };
+    const slaLimiteND = cfg.nextDayHora * 60;
+    // hora de entrega real (fecha de entrega), no la de asignación
+    const hora = row.horaEntrega;
+    const slaCumplido = row.esPerfecto && hora !== null && hora <= slaLimiteND;
+    return { slaCumplido: row.esPerfecto && hora !== null ? slaCumplido : null, slaLimite: slaLimiteND, minutosEfectivos: row.minutos };
   }
 
   // Same Day / Mostrador
@@ -172,29 +261,33 @@ function computeRowSla(row, slaConfig, horariosMap) {
 
   let minutosEfectivos = row.minutos;
 
-  // Ajuste por horario de apertura
-  if (horariosMap && row.tsalida && row.direccionOrigen) {
+  // Para integ_sd: excluir servicios iniciados fuera del horario de la tienda
+  if (row.linea === "integ_sd" && horariosMap && row.tsalida && row.direccionOrigen) {
     const key = normalizeDireccion(row.direccionOrigen);
     const store = horariosMap[key];
     if (store) {
-      // dayOfWeek: 0=dom, 6=sab, else lv
+      const t = new Date(row.tsalida);
+      const dow = t.getDay();
+      const dateStr = t.toISOString().slice(0, 10);
+      const esFestivo = FESTIVOS_CO.has(dateStr);
       let slot;
-      if (row.dayOfWeek === 0) slot = store.dom;
-      else if (row.dayOfWeek === 6) slot = store.sab;
-      else slot = store.lv;
-
-      if (slot && !slot.es24h && slot.apertura != null) {
-        const t = new Date(row.tsalida);
-        const hourMinOfDay = t.getHours() * 60 + t.getMinutes();
-        if (hourMinOfDay < slot.apertura) {
-          minutosEfectivos = Math.max(0, row.minutos - (slot.apertura - hourMinOfDay));
+      if (esFestivo)      slot = store.fest;
+      else if (dow === 0) slot = store.dom;
+      else if (dow === 6) slot = store.sab;
+      else                slot = store.lv;
+      if (slot && !slot.es24h) {
+        const hm = t.getHours() * 60 + t.getMinutes();
+        const fueraApertura = slot.apertura != null && hm < slot.apertura;
+        const fueraCierre   = slot.cierre   != null && hm >= slot.cierre;
+        if (fueraApertura || fueraCierre) {
+          return { slaCumplido: null, slaLimite, minutosEfectivos: null, fueraHorario: true };
         }
       }
     }
   }
 
   const slaCumplido = row.esPerfecto ? minutosEfectivos <= slaLimite : null;
-  return { slaCumplido, slaLimite, minutosEfectivos };
+  return { slaCumplido, slaLimite, minutosEfectivos, fueraHorario: false };
 }
 
 // ── Persistencia ────────────────────────────────────────────────────────────
@@ -244,10 +337,16 @@ function fmtMin(m) {
   const h = Math.floor(m / 60), mn = Math.round(m % 60);
   return h > 0 ? `${h}h ${mn}min` : `${mn}min`;
 }
+function fmtDatetime(val) {
+  if (!val || String(val).trim() === "") return "—";
+  const d = new Date(val);
+  if (isNaN(d)) return String(val);
+  return d.toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" });
+}
 
 function calcMetricas(rows) {
   const total    = rows.length;
-  const entregados = rows.filter(r => r.esPerfecto).length;
+  const entregados = rows.filter(r => r.esPerfecto && !r.fueraHorario).length;
   const slaDefined = rows.filter(r => r.slaCumplido !== null);
   const slaMet   = slaDefined.filter(r => r.slaCumplido).length;
   const devol    = rows.filter(r => r.esDevolucion).length;
@@ -271,7 +370,7 @@ function groupBy(rows, key) {
 function topN(rows, key, n = 12) {
   const grp = groupBy(rows, key);
   return Object.entries(grp)
-    .map(([k, v]) => ({ name: k, total: v.length, entregados: v.filter(r=>r.esPerfecto).length, slaMet: v.filter(r=>r.slaCumplido).length, slaDef: v.filter(r=>r.slaCumplido!==null).length }))
+    .map(([k, v]) => ({ name: k, total: v.length, entregados: v.filter(r=>r.esPerfecto && !r.fueraHorario).length, slaMet: v.filter(r=>r.slaCumplido).length, slaDef: v.filter(r=>r.slaCumplido!==null).length, incumplidos: v.filter(r=>r.slaCumplido===false).length, cancelados: v.filter(r=>!r.esPerfecto).length }))
     .sort((a, b) => b.total - a.total)
     .slice(0, n);
 }
@@ -284,40 +383,52 @@ function dailyTrend(rows) {
     .map(([fecha, rs]) => ({
       fecha: fecha.slice(5),
       total: rs.length,
-      entregados: rs.filter(r=>r.esPerfecto).length,
+      entregados: rs.filter(r=>r.esPerfecto && !r.fueraHorario).length,
       sla: rs.filter(r=>r.slaCumplido!==null).length > 0
         ? Math.round(pct(rs.filter(r=>r.slaCumplido).length, rs.filter(r=>r.slaCumplido!==null).length)*100) : null,
     }));
 }
 
 function slaDistribucion(rows) {
-  const met  = rows.filter(r=>r.slaCumplido===true).length;
-  const noMet = rows.filter(r=>r.slaCumplido===false).length;
-  const sin   = rows.filter(r=>r.slaCumplido===null).length;
+  const met      = rows.filter(r => r.slaCumplido === true).length;
+  const noMet    = rows.filter(r => r.slaCumplido === false).length;
+  const cancel   = rows.filter(r => r.slaCumplido === null && !r.esPerfecto).length;
+  const na       = rows.filter(r => r.slaCumplido === null && r.esPerfecto).length;
   return [
-    { name:"Cumplido", value:met,  color:C_GRN  },
-    { name:"Incumplido", value:noMet, color:C_RED },
-    { name:"Sin datos", value:sin,  color:C_GRAY },
-  ].filter(d=>d.value>0);
+    { name: "Cumplido",               value: met,    color: C_GRN  },
+    { name: "Incumplido",             value: noMet,  color: C_RED  },
+    { name: "Cancelados / Expirados", value: cancel, color: C_AMB  },
+    { name: "N.A",                    value: na,     color: C_GRAY },
+  ].filter(d => d.value > 0);
 }
 
 function slaByRange(rows, ranges) {
   const cfg = ranges || SLA_DEFAULTS.ranges;
   const breakpoints = [0, ...cfg.map(r => r.maxKm)];
   const result = cfg.map((rng, i) => {
-    const sub = rows.filter(r => r.km > breakpoints[i] && r.km <= rng.maxKm && r.esPerfecto && r.minutos!=null);
-    const met = sub.filter(r=>r.slaCumplido===true).length;
-    const total = sub.length;
-    const avg = sub.length ? sub.reduce((a,b)=>a+b.minutos,0)/sub.length : null;
-    return { label: rng.label, lim: rng.maxKm, min: rng.min, total, met, pct: pct(met,total), avg };
+    const allInRange = rows.filter(r => r.km > breakpoints[i] && r.km <= rng.maxKm);
+    const sub        = allInRange.filter(r => r.esPerfecto && r.minutos != null);
+    const met        = sub.filter(r => r.slaCumplido === true).length;
+    const incumplidos = allInRange.filter(r => r.slaCumplido === false).length;
+    const cancelados  = allInRange.filter(r => !r.esPerfecto).length;
+    const total      = sub.length;
+    const avg        = total ? sub.reduce((a, b) => a + b.minutos, 0) / total : null;
+    return { label: rng.label, lim: rng.maxKm, min: rng.min, total, met, pct: pct(met, total), avg, incumplidos, cancelados };
   });
-  // Also add >maxKm bucket
-  const lastMax = cfg[cfg.length - 1]?.maxKm || 17;
-  const overSub = rows.filter(r => r.km > lastMax && r.esPerfecto && r.minutos!=null);
-  if (overSub.length > 0) {
-    result.push({ label: `>${lastMax} km`, lim: Infinity, min: null, total: overSub.length, met: 0, pct: 0, avg: overSub.reduce((a,b)=>a+b.minutos,0)/overSub.length });
+  // Bucket > maxKm (N.A)
+  const lastMax  = cfg[cfg.length - 1]?.maxKm || 17;
+  const overAll  = rows.filter(r => r.km > lastMax);
+  if (overAll.length > 0) {
+    const overSub = overAll.filter(r => r.esPerfecto && r.minutos != null);
+    result.push({
+      label: `> ${lastMax} km`, lim: Infinity, min: null,
+      total: overSub.length, met: 0, pct: 0,
+      avg: overSub.length ? overSub.reduce((a, b) => a + b.minutos, 0) / overSub.length : null,
+      incumplidos: overAll.filter(r => r.slaCumplido === false).length,
+      cancelados:  overAll.filter(r => !r.esPerfecto).length,
+    });
   }
-  return result.filter(r=>r.total>0);
+  return result.filter(r => r.total > 0 || r.incumplidos > 0 || r.cancelados > 0);
 }
 
 // ── KPI Card ───────────────────────────────────────────────────────────────
@@ -360,6 +471,8 @@ function TablaRanking({ rows, groupKey, title, showSla }) {
             <th className="text-right p-2 font-semibold">Total</th>
             <th className="text-right p-2 font-semibold">Entregados</th>
             <th className="text-right p-2 font-semibold">% Entrega</th>
+            {showSla && <th className="text-right p-2 font-semibold">Incumplidos</th>}
+            {showSla && <th className="text-right p-2 font-semibold">Cancelados / Exp.</th>}
             {showSla && <th className="text-right p-2 font-semibold">% SLA</th>}
           </tr>
         </thead>
@@ -374,6 +487,16 @@ function TablaRanking({ rows, groupKey, title, showSla }) {
                 {fmtPct(pct(d.entregados, d.total))}
               </td>
               {showSla && (
+                <td className="p-2 text-right font-semibold" style={{ color: d.incumplidos > 0 ? C_RED : C_GRAY }}>
+                  {fmtNum(d.incumplidos)}
+                </td>
+              )}
+              {showSla && (
+                <td className="p-2 text-right font-semibold" style={{ color: d.cancelados > 0 ? C_AMB : C_GRAY }}>
+                  {fmtNum(d.cancelados)}
+                </td>
+              )}
+              {showSla && (
                 <td className="p-2 text-right font-semibold" style={{ color: pct(d.slaMet,d.slaDef)>=0.95?C_GRN:pct(d.slaMet,d.slaDef)>=0.85?C_AMB:C_RED }}>
                   {d.slaDef > 0 ? fmtPct(pct(d.slaMet, d.slaDef)) : "—"}
                 </td>
@@ -386,8 +509,153 @@ function TablaRanking({ rows, groupKey, title, showSla }) {
   );
 }
 
+// ── Buscador de métricas por ciudad / usuario ──────────────────────────────
+function BuscadorMetricas({ rows, prevRows, prevMesLabel, sedeLabel = "Usuario" }) {
+  const [tipo,     setTipo]     = useState("ciudad");
+  const [query,    setQuery]    = useState("");
+  const [selected, setSelected] = useState(null);
+  const [focused,  setFocused]  = useState(false);
+
+  const key = tipo === "ciudad" ? "ciudad" : "sucursal";
+
+  const items = useMemo(() =>
+    [...new Set(rows.map(r => r[key]))].filter(Boolean).sort(),
+  [rows, key]);
+
+  const shown = query.trim()
+    ? items.filter(i => i.toLowerCase().includes(query.toLowerCase()))
+    : items;
+
+  const selRows     = selected ? rows.filter(r => r[key] === selected)     : [];
+  const prevSelRows = selected ? (prevRows || []).filter(r => r[key] === selected) : [];
+
+  const m  = selRows.length     ? calcMetricas(selRows)     : null;
+  const mp = prevSelRows.length ? calcMetricas(prevSelRows) : null;
+
+  const incumplidos     = selRows.filter(r => r.slaCumplido === false).length;
+  const prevIncumplidos = prevSelRows.filter(r => r.slaCumplido === false).length;
+  const cancelados      = selRows.filter(r => !r.esPerfecto).length;
+  const prevCancelados  = prevSelRows.filter(r => !r.esPerfecto).length;
+
+  const slaPct     = m  && m.slaDef  > 0 ? pct(m.slaMet,  m.slaDef)  : null;
+  const prevSlaPct = mp && mp.slaDef > 0 ? pct(mp.slaMet, mp.slaDef) : null;
+
+  function Chip({ curr, prev, lowerIsBetter, format }) {
+    if (prev == null || prev === 0) return <span className="text-gray-400 text-xs ml-1">—</span>;
+    const delta = curr - prev;
+    const pctDelta = (delta / Math.abs(prev)) * 100;
+    const good = lowerIsBetter ? delta < 0 : delta > 0;
+    const color = delta === 0 ? C_GRAY : good ? C_GRN : C_RED;
+    const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "=";
+    const label = format === "pct"
+      ? `${arrow} ${Math.abs(pctDelta).toFixed(1)}pp`
+      : `${arrow} ${Math.abs(pctDelta).toFixed(1)}%`;
+    return <span className="text-xs font-bold ml-1" style={{ color }}>{label}</span>;
+  }
+
+  function MetCard({ label, value, prev, lowerIsBetter, color, format, sub }) {
+    return (
+      <div className="rounded-xl p-3 border" style={{ borderColor: color + "33", background: color + "0A" }}>
+        <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+        <p className="text-xl font-extrabold" style={{ color }}>{value}</p>
+        {sub && <p className="text-xs text-gray-400">{sub}</p>}
+        {mp != null && prev != null && (
+          <div className="mt-1 flex items-center gap-1 text-xs text-gray-400">
+            <span>{typeof prev === "number" && format !== "pct" ? fmtNum(prev) : prev}</span>
+            <Chip curr={typeof value === "string" ? parseFloat(value) : value}
+                  prev={typeof prev === "string" ? parseFloat(prev) : prev}
+                  lowerIsBetter={lowerIsBetter} format={format} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <p className="text-sm font-bold text-gray-700 mb-3">🔍 Buscar métricas por ciudad o {sedeLabel.toLowerCase()}</p>
+
+      {/* Toggle tipo */}
+      <div className="flex gap-2 mb-3">
+        {[{ v: "ciudad", label: "🏙️ Ciudad" }, { v: "sucursal", label: `🏪 ${sedeLabel}` }].map(t => (
+          <button key={t.v} onClick={() => { setTipo(t.v); setSelected(null); setQuery(""); }}
+            className="px-3 py-1 rounded-lg text-xs font-semibold border transition"
+            style={tipo === t.v ? { background: C_TEAL, color: "#fff", border: "none" } : { borderColor: "#e5e7eb", color: "#4b5563" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Input búsqueda con desplegable completo */}
+      <div className="relative">
+        <input type="text" value={query}
+          onChange={e => { setQuery(e.target.value); setSelected(null); }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 150)}
+          placeholder={`Haz clic o escribe para filtrar ${tipo === "ciudad" ? "ciudad" : sedeLabel.toLowerCase()}...`}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+        />
+        {(focused || (query && !selected)) && shown.length > 0 && (
+          <div className="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto mt-1">
+            {shown.map(item => (
+              <button key={item}
+                onMouseDown={() => { setSelected(item); setQuery(item); setFocused(false); }}
+                className={`w-full text-left px-4 py-2 text-xs border-b border-gray-50 last:border-0 truncate transition-colors
+                  ${item === selected ? "bg-teal-50 text-teal-700 font-semibold" : "hover:bg-teal-50 hover:text-teal-700"}`}>
+                {item}
+              </button>
+            ))}
+          </div>
+        )}
+        {query && !selected && shown.length === 0 && (
+          <p className="text-xs text-gray-400 px-1 mt-1">Sin resultados para "{query}"</p>
+        )}
+      </div>
+
+      {/* Métricas del seleccionado */}
+      {selected && m && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-teal-700 truncate max-w-[70%]">{selected}</p>
+            {prevMesLabel
+              ? <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">vs {prevMesLabel}</span>
+              : <span className="text-xs text-gray-300">Sin mes anterior cargado</span>
+            }
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <MetCard label="Total servicios" value={m.total} prev={mp?.total}
+              lowerIsBetter={false} color={C_TEAL} />
+            <MetCard label="Entregados" value={m.entregados} prev={mp?.entregados}
+              lowerIsBetter={false} color={C_GRN} />
+            <MetCard label="% Entrega" value={fmtPct(pct(m.entregados, m.total))}
+              prev={mp ? fmtPct(pct(mp.entregados, mp.total)) : null}
+              lowerIsBetter={false} color={pct(m.entregados,m.total)>=0.95?C_GRN:pct(m.entregados,m.total)>=0.85?C_AMB:C_RED}
+              format="pct" />
+            <MetCard label="Incumplidos SLA" value={incumplidos} prev={mp != null ? prevIncumplidos : null}
+              lowerIsBetter={true} color={C_RED} />
+            <MetCard label="Cancelados / Exp." value={cancelados} prev={mp != null ? prevCancelados : null}
+              lowerIsBetter={true} color={C_AMB} />
+            {slaPct != null
+              ? <MetCard label="% SLA Cumplido" value={fmtPct(slaPct)}
+                  prev={prevSlaPct != null ? fmtPct(prevSlaPct) : null}
+                  lowerIsBetter={false} color={slaPct>=0.95?C_GRN:slaPct>=0.85?C_AMB:C_RED}
+                  format="pct"
+                  sub={`${fmtNum(m.slaMet)} de ${fmtNum(m.slaDef)}`} />
+              : <MetCard label="% SLA Cumplido" value="N.A" prev={null} color={C_GRAY} />
+            }
+          </div>
+        </div>
+      )}
+
+      {selected && !m && (
+        <p className="text-xs text-gray-400 mt-3">Sin datos para "{selected}"</p>
+      )}
+    </div>
+  );
+}
+
 // ── Panel de una línea de negocio ──────────────────────────────────────────
-function LineaPanel({ rows, linea }) {
+function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
   const m = calcMetricas(rows);
   const tendencia = dailyTrend(rows);
   const byCiudad  = topN(rows, "ciudad", 12).map(d => ({ ...d, pct_sla: d.slaDef > 0 ? Math.round(pct(d.slaMet,d.slaDef)*100) : null }));
@@ -395,23 +663,6 @@ function LineaPanel({ rows, linea }) {
   const slaDist    = slaDistribucion(rows);
   const slaRanges  = slaByRange(rows);
   const isNextDay  = linea === "integ_nd";
-
-  // Insights automáticos
-  const insights = [];
-  if (m.total > 0) {
-    const pctEnt = pct(m.entregados, m.total);
-    if (pctEnt < 0.85) insights.push({ tipo:"red", txt:`Tasa de entrega baja: ${fmtPct(pctEnt)}. Revisar causas de no entrega.` });
-    else if (pctEnt >= 0.95) insights.push({ tipo:"green", txt:`Excelente tasa de entrega: ${fmtPct(pctEnt)}.` });
-    if (m.slaDef > 0) {
-      const pctSla = pct(m.slaMet, m.slaDef);
-      if (pctSla < 0.80) insights.push({ tipo:"red", txt:`SLA crítico: ${fmtPct(pctSla)} de cumplimiento. Se requiere acción inmediata.` });
-      else if (pctSla >= 0.95) insights.push({ tipo:"green", txt:`SLA excelente: ${fmtPct(pctSla)} de cumplimiento.` });
-      else insights.push({ tipo:"amber", txt:`SLA moderado: ${fmtPct(pctSla)}. Margen de mejora disponible.` });
-    }
-    const topBad = byCiudad.filter(c=>pct(c.entregados,c.total)<0.85 && c.total>=10).slice(0,2);
-    if (topBad.length) insights.push({ tipo:"amber", txt:`Ciudades con baja entrega: ${topBad.map(c=>`${c.name} (${fmtPct(pct(c.entregados,c.total))})`).join(", ")}.` });
-    if (m.devol > 0) insights.push({ tipo:"amber", txt:`${fmtNum(m.devol)} devoluciones registradas (${fmtPct(pct(m.devol,m.total))} del total).` });
-  }
 
   return (
     <div className="space-y-6">
@@ -426,24 +677,9 @@ function LineaPanel({ rows, linea }) {
         }
         <KpiCard icon="🏙️" label="Ciudades" value={m.ciudades} color="#6366F1" />
         <KpiCard icon="🏪" label="Sucursales" value={m.sucursales} color="#A855F7" />
-        <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(m.devol)} color={C_AMB} />
+        <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(m.devol)} sub={m.total>0?fmtPct(pct(m.devol,m.total)):undefined} color={C_AMB} />
         <KpiCard icon="📊" label="Servicios c/SLA" value={fmtNum(m.slaDef)} color={C_GRAY} />
       </div>
-
-      {/* Insights */}
-      {insights.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <p className="text-sm font-bold text-gray-700 mb-2">💡 Insights Automáticos</p>
-          <div className="space-y-1.5">
-            {insights.map((ins, i) => (
-              <div key={i} className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg ${ins.tipo==="red"?"bg-red-50 text-red-700":ins.tipo==="green"?"bg-green-50 text-green-700":"bg-amber-50 text-amber-700"}`}>
-                <span>{ins.tipo==="red"?"🔴":ins.tipo==="green"?"🟢":"🟡"}</span>
-                <span>{ins.txt}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Tendencia diaria */}
       {tendencia.length > 1 && (
@@ -520,6 +756,102 @@ function LineaPanel({ rows, linea }) {
         </div>
       </div>
 
+      {/* Distribución por estado + Top 5 expirados/cancelados (mostrador) */}
+      {(() => {
+        // Agrupar todos los estados
+        const byEstado = Object.entries(
+          rows.reduce((acc, r) => {
+            const e = r.estado || "Sin estado";
+            acc[e] = (acc[e] || 0) + 1;
+            return acc;
+          }, {})
+        )
+          .map(([estado, n]) => ({ estado, n }))
+          .sort((a, b) => b.n - a.n);
+
+        const estadoColor = (e) => {
+          const l = e.toLowerCase();
+          if (l.includes("finaliz") && !l.includes("fallid")) return C_GRN;
+          if (l.includes("cancel"))  return C_AMB;
+          if (l.includes("expir"))   return C_RED;
+          if (l.includes("fallid"))  return "#EF4444";
+          return C_GRAY;
+        };
+
+        // Top 5 expirados por usuario (mostrador)
+        const expiradosRows = rows.filter(r => r.estado?.toLowerCase().includes("expir"));
+        const topExpirados  = Object.entries(
+          expiradosRows.reduce((acc, r) => { acc[r.sucursal] = (acc[r.sucursal] || 0) + 1; return acc; }, {})
+        ).map(([s, n]) => ({ sucursal: s.length > 25 ? s.slice(0, 25) + "…" : s, n }))
+          .sort((a, b) => b.n - a.n).slice(0, 5);
+
+        // Top 5 cancelados por usuario (mostrador)
+        const canceladosRows = rows.filter(r => r.estado?.toLowerCase().includes("cancel"));
+        const topCancelados  = Object.entries(
+          canceladosRows.reduce((acc, r) => { acc[r.sucursal] = (acc[r.sucursal] || 0) + 1; return acc; }, {})
+        ).map(([s, n]) => ({ sucursal: s.length > 25 ? s.slice(0, 25) + "…" : s, n }))
+          .sort((a, b) => b.n - a.n).slice(0, 5);
+
+        const isMostrador = linea === "mostrador";
+        const showTop5    = linea === "mostrador" || linea === "integ_sd" || linea === "integ_nd";
+        const sedeTag     = isMostrador ? "usuarios" : "sedes";
+
+        return (
+          <div className={`grid gap-4 ${showTop5 ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1"}`}>
+            {/* Distribución por estado */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <p className="text-sm font-bold text-gray-700 mb-3">📋 Servicios por estado</p>
+              {byEstado.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={byEstado} layout="vertical" margin={{ left: 8 }}>
+                    <XAxis type="number" tick={{ fontSize: 10 }} />
+                    <YAxis type="category" dataKey="estado" width={130} tick={{ fontSize: 10 }} />
+                    <Tooltip content={<TT />} />
+                    <Bar dataKey="n" name="Servicios" radius={[0, 3, 3, 0]}>
+                      {byEstado.map((d, i) => <Cell key={i} fill={estadoColor(d.estado)} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="text-gray-400 text-sm">Sin datos</p>}
+            </div>
+
+            {/* Top 5 expirados por usuario/sede */}
+            {showTop5 && (
+              <div className="bg-white rounded-xl border border-red-100 shadow-sm p-4">
+                <p className="text-sm font-bold text-gray-700 mb-3">⏰ Top 5 {sedeTag} — Expirados</p>
+                {topExpirados.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={topExpirados} layout="vertical" margin={{ left: 8 }}>
+                      <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <YAxis type="category" dataKey="sucursal" width={130} tick={{ fontSize: 9 }} />
+                      <Tooltip content={<TT />} />
+                      <Bar dataKey="n" name="Expirados" fill={C_RED} radius={[0, 3, 3, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-gray-400 text-sm">Sin servicios expirados</p>}
+              </div>
+            )}
+
+            {/* Top 5 cancelados por usuario/sede */}
+            {showTop5 && (
+              <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-4">
+                <p className="text-sm font-bold text-gray-700 mb-3">❌ Top 5 {sedeTag} — Cancelados</p>
+                {topCancelados.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={topCancelados} layout="vertical" margin={{ left: 8 }}>
+                      <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <YAxis type="category" dataKey="sucursal" width={130} tick={{ fontSize: 9 }} />
+                      <Tooltip content={<TT />} />
+                      <Bar dataKey="n" name="Cancelados" fill={C_AMB} radius={[0, 3, 3, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-gray-400 text-sm">Sin servicios cancelados</p>}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* SLA por rango de distancia (solo same day) */}
       {!isNextDay && slaRanges.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
@@ -530,8 +862,10 @@ function LineaPanel({ rows, linea }) {
                 <tr className="bg-teal-50 text-teal-700">
                   <th className="text-left p-2">Rango</th>
                   <th className="text-right p-2">Límite SLA</th>
-                  <th className="text-right p-2">Servicios</th>
+                  <th className="text-right p-2">Con SLA</th>
                   <th className="text-right p-2">Cumplidos</th>
+                  <th className="text-right p-2">Incumplidos</th>
+                  <th className="text-right p-2">Cancelados / Exp.</th>
                   <th className="text-right p-2">% SLA</th>
                   <th className="text-right p-2">Prom. tiempo</th>
                 </tr>
@@ -540,11 +874,13 @@ function LineaPanel({ rows, linea }) {
                 {slaRanges.map((r, i) => (
                   <tr key={i} className={i%2===0?"bg-white":"bg-gray-50"}>
                     <td className="p-2 font-medium">{r.label}</td>
-                    <td className="p-2 text-right">{r.min ? `${r.min} min` : "—"}</td>
+                    <td className="p-2 text-right">{r.min ? `${r.min} min` : <span className="text-gray-400 text-xs font-semibold">N.A</span>}</td>
                     <td className="p-2 text-right">{fmtNum(r.total)}</td>
-                    <td className="p-2 text-right text-green-700">{fmtNum(r.met)}</td>
-                    <td className="p-2 text-right font-semibold" style={{ color: r.pct>=0.95?C_GRN:r.pct>=0.85?C_AMB:C_RED }}>
-                      {r.min != null ? fmtPct(r.pct) : "—"}
+                    <td className="p-2 text-right text-green-700 font-semibold">{fmtNum(r.met)}</td>
+                    <td className="p-2 text-right font-semibold" style={{ color: r.incumplidos > 0 ? C_RED : C_GRAY }}>{fmtNum(r.incumplidos)}</td>
+                    <td className="p-2 text-right font-semibold" style={{ color: r.cancelados > 0 ? C_AMB : C_GRAY }}>{fmtNum(r.cancelados)}</td>
+                    <td className="p-2 text-right font-semibold" style={{ color: r.min == null ? C_GRAY : r.pct>=0.95?C_GRN:r.pct>=0.85?C_AMB:C_RED }}>
+                      {r.min != null ? fmtPct(r.pct) : <span className="text-gray-400 text-xs">N.A</span>}
                     </td>
                     <td className="p-2 text-right">{fmtMin(r.avg)}</td>
                   </tr>
@@ -555,15 +891,298 @@ function LineaPanel({ rows, linea }) {
         </div>
       )}
 
-      {/* Tablas ranking */}
+      {/* Servicios iniciados fuera de horario (solo integ_sd) */}
+      {linea === "integ_sd" && (() => {
+        const fueraHorario = rows.filter(r => r.fueraHorario);
+        if (!fueraHorario.length) return null;
+
+        // Consolidado por ciudad + dirección
+        const consolidado = [];
+        const mapa = {};
+        fueraHorario.forEach(r => {
+          const k = `${r.ciudad}||${r.direccionOrigen || "Sin dirección"}`;
+          if (!mapa[k]) {
+            mapa[k] = { ciudad: r.ciudad, direccion: r.direccionOrigen || "Sin dirección", total: 0, finalizados: 0, expirados: 0, cancelados: 0 };
+            consolidado.push(mapa[k]);
+          }
+          mapa[k].total += 1;
+          const est = (r.estado || "").toLowerCase();
+          if (est === "finalizado")          mapa[k].finalizados += 1;
+          else if (est.includes("expir"))    mapa[k].expirados   += 1;
+          else if (est.includes("cancel"))   mapa[k].cancelados  += 1;
+        });
+        consolidado.sort((a, b) => b.total - a.total);
+
+        const descargarDetalle = () => {
+          const data = fueraHorario.map(r => ({
+            "ID Servicio":               r.idServicio || r.uuid || "—",
+            "Hora Asignado":             fmtDatetime(r.iniciadoRaw),
+            "Estado":                    r.estado || "—",
+            "Fecha Cancelación Paquete": fmtDatetime(r.fechaCancelacion),
+            "Fecha Finalizó Servicio":   fmtDatetime(r.finalizadoRaw),
+            "Ciudad":                    r.ciudad,
+            "Dirección de Origen":       r.direccionOrigen || "—",
+          }));
+          const ws = XLSX.utils.json_to_sheet(data);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Fuera de Horario");
+          XLSX.writeFile(wb, "fuera_de_horario_detalle.xlsx");
+        };
+
+        return (
+          <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-500 text-base">⚠️</span>
+                <p className="text-sm font-bold text-amber-700">
+                  Servicios asignados fuera de horario ({fueraHorario.length})
+                </p>
+              </div>
+              <button
+                onClick={descargarDetalle}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition"
+                style={{ background: C_TEAL }}
+              >
+                ⬇️ Descargar detalle
+              </button>
+            </div>
+            <p className="text-xs text-amber-600 mb-3">
+              Servicios asignados fuera del horario de atención de la tienda — excluidos del indicador de tiempos perfectos.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-amber-50 text-amber-800">
+                    <th className="text-left p-2 font-semibold">Ciudad</th>
+                    <th className="text-left p-2 font-semibold">Dirección</th>
+                    <th className="text-center p-2 font-semibold">Total</th>
+                    <th className="text-center p-2 font-semibold text-green-700">Finalizados</th>
+                    <th className="text-center p-2 font-semibold text-red-600">Expirados</th>
+                    <th className="text-center p-2 font-semibold text-amber-600">Cancelados</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {consolidado.map((g, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-amber-50/40"}>
+                      <td className="p-2 font-semibold text-gray-700">{g.ciudad}</td>
+                      <td className="p-2 text-gray-600 max-w-[260px] truncate" title={g.direccion}>{g.direccion}</td>
+                      <td className="p-2 text-center font-bold text-amber-700">{g.total}</td>
+                      <td className="p-2 text-center font-semibold text-green-700">{g.finalizados || "—"}</td>
+                      <td className="p-2 text-center font-semibold text-red-600">{g.expirados   || "—"}</td>
+                      <td className="p-2 text-center font-semibold text-amber-600">{g.cancelados  || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Ranking por ciudad + Buscador de métricas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <TablaRanking rows={rows} groupKey="ciudad" title="🏙️ Ranking por ciudad" showSla={!isNextDay} />
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <TablaRanking rows={rows} groupKey="sucursal" title="🏪 Ranking por sucursal (top 15)" showSla={!isNextDay} />
-        </div>
+        <BuscadorMetricas rows={rows} prevRows={prevRows} prevMesLabel={prevMesLabel}
+          sedeLabel={linea === "mostrador" ? "Usuario" : "Sede"} />
       </div>
+
+      {/* Top 5 tiendas mostrador */}
+      {linea === "mostrador" && (() => {
+        // Agrupar por sucursal y calcular métricas
+        const grp = groupBy(rows, "sucursal");
+        const ranking = Object.entries(grp)
+          .map(([nombre, rs]) => ({
+            nombre,
+            total:       rs.length,
+            entregados:  rs.filter(r => r.esPerfecto && !r.fueraHorario).length,
+            incumplidos: rs.filter(r => r.slaCumplido === false).length,
+            cancelados:  rs.filter(r => !r.esPerfecto).length,
+            slaMet:      rs.filter(r => r.slaCumplido === true).length,
+            slaDef:      rs.filter(r => r.slaCumplido !== null).length,
+            gmv:         rs.reduce((s, r) => s + (r.costo || 0), 0),
+          }))
+          .sort((a, b) => b.total - a.total);
+
+        const top5 = ranking.slice(0, 5);
+        const hasGmv = ranking.some(r => r.gmv > 0);
+
+        function descargarRanking() {
+          const headers = ["#", "Tienda / Usuario", "Total servicios", "Entregados",
+            "% Entrega", "Incumplidos", "Cancelados / Exp.", "% SLA cumplido", "GMV ($)"];
+          const dataRows = ranking.map((r, i) => [
+            i + 1,
+            r.nombre,
+            r.total,
+            r.entregados,
+            (pct(r.entregados, r.total) * 100).toFixed(1) + "%",
+            r.incumplidos,
+            r.cancelados,
+            r.slaDef > 0 ? (pct(r.slaMet, r.slaDef) * 100).toFixed(1) + "%" : "N.A",
+            r.gmv > 0 ? r.gmv.toFixed(0) : "—",
+          ]);
+          const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+          ws["!cols"] = [6,38,18,16,12,14,18,16,14].map(w => ({ wch: w }));
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Ranking Tiendas");
+          XLSX.writeFile(wb, `ranking-tiendas-mostrador.xlsx`);
+        }
+
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-bold text-gray-700">🏆 Top 5 tiendas — Mayor volumen</p>
+              <button onClick={descargarRanking}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
+                style={{ background: C_TEAL }}>
+                ⬇ Descargar ranking completo
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-teal-50 text-teal-700">
+                    <th className="text-left p-2">#</th>
+                    <th className="text-left p-2">Tienda / Usuario</th>
+                    <th className="text-right p-2">Total</th>
+                    <th className="text-right p-2">Entregados</th>
+                    <th className="text-right p-2">% Entrega</th>
+                    <th className="text-right p-2">Incumplidos</th>
+                    <th className="text-right p-2">Cancelados / Exp.</th>
+                    <th className="text-right p-2">% SLA</th>
+                    {hasGmv && <th className="text-right p-2">GMV ($)</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {top5.map((r, i) => (
+                    <tr key={r.nombre} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <td className="p-2 font-bold text-teal-600">{i + 1}</td>
+                      <td className="p-2 font-medium text-gray-700 max-w-[160px] truncate" title={r.nombre}>{r.nombre}</td>
+                      <td className="p-2 text-right font-semibold">{fmtNum(r.total)}</td>
+                      <td className="p-2 text-right text-green-700 font-semibold">{fmtNum(r.entregados)}</td>
+                      <td className="p-2 text-right font-semibold"
+                        style={{ color: pct(r.entregados,r.total)>=0.95?C_GRN:pct(r.entregados,r.total)>=0.85?C_AMB:C_RED }}>
+                        {fmtPct(pct(r.entregados, r.total))}
+                      </td>
+                      <td className="p-2 text-right font-semibold" style={{ color: r.incumplidos > 0 ? C_RED : C_GRAY }}>
+                        {fmtNum(r.incumplidos)}
+                      </td>
+                      <td className="p-2 text-right font-semibold" style={{ color: r.cancelados > 0 ? C_AMB : C_GRAY }}>
+                        {fmtNum(r.cancelados)}
+                      </td>
+                      <td className="p-2 text-right font-semibold"
+                        style={{ color: r.slaDef===0?C_GRAY:pct(r.slaMet,r.slaDef)>=0.95?C_GRN:pct(r.slaMet,r.slaDef)>=0.85?C_AMB:C_RED }}>
+                        {r.slaDef > 0 ? fmtPct(pct(r.slaMet, r.slaDef)) : "—"}
+                      </td>
+                      {hasGmv && (
+                        <td className="p-2 text-right text-teal-700 font-semibold">
+                          {r.gmv > 0 ? `$${fmtNum(Math.round(r.gmv))}` : "—"}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!hasGmv && (
+              <p className="text-xs text-gray-400 mt-2 italic">
+                * GMV no disponible — re-sube el archivo para incluirlo en la descarga.
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Top 5 devoluciones por usuario / sede */}
+      {(() => {
+        const devolRows = rows.filter(r => r.esDevolucion);
+        const sedeLabel = linea === "mostrador" ? "Usuario" : "Sede";
+
+        // Agrupar devoluciones por sucursal
+        const grp = {};
+        devolRows.forEach(r => {
+          const k = r.sucursal || "Sin " + sedeLabel.toLowerCase();
+          if (!grp[k]) grp[k] = { nombre: k, total: 0, rows: [] };
+          grp[k].total++;
+          grp[k].rows.push(r);
+        });
+        const ranking = Object.values(grp).sort((a,b) => b.total - a.total);
+        const top5    = ranking.slice(0, 5);
+
+        const descargar = () => {
+          const ws = XLSX.utils.json_to_sheet(devolRows.map(r => ({
+            [sedeLabel]:         r.sucursal       || "—",
+            "Ciudad":            r.ciudad         || "—",
+            "ID Servicio":       r.idServicio     || "—",
+            "Número paquete":    r.numeroPaquete  || "—",
+            "Descripción":       r.descripcion    || "—",
+            "Estado":            r.estado         || "—",
+            "Fecha asignado":    r.iniciadoRaw    || "—",
+            "Fecha entrega":     r.finalizadoRaw  || "—",
+            "Fecha cancelación": r.fechaCancelacion || "—",
+            "Piloto":            r.nombrePiloto   || "—",
+          })));
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Devoluciones");
+          XLSX.writeFile(wb, `devoluciones-${linea}.xlsx`);
+        };
+
+        if (!devolRows.length) return null;
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-bold text-gray-700">↩️ Ranking de devoluciones por {sedeLabel}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Mayor número de devoluciones — requieren atención</p>
+              </div>
+              <button onClick={descargar}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-teal-300 text-teal-700 hover:bg-teal-50 transition-all">
+                ⬇️ Descargar informe completo
+              </button>
+            </div>
+            <div className="space-y-2">
+              {top5.map((s, i) => {
+                const pctDevol = pct(s.total, m.total);
+                // Descripciones únicas de las devoluciones de esta sede
+                const descs = [...new Set(s.rows.map(r => r.descripcion).filter(Boolean))].slice(0, 3);
+                return (
+                  <div key={s.nombre} className="rounded-xl px-4 py-3"
+                    style={{ background:"#FEF2F2", border:"1px solid #EF444422" }}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-extrabold w-7 text-center flex-shrink-0"
+                        style={{ color: C_RED }}>#{i+1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-gray-800 truncate">{s.nombre}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-extrabold" style={{ color: C_RED }}>{fmtNum(s.total)} dev.</p>
+                        <p className="text-[11px] font-semibold text-gray-400">{fmtPct(pctDevol)} del total</p>
+                      </div>
+                    </div>
+                    {descs.length > 0 && (
+                      <div className="mt-2 ml-10 flex flex-wrap gap-1">
+                        {descs.map((d, di) => (
+                          <span key={di} className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-0.5 truncate max-w-xs">
+                            {d}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {ranking.length > 5 && (
+              <p className="text-[11px] text-gray-400 text-center mt-3">
+                +{ranking.length - 5} {sedeLabel.toLowerCase()}s más · descarga el informe para ver el detalle completo
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+      <HeatmapDiaHora rows={rows} />
     </div>
   );
 }
@@ -657,6 +1276,92 @@ function DevolucionesPanel({ rows }) {
 }
 
 // ── Panel Resumen General ──────────────────────────────────────────────────
+// ── HeatmapDiaHora ─────────────────────────────────────────────────────────
+const DIAS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+const DOW_ORDER = [1,2,3,4,5,6,0]; // lunes→domingo
+
+function HeatmapDiaHora({ rows }) {
+  const matriz = useMemo(() => {
+    const m = {};
+    rows.forEach(r => {
+      if (!r.tsalida) return;
+      const d = new Date(r.tsalida);
+      const dow = d.getDay();
+      const h   = d.getHours();
+      const k   = `${dow}_${h}`;
+      m[k] = (m[k] || 0) + 1;
+    });
+    return m;
+  }, [rows]);
+
+  const horas = useMemo(() => {
+    const hs = new Set();
+    Object.keys(matriz).forEach(k => hs.add(Number(k.split("_")[1])));
+    return [...hs].sort((a,b) => a-b);
+  }, [matriz]);
+
+  const maxVal = useMemo(() => Math.max(1, ...Object.values(matriz)), [matriz]);
+
+  if (!horas.length) return null;
+
+  const cellBg = (val) => {
+    if (!val) return "transparent";
+    const t = val / maxVal;
+    if (t >= 0.85) return "#5B21B6";
+    if (t >= 0.60) return "#7C3AED";
+    if (t >= 0.40) return "#8B5CF6";
+    if (t >= 0.20) return "#A78BFA";
+    return "#DDD6FE";
+  };
+  const cellColor = (val) => {
+    if (!val) return "inherit";
+    const t = val / maxVal;
+    return t >= 0.40 ? "#fff" : "#4C1D95";
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <p className="text-sm font-bold text-gray-700 mb-4">📊 Servicios asignados por día y hora</p>
+      <div className="overflow-x-auto">
+        <table className="text-xs border-collapse w-full">
+          <thead>
+            <tr>
+              <th className="text-left p-2 text-gray-500 font-semibold whitespace-nowrap">Día / Hora</th>
+              {horas.map(h => (
+                <th key={h} className="p-2 text-gray-500 font-semibold text-center whitespace-nowrap">
+                  {String(h).padStart(2,"0")}:00
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {DOW_ORDER.map((dow, di) => (
+              <tr key={dow}>
+                <td className="p-2 font-bold text-gray-700 whitespace-nowrap">{DIAS[di]}</td>
+                {horas.map(h => {
+                  const val = matriz[`${dow}_${h}`] || 0;
+                  return (
+                    <td key={h} className="p-1 text-center">
+                      {val > 0 ? (
+                        <span className="inline-flex items-center justify-center rounded-lg min-w-[2rem] px-2 py-1 font-bold"
+                          style={{ background: cellBg(val), color: cellColor(val) }}>
+                          {val}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ResumenPanel({ rows }) {
   const lineas = [
     { key:"mostrador",  label:"Cruz Verde Mostrador", color:C_TEAL  },
@@ -679,7 +1384,7 @@ function ResumenPanel({ rows }) {
         <KpiCard icon="⏱️" label="SLA global" value={mTotal.slaDef>0?fmtPct(pct(mTotal.slaMet,mTotal.slaDef)):"—"} sub={`${fmtNum(mTotal.slaMet)} de ${fmtNum(mTotal.slaDef)}`} color={C_CYAN} />
         <KpiCard icon="🏙️" label="Ciudades" value={mTotal.ciudades} color="#6366F1" />
         <KpiCard icon="🏪" label="Sucursales" value={mTotal.sucursales} color="#A855F7" />
-        <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(mTotal.devol)} color={C_AMB} />
+        <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(mTotal.devol)} sub={mTotal.total>0?fmtPct(pct(mTotal.devol,mTotal.total)):undefined} color={C_AMB} />
         <KpiCard icon="📊" label="Con SLA medido" value={fmtNum(mTotal.slaDef)} color={C_GRAY} />
       </div>
 
@@ -781,12 +1486,19 @@ function ResumenPanel({ rows }) {
           </table>
         </div>
       </div>
+      <HeatmapDiaHora rows={rows} />
+      <BuscadorServicio rows={rows} />
     </div>
   );
 }
 
 // ── AdminPanel ─────────────────────────────────────────────────────────────
-function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
+const SK_HORARIOS_SD = "pibox_cv_horarios_sd";
+function loadHorariosSd() {
+  try { return JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null"); } catch { return null; }
+}
+
+function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
   // ── Sección 1: Directorio Cruz Verde ──
   const [dirUploadMsg, setDirUploadMsg] = useState(null);
   const [dirLoading,   setDirLoading]   = useState(false);
@@ -803,52 +1515,32 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
       const buf = await file.arrayBuffer();
       const wb  = XLSX.read(buf, { type: "array" });
 
-      // Hoja1: tiendas
-      const ws1 = wb.Sheets["Hoja1"] || wb.Sheets[wb.SheetNames[0]];
-      const raw1 = XLSX.utils.sheet_to_json(ws1, { defval: "" });
+      // Hoja "Directorio Consolidado" (o primera hoja disponible)
+      const ws = wb.Sheets["Directorio Consolidado"] || wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
-      const tiendaMap = new Map();
-      for (const r of raw1) {
-        const key = (r.Usuario_Tienda || r.usuario_tienda || "").toString().trim();
-        if (!key) continue;
-        if (!tiendaMap.has(key)) {
-          tiendaMap.set(key, {
-            tienda:    key,
-            empresa:   (r.Empresa || r.empresa || "").trim(),
-            ciudad:    (r.Ciudad || r.ciudad || "").trim(),
-            direccion: (r.Direccion_Salida || r.direccion_salida || r.Direccion || r.direccion || "").trim(),
-            nit:       (r.NIT || r.nit || "").toString().trim(),
-            kam:       (r.KAM || r.kam || "").trim(),
-          });
-        }
-      }
-      const tiendas = Array.from(tiendaMap.values());
+      const tiendas = rows.map(r => ({
+        codigo:       String(r["Cod. Suc"] ?? "").trim(),
+        nombre:       String(r["Nombre Sucursal"] ?? "").trim(),
+        departamento: String(r["Departamento"] ?? "").trim(),
+        ciudad:       String(r["Ciudad"] ?? "").trim(),
+        direccion:    String(r["Dirección"] ?? r["Direccion"] ?? "").trim(),
+        correo:       String(r["Correo Sucursal"] ?? "").trim(),
+        celular:      String(r["Celular Corporativo"] ?? "").trim(),
+        lv_apertura:  String(r["Apertura\n  Lunes a viernes"] ?? r["Apertura Lunes a viernes"] ?? "").trim(),
+        lv_cierre:    String(r["Cierre \n Lunes a viernes"]   ?? r["Cierre Lunes a viernes"]   ?? "").trim(),
+        sab_apertura: String(r["Apertura \n Sábado"]  ?? r["Apertura Sábado"]  ?? "").trim(),
+        sab_cierre:   String(r["Cierre \n Sábado"]    ?? r["Cierre Sábado"]    ?? "").trim(),
+        dom_apertura: String(r["Apertura \n Domingo"] ?? r["Apertura Domingo"] ?? "").trim(),
+        dom_cierre:   String(r["Cierre \n Domingo"]   ?? r["Cierre Domingo"]   ?? "").trim(),
+        fest_apertura:String(r["Apertura \n Festivos"]?? r["Apertura Festivos"]?? "").trim(),
+        fest_cierre:  String(r["Cierre \n Festivos"]  ?? r["Cierre Festivos"]  ?? "").trim(),
+      })).filter(t => t.codigo || t.nombre);
 
-      // Hoja3: horarios
-      const ws3 = wb.Sheets["Hoja3"] || wb.Sheets[wb.SheetNames[2]] || null;
-      let horarios = [];
-      if (ws3) {
-        const raw3 = XLSX.utils.sheet_to_json(ws3, { defval: "" });
-        horarios = raw3.map(r => ({
-          direccion:     (r["DIRECCION TRUMP"] || r.direccion_trump || r.Direccion || "").toString().trim(),
-          sucursal:      (r["SUCURSAL"] || r.sucursal || "").toString().trim(),
-          nombre:        (r["NOMBRE TIENDA"] || r.nombre_tienda || r.Nombre || "").toString().trim(),
-          lv_apertura:   r["L-V Apertura"] ?? r["LV_Apertura"] ?? r["APERTURA L-V"] ?? r["apertura_lv"] ?? "",
-          lv_cierre:     r["L-V Cierre"]   ?? r["LV_Cierre"]   ?? r["CIERRE L-V"]   ?? r["cierre_lv"]   ?? "",
-          sab_apertura:  r["Sab Apertura"]  ?? r["SAB_Apertura"] ?? r["APERTURA SAB"] ?? r["apertura_sab"] ?? "",
-          sab_cierre:    r["Sab Cierre"]    ?? r["SAB_Cierre"]   ?? r["CIERRE SAB"]   ?? r["cierre_sab"]   ?? "",
-          dom_apertura:  r["Dom Apertura"]  ?? r["DOM_Apertura"] ?? r["APERTURA DOM"] ?? r["apertura_dom"] ?? "",
-          dom_cierre:    r["Dom Cierre"]    ?? r["DOM_Cierre"]   ?? r["CIERRE DOM"]   ?? r["cierre_dom"]   ?? "",
-          fest_apertura: r["Festivos Apertura"] ?? r["APERTURA FESTIVOS"] ?? r["apertura_fest"] ?? "",
-          fest_cierre:   r["Festivos Cierre"]   ?? r["CIERRE FESTIVOS"]   ?? r["cierre_fest"]   ?? "",
-        })).filter(h => h.direccion);
-      }
-
-      const newDir = { tiendas, horarios, uploaded: new Date().toISOString() };
+      const newDir = { tiendas, horarios: directorio?.horarios || [], uploaded: new Date().toISOString() };
       localStorage.setItem("pibox_cv_directorio", JSON.stringify(newDir));
       setDirectorio(newDir);
-      setHorariosMap(buildHorariosMap(horarios));
-      setDirUploadMsg({ ok: true, txt: `✅ ${tiendas.length} tiendas y ${horarios.length} horarios cargados correctamente.` });
+      setDirUploadMsg({ ok: true, txt: `✅ ${tiendas.length} sucursales cargadas correctamente.` });
     } catch (err) {
       setDirUploadMsg({ ok: false, txt: `❌ Error al procesar: ${err.message}` });
     } finally {
@@ -860,15 +1552,86 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
 
   const tiendas = directorio?.tiendas || [];
   const filteredTiendas = dirSearch.trim()
-    ? tiendas.filter(t =>
-        t.tienda.toLowerCase().includes(dirSearch.toLowerCase()) ||
-        t.ciudad.toLowerCase().includes(dirSearch.toLowerCase()) ||
-        t.empresa.toLowerCase().includes(dirSearch.toLowerCase())
-      )
+    ? tiendas.filter(t => {
+        const q = dirSearch.toLowerCase();
+        return t.codigo.toLowerCase().includes(q) ||
+          t.nombre.toLowerCase().includes(q) ||
+          t.ciudad.toLowerCase().includes(q) ||
+          t.departamento.toLowerCase().includes(q) ||
+          t.correo.toLowerCase().includes(q);
+      })
     : tiendas;
 
-  // ── Sección 2: Horarios (de Hoja3) ──
-  const horarios = directorio?.horarios || [];
+  // ── Sección 2: Horarios Same Day ──
+  const [horariosSd, setHorariosSd] = useState(() => loadHorariosSd());
+  const [sdLoading, setSdLoading] = useState(false);
+  const [sdMsg, setSdMsg] = useState(null);
+  const [sdSearch, setSdSearch] = useState("");
+
+  const handleHorariosSdUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSdLoading(true); setSdMsg(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      // Hoja3 o primera hoja disponible
+      const ws = wb.Sheets["Hoja3"] || wb.Sheets[wb.SheetNames[0]];
+      // Leer como arrays para tomar la primera fila como headers reales
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (raw.length < 2) throw new Error("El archivo está vacío o no tiene datos.");
+      // Primera fila = headers
+      const headers = raw[0].map(h => String(h).trim());
+      const col = (row, ...names) => {
+        for (const n of names) {
+          const idx = headers.findIndex(h => h.toLowerCase().replace(/[\s\r\n]+/g," ").includes(n.toLowerCase()));
+          if (idx >= 0 && row[idx] !== "" && row[idx] !== undefined) return String(row[idx]).trim();
+        }
+        return "";
+      };
+      const horarios = raw.slice(1).map(row => ({
+        direccion:    col(row, "DIRECCION TRUMP", "DIRECCION", "dirección trump"),
+        sucursal:     col(row, "SUCURSAL", "sucursal"),
+        nombre:       col(row, "NOMBRE TIENDA", "nombre tienda", "nombre"),
+        lv_apertura:  col(row, "Apertura Lunes", "apertura lunes"),
+        lv_cierre:    col(row, "Cierre Lunes",   "cierre lunes"),
+        sab_apertura: col(row, "Apertura Sábado","apertura sab","apertura sabado"),
+        sab_cierre:   col(row, "Cierre Sábado",  "cierre sab","cierre sabado"),
+        dom_apertura: col(row, "Apertura Domingo","apertura dom"),
+        dom_cierre:   col(row, "Cierre Domingo",  "cierre dom"),
+        fest_apertura:col(row, "Apertura Festivos","apertura fest"),
+        fest_cierre:  col(row, "Cierre Festivos",  "cierre fest"),
+      })).filter(h => h.direccion);
+      localStorage.setItem(SK_HORARIOS_SD, JSON.stringify({ horarios, uploaded: new Date().toISOString() }));
+      setHorariosSd({ horarios, uploaded: new Date().toISOString() });
+      setHorariosMap(buildHorariosMap(horarios));
+      setSdMsg({ ok: true, txt: `✅ ${horarios.length} tiendas cargadas con horarios.` });
+    } catch (err) {
+      setSdMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+    } finally {
+      setSdLoading(false);
+      e.target.value = "";
+      setTimeout(() => setSdMsg(null), 7000);
+    }
+  };
+
+  // Alertas: direcciones en datos Same Day que no están en el directorio de horarios
+  const horarios = horariosSd?.horarios || [];
+  const horariosKeys = useMemo(() => new Set(horarios.map(h => normalizeDireccion(h.direccion))), [horarios]);
+  const direccionesFaltantes = useMemo(() => {
+    if (!rows?.length || !horarios.length) return [];
+    const sdRows = rows.filter(r => r.linea === "integ_sd");
+    const unique = [...new Set(sdRows.map(r => r.direccionOrigen).filter(Boolean))];
+    return unique.filter(d => d && !horariosKeys.has(normalizeDireccion(d))).sort();
+  }, [rows, horariosKeys]);
+
+  // Filtro de búsqueda en tabla de horarios
+  const filteredHorarios = sdSearch.trim()
+    ? horarios.filter(h => {
+        const q = sdSearch.toLowerCase();
+        return h.direccion.toLowerCase().includes(q) || h.nombre.toLowerCase().includes(q) || String(h.sucursal).includes(q);
+      })
+    : horarios;
 
   // ── Sección 3: Configuración SLA ──
   const [localSla, setLocalSla] = useState(() => getSlaConfig());
@@ -935,11 +1698,26 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
       <div className={cardCls}>
         <p className="text-sm font-bold text-gray-700 mb-4">📒 Directorio Cruz Verde</p>
         <div className="flex flex-wrap items-center gap-3 mb-4">
+          {/* Botón subir — sólo si no hay directorio cargado, o siempre visible para reemplazar */}
           <label className={`cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow transition ${dirLoading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90"}`}
             style={btnPrimary}>
-            {dirLoading ? "⏳ Procesando..." : "📂 Subir DIRECTORIO SAME DAY CV.xlsx"}
+            {dirLoading ? "⏳ Procesando..." : directorio ? "📂 Reemplazar directorio" : "📂 Subir DIRECTORIO SAME DAY CV.xlsx"}
             <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleDirectorioUpload} disabled={dirLoading} />
           </label>
+
+          {/* Botón eliminar */}
+          {directorio && (
+            <button
+              onClick={() => {
+                localStorage.removeItem("pibox_cv_directorio");
+                setDirectorio(null);
+                setDirSearch("");
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 hover:border-red-300 transition">
+              🗑 Eliminar directorio
+            </button>
+          )}
+
           {tiendas.length > 0 && (
             <span className="text-xs text-teal-700 font-semibold bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
               {tiendas.length} tiendas cargadas
@@ -955,88 +1733,192 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
           <p className={`text-sm font-semibold mb-3 ${dirUploadMsg.ok ? "text-green-600" : "text-red-600"}`}>{dirUploadMsg.txt}</p>
         )}
 
-        {tiendas.length > 0 && (
+        {directorio && (
           <>
-            <input
-              type="text"
-              placeholder="Buscar por tienda, ciudad o empresa..."
-              value={dirSearch}
-              onChange={e => setDirSearch(e.target.value)}
-              className={`${inputCls} w-full mb-3`}
-            />
-            <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-lg border border-gray-100">
-              <table className="w-full text-xs border-collapse">
-                <thead className="sticky top-0 z-10">
-                  <tr className="bg-teal-50 text-teal-700">
-                    <th className="text-left p-2 font-semibold">Tienda</th>
-                    <th className="text-left p-2 font-semibold">Empresa</th>
-                    <th className="text-left p-2 font-semibold">Ciudad</th>
-                    <th className="text-left p-2 font-semibold">Dirección</th>
-                    <th className="text-left p-2 font-semibold">NIT</th>
-                    <th className="text-left p-2 font-semibold">KAM</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTiendas.slice(0, 200).map((t, i) => (
-                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="p-2 font-medium text-gray-700 max-w-[160px] truncate" title={t.tienda}>{t.tienda}</td>
-                      <td className="p-2 text-gray-600 max-w-[120px] truncate" title={t.empresa}>{t.empresa}</td>
-                      <td className="p-2 text-gray-600">{t.ciudad}</td>
-                      <td className="p-2 text-gray-500 max-w-[180px] truncate" title={t.direccion}>{t.direccion}</td>
-                      <td className="p-2 text-gray-500">{t.nit}</td>
-                      <td className="p-2 text-gray-600">{t.kam}</td>
-                    </tr>
-                  ))}
-                  {filteredTiendas.length > 200 && (
-                    <tr><td colSpan={6} className="p-2 text-center text-gray-400 text-xs">Mostrando 200 de {filteredTiendas.length} tiendas. Usa la búsqueda para filtrar.</td></tr>
-                  )}
-                  {filteredTiendas.length === 0 && (
-                    <tr><td colSpan={6} className="p-3 text-center text-gray-400">Sin resultados</td></tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="relative mb-3">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+              <input
+                type="text"
+                placeholder="Buscar por código o nombre de sucursal, ciudad, NIT, KAM..."
+                value={dirSearch}
+                onChange={e => setDirSearch(e.target.value)}
+                className={`${inputCls} w-full pl-9`}
+              />
+              {dirSearch && (
+                <button onClick={() => setDirSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+              )}
             </div>
+            {tiendas.length === 0 && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                ⚠️ No se encontraron tiendas en el directorio cargado. Usa <strong>Reemplazar directorio</strong> para subir el archivo nuevamente.
+              </p>
+            )}
+            {dirSearch && tiendas.length > 0 && (
+              <p className="text-xs text-gray-400 mb-2">
+                {filteredTiendas.length} resultado{filteredTiendas.length !== 1 ? "s" : ""} de {tiendas.length}
+              </p>
+            )}
+            {tiendas.length > 0 && (
+              <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded-lg border border-gray-100">
+                <table className="text-xs border-collapse" style={{ minWidth: "1100px", width: "100%" }}>
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-teal-50 text-teal-700">
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Cod. Suc</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Nombre Sucursal</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Departamento</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Ciudad</th>
+                      <th className="text-left p-2 font-semibold">Dirección</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Correo</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Celular</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">L-V</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Sáb</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Dom</th>
+                      <th className="text-left p-2 font-semibold whitespace-nowrap">Fest</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTiendas.slice(0, 300).map((t, i) => (
+                      <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="p-2 font-bold text-teal-700 whitespace-nowrap">{t.codigo}</td>
+                        <td className="p-2 font-medium text-gray-800 whitespace-nowrap">{t.nombre}</td>
+                        <td className="p-2 text-gray-600 whitespace-nowrap">{t.departamento}</td>
+                        <td className="p-2 text-gray-600 whitespace-nowrap">{t.ciudad}</td>
+                        <td className="p-2 text-gray-500">{t.direccion}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.correo}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.celular}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.lv_apertura && t.lv_cierre ? `${t.lv_apertura} – ${t.lv_cierre}` : "—"}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.sab_apertura && t.sab_cierre ? `${t.sab_apertura} – ${t.sab_cierre}` : "—"}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.dom_apertura && t.dom_cierre ? `${t.dom_apertura} – ${t.dom_cierre}` : "—"}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.fest_apertura && t.fest_cierre ? `${t.fest_apertura} – ${t.fest_cierre}` : "—"}</td>
+                      </tr>
+                    ))}
+                    {filteredTiendas.length > 300 && (
+                      <tr><td colSpan={11} className="p-2 text-center text-gray-400 text-xs">
+                        Mostrando 300 de {filteredTiendas.length}. Refina la búsqueda para ver menos resultados.
+                      </td></tr>
+                    )}
+                    {filteredTiendas.length === 0 && dirSearch && (
+                      <tr><td colSpan={11} className="p-3 text-center text-gray-400">Sin resultados para "{dirSearch}"</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* ── Sección 2: Horarios Tiendas ── */}
+      {/* ── Sección 2: Horarios Tiendas Same Day ── */}
       <div className={cardCls}>
-        <p className="text-sm font-bold text-gray-700 mb-2">🕐 Horarios Tiendas - Integración Same Day</p>
-        <p className="text-xs text-gray-500 mb-4">
-          Estos horarios se usan para ajustar el tiempo de inicio cuando la tienda aún no ha abierto.
-          Se cargan automáticamente al subir el Directorio (Hoja3).
+        <p className="text-sm font-bold text-gray-700 mb-1">🕐 Horarios Same Day — DIRECCION TRUMP</p>
+        <p className="text-xs text-gray-400 mb-4">
+          Ajusta el inicio del tiempo perfecto según la apertura de cada tienda. La clave de cruce es la columna <strong>DIRECCION TRUMP</strong>.
         </p>
-        {horarios.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">Sube el directorio para cargar los horarios.</p>
-        ) : (
+
+        {/* Botones de acción */}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <label className={`cursor-pointer inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white text-sm font-bold shadow transition ${sdLoading ? "opacity-60 cursor-not-allowed" : "hover:opacity-90"}`}
+            style={btnPrimary}>
+            {sdLoading ? "⏳ Procesando..." : horariosSd ? "📂 Reemplazar horarios" : "📂 Subir DIRECTORIO SAME DAY CV.xlsx"}
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleHorariosSdUpload} disabled={sdLoading} />
+          </label>
+          {horariosSd && (
+            <button onClick={() => {
+              localStorage.removeItem(SK_HORARIOS_SD);
+              setHorariosSd(null);
+              setHorariosMap({});
+              setSdSearch("");
+            }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition">
+              🗑 Eliminar horarios
+            </button>
+          )}
+          {horarios.length > 0 && (
+            <span className="text-xs text-teal-700 font-semibold bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
+              {horarios.length} tiendas
+            </span>
+          )}
+          {horariosSd?.uploaded && (
+            <span className="text-xs text-gray-400">
+              Actualizado: {new Date(horariosSd.uploaded).toLocaleDateString("es-CO")}
+            </span>
+          )}
+        </div>
+        {sdMsg && <p className={`text-sm font-semibold mb-3 ${sdMsg.ok ? "text-green-600" : "text-red-600"}`}>{sdMsg.txt}</p>}
+
+        {/* Panel de alertas: direcciones faltantes */}
+        {direccionesFaltantes.length > 0 && (
+          <div className="mb-4 border border-amber-200 bg-amber-50 rounded-xl p-4">
+            <p className="text-xs font-bold text-amber-700 mb-2">
+              ⚠️ {direccionesFaltantes.length} direccion{direccionesFaltantes.length !== 1 ? "es" : ""} en datos Same Day sin horario registrado
+            </p>
+            <p className="text-xs text-amber-600 mb-2">
+              Estas tiendas aparecen en los servicios pero no están en el directorio de horarios. Actualiza el archivo para incluirlas y que el tiempo perfecto se calcule correctamente.
+            </p>
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {direccionesFaltantes.map((d, i) => (
+                <p key={i} className="text-xs text-amber-800 bg-amber-100 rounded px-2 py-1 font-mono">{d}</p>
+              ))}
+            </div>
+          </div>
+        )}
+        {horarios.length > 0 && rows?.length > 0 && direccionesFaltantes.length === 0 && (
+          <div className="mb-4 border border-green-200 bg-green-50 rounded-xl px-4 py-2">
+            <p className="text-xs font-semibold text-green-700">✅ Todas las tiendas Same Day tienen horario registrado.</p>
+          </div>
+        )}
+
+        {/* Tabla de horarios */}
+        {horarios.length > 0 && (
           <>
-            <p className="text-xs text-teal-700 font-semibold mb-2">{horarios.length} tiendas con horario cargadas</p>
-            <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-lg border border-gray-100">
-              <table className="w-full text-xs border-collapse">
+            <div className="relative mb-3">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+              <input type="text" value={sdSearch} onChange={e => setSdSearch(e.target.value)}
+                placeholder="Buscar por dirección, nombre o sucursal..."
+                className={`${inputCls} w-full pl-9`} />
+              {sdSearch && <button onClick={() => setSdSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg">×</button>}
+            </div>
+            <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-lg border border-gray-100">
+              <table className="text-xs border-collapse" style={{ minWidth: "900px", width: "100%" }}>
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-teal-50 text-teal-700">
-                    <th className="text-left p-2 font-semibold">Tienda</th>
-                    <th className="text-left p-2 font-semibold">Dirección</th>
-                    <th className="text-right p-2 font-semibold">L-V Apertura</th>
-                    <th className="text-right p-2 font-semibold">L-V Cierre</th>
-                    <th className="text-right p-2 font-semibold">Sáb</th>
-                    <th className="text-right p-2 font-semibold">Dom</th>
-                    <th className="text-right p-2 font-semibold">Festivos</th>
+                    <th className="text-left p-2 font-semibold whitespace-nowrap">Suc.</th>
+                    <th className="text-left p-2 font-semibold whitespace-nowrap">Nombre</th>
+                    <th className="text-left p-2 font-semibold">DIRECCION TRUMP</th>
+                    <th className="text-center p-2 font-semibold whitespace-nowrap">L-V</th>
+                    <th className="text-center p-2 font-semibold whitespace-nowrap">Sáb</th>
+                    <th className="text-center p-2 font-semibold whitespace-nowrap">Dom</th>
+                    <th className="text-center p-2 font-semibold whitespace-nowrap">Fest</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {horarios.map((h, i) => (
-                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="p-2 font-medium text-gray-700 max-w-[150px] truncate" title={h.nombre}>{h.nombre || h.sucursal}</td>
-                      <td className="p-2 text-gray-500 max-w-[180px] truncate" title={h.direccion}>{h.direccion}</td>
-                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.lv_apertura))}</td>
-                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.lv_cierre))}</td>
-                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.sab_apertura))}</td>
-                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.dom_apertura))}</td>
-                      <td className="p-2 text-right">{minutesToHHMM(excelTimeToMinutes(h.fest_apertura))}</td>
-                    </tr>
-                  ))}
+                  {filteredHorarios.slice(0, 200).map((h, i) => {
+                    const faltante = !horariosKeys.has(normalizeDireccion(h.direccion));
+                    return (
+                      <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="p-2 font-bold text-teal-700 whitespace-nowrap">{h.sucursal}</td>
+                        <td className="p-2 text-gray-700 whitespace-nowrap">{h.nombre}</td>
+                        <td className="p-2 text-gray-500 text-[11px]">{h.direccion}</td>
+                        <td className="p-2 text-center text-gray-600 whitespace-nowrap text-[11px]">
+                          {minutesToHHMM(excelTimeToMinutes(h.lv_apertura))}–{minutesToHHMM(excelTimeToMinutes(h.lv_cierre))}
+                        </td>
+                        <td className="p-2 text-center text-gray-600 whitespace-nowrap text-[11px]">
+                          {minutesToHHMM(excelTimeToMinutes(h.sab_apertura))}–{minutesToHHMM(excelTimeToMinutes(h.sab_cierre))}
+                        </td>
+                        <td className="p-2 text-center text-gray-600 whitespace-nowrap text-[11px]">
+                          {minutesToHHMM(excelTimeToMinutes(h.dom_apertura))}–{minutesToHHMM(excelTimeToMinutes(h.dom_cierre))}
+                        </td>
+                        <td className="p-2 text-center text-gray-600 whitespace-nowrap text-[11px]">
+                          {minutesToHHMM(excelTimeToMinutes(h.fest_apertura))}–{minutesToHHMM(excelTimeToMinutes(h.fest_cierre))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredHorarios.length === 0 && sdSearch && (
+                    <tr><td colSpan={7} className="p-3 text-center text-gray-400">Sin resultados para "{sdSearch}"</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1074,6 +1956,12 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
                   </td>
                 </tr>
               ))}
+              <tr className="bg-gray-100 border-t border-gray-300">
+                <td className="p-2 text-gray-500 font-medium italic">Superior a 17 km</td>
+                <td className="p-2 text-right">
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-200 text-gray-500 tracking-wide">N.A — No Aplica</span>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -1183,8 +2071,1129 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap }) {
   );
 }
 
+// ── Panel Pilotos Cruz Verde ────────────────────────────────────────────────
+function PilotosPanel({ rows, prevRows, prevMesLabel }) {
+  const LINEAS = [
+    { key: "mostrador", label: "Cruz Verde Mostrador", icon: "🏪", color: C_TEAL    },
+    { key: "integ_sd",  label: "Integración Same Day",  icon: "⚡", color: C_CYAN    },
+    { key: "integ_nd",  label: "Integración Next Day",  icon: "🌙", color: "#6366F1" },
+  ];
+  const [lineaSel, setLineaSel] = useState("mostrador");
+
+  const linea        = LINEAS.find(l => l.key === lineaSel);
+  const lineRows     = rows.filter(r => r.linea === lineaSel);
+  const prevLineRows = (prevRows || []).filter(r => r.linea === lineaSel);
+
+  // Clave del piloto: id_piloto si existe, sino nombre_piloto
+  const pilotoKey = (r) => r.idPiloto || r.nombrePiloto || "";
+  const hasPilotData = lineRows.some(r => pilotoKey(r));
+
+  // Agrupar por piloto
+  const groupBy = (rws) => {
+    const m = {};
+    rws.forEach(r => {
+      const k = pilotoKey(r);
+      if (!k) return;
+      if (!m[k]) m[k] = { id: r.idPiloto || k, nombre: r.nombrePiloto || k, ciudad: r.ciudad || "—", servicios: [] };
+      m[k].servicios.push(r);
+    });
+    return m;
+  };
+  const pilotoMap     = groupBy(lineRows);
+  const prevPilotoMap = groupBy(prevLineRows);
+
+  const toStats = ({ id, nombre, ciudad, servicios }) => ({
+    id, nombre, ciudad,
+    total:      servicios.length,
+    entregados: servicios.filter(r => r.esPerfecto && !r.fueraHorario).length,
+    cancelados: servicios.filter(r => !r.esPerfecto).length,
+    slaMet:     servicios.filter(r => r.slaCumplido === true).length,
+    slaDef:     servicios.filter(r => r.slaCumplido !== null).length,
+    gmv:        servicios.reduce((s, r) => s + (r.costo || 0), 0),
+  });
+
+  const pilotos     = Object.values(pilotoMap).map(toStats).sort((a,b) => b.total - a.total);
+  const prevPilotos = Object.values(prevPilotoMap).map(toStats);
+  const prevIds     = new Set(prevPilotos.map(p => p.id));
+  const currIds     = new Set(pilotos.map(p => p.id));
+
+  // Rotación
+  const nuevos    = pilotos.filter(p => !prevIds.has(p.id));
+  const retenidos = pilotos.filter(p => prevIds.has(p.id));
+  const perdidos  = prevPilotos.filter(p => !currIds.has(p.id));
+  const tasaRet   = prevPilotos.length > 0 ? retenidos.length / prevPilotos.length * 100 : null;
+
+  // Distribución por actividad
+  const RANGOS_ACT = [
+    { label: "1–5",   min: 1,  max: 5,        color: "#7C3AED" },
+    { label: "6–15",  min: 6,  max: 15,       color: "#8B5CF6" },
+    { label: "16–30", min: 16, max: 30,       color: "#A78BFA" },
+    { label: "31–60", min: 31, max: 60,       color: "#C4B5FD" },
+    { label: "60+",   min: 61, max: Infinity, color: "#5B21B6" },
+  ];
+  const distActividad = RANGOS_ACT.map(r => ({
+    ...r,
+    count: pilotos.filter(p => p.total >= r.min && p.total <= r.max).length,
+  }));
+
+  // Por ciudad — contar pilotos únicos por ciudad
+  const ciudadMap = {};
+  lineRows.forEach(r => {
+    const c = r.ciudad || "Sin ciudad";
+    const k = pilotoKey(r); if (!k) return;
+    if (!ciudadMap[c]) ciudadMap[c] = { pilotos: new Set(), total: 0, entregados: 0, cancelados: 0 };
+    ciudadMap[c].pilotos.add(k);
+    ciudadMap[c].total++;
+    if (r.esPerfecto && !r.fueraHorario) ciudadMap[c].entregados++;
+    if (!r.esPerfecto) ciudadMap[c].cancelados++;
+  });
+  const porCiudad = Object.entries(ciudadMap)
+    .map(([ciudad, v]) => ({ ciudad, nPilotos: v.pilotos.size, total: v.total, entregados: v.entregados, cancelados: v.cancelados,
+      pctEnt: pct(v.entregados, v.total), pctCanc: pct(v.cancelados, v.total) }))
+    .sort((a, b) => b.nPilotos - a.nPilotos);
+
+  // Top 5 nuevos y top 5 más activos
+  const top5Nuevos   = [...nuevos].sort((a, b) => b.total - a.total).slice(0, 5);
+  const top5Activos  = [...pilotos].slice(0, 5); // ya ordenado desc
+  const hasPrev      = prevLineRows.length > 0;
+  const hasSla       = lineRows.some(r => r.slaCumplido !== null);
+
+  // Descarga informe completo (todos los pilotos de la línea)
+  const descargarInforme = () => {
+    const allLineas = [
+      { key: "mostrador", label: "Mostrador" },
+      { key: "integ_sd",  label: "Same Day"  },
+      { key: "integ_nd",  label: "Next Day"  },
+    ];
+    const data = [];
+    allLineas.forEach(({ key, label }) => {
+      const lr = rows.filter(r => r.linea === key);
+      const gm = groupBy(lr);
+      Object.values(gm).map(toStats).sort((a,b) => b.total - a.total).forEach(p => {
+        data.push({
+          "Tipo de servicio": label,
+          "Nombre piloto":    p.nombre,
+          "ID piloto":        p.id,
+          "Ciudad":           p.ciudad,
+          "Total servicios":  p.total,
+          "Entregados":       p.entregados,
+          "% Entrega":        (pct(p.entregados, p.total) * 100).toFixed(1) + "%",
+          "Cancelados/Exp.":  p.cancelados,
+          "% Cancelados":     (pct(p.cancelados, p.total) * 100).toFixed(1) + "%",
+          "SLA Cumplido":     p.slaDef > 0 ? p.slaMet : "—",
+          "SLA Definido":     p.slaDef > 0 ? p.slaDef : "—",
+          "% SLA":            p.slaDef > 0 ? (pct(p.slaMet, p.slaDef) * 100).toFixed(1) + "%" : "—",
+          "¿Piloto nuevo?":   hasPrev ? (prevIds.has(p.id) ? "No" : "Sí") : "—",
+        });
+      });
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Pilotos Cruz Verde");
+    XLSX.writeFile(wb, "pilotos_cruz_verde.xlsx");
+  };
+
+  if (!lineRows.length) return (
+    <div className="text-center py-16 text-gray-400">
+      <p className="text-3xl mb-2">📭</p>
+      <p className="text-sm">Sin datos para {linea?.label} en el mes seleccionado.</p>
+    </div>
+  );
+
+  if (!hasPilotData) return (
+    <div className="space-y-5">
+      <div className="flex gap-2 flex-wrap">
+        {LINEAS.map(l => (
+          <button key={l.key} onClick={() => setLineaSel(l.key)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition"
+            style={lineaSel === l.key ? { background: l.color, color: "#fff", border: "none" } : { borderColor: "#e5e7eb", color: "#4b5563" }}>
+            {l.icon} {l.label}
+          </button>
+        ))}
+      </div>
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
+        <p className="text-2xl mb-2">⚠️</p>
+        <p className="text-sm font-semibold text-amber-700">El archivo no contiene las columnas <code className="bg-amber-100 px-1 rounded">nombre_piloto</code> / <code className="bg-amber-100 px-1 rounded">id_piloto</code>.</p>
+        <p className="text-xs text-amber-600 mt-1">Vuelve a subir el Excel con esas columnas para activar el análisis de pilotos.</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Selector de línea */}
+      <div className="flex gap-2 flex-wrap">
+        {LINEAS.map(l => (
+          <button key={l.key} onClick={() => setLineaSel(l.key)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition"
+            style={lineaSel === l.key ? { background: l.color, color: "#fff", border: "none" } : { borderColor: "#e5e7eb", color: "#4b5563" }}>
+            {l.icon} {l.label}
+          </button>
+        ))}
+      </div>
+
+      {/* KPIs globales */}
+      <div className="rounded-2xl p-5 text-white" style={{ background: `linear-gradient(135deg, ${linea.color} 0%, ${linea.color}CC 100%)` }}>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-bold">🚴 Análisis de Pilotos — {linea.label}{prevMesLabel ? ` · vs ${prevMesLabel}` : ""}</p>
+          <button onClick={descargarInforme}
+            className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+            ⬇️ Descargar informe completo
+          </button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { l: "Pilotos activos", v: pilotos.length,                                                                              i: "👤" },
+            { l: "Servicios",       v: fmtNum(lineRows.length),                                                                     i: "📋" },
+            { l: "Prom. serv/piloto", v: pilotos.length > 0 ? (lineRows.length / pilotos.length).toFixed(1) : "—",                  i: "📊" },
+            { l: "% Entregados",    v: fmtPct(pct(lineRows.filter(r=>r.esPerfecto&&!r.fueraHorario).length, lineRows.length)),      i: "✅" },
+            { l: "Pilotos nuevos",  v: hasPrev ? nuevos.length : "—",                                                               i: "🆕" },
+            { l: "Retención",       v: tasaRet != null ? `${tasaRet.toFixed(0)}%` : "—",                                            i: "🔄" },
+          ].map((k, i) => (
+            <div key={i} className="bg-white/20 backdrop-blur rounded-xl p-3 text-center">
+              <p className="text-lg mb-0.5">{k.i}</p>
+              <p className="text-xl font-extrabold">{k.v}</p>
+              <p className="text-[10px] opacity-80 mt-0.5">{k.l}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Rotación */}
+      {hasPrev ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <p className="text-sm font-bold text-gray-700 mb-4">🔄 Rotación de Pilotos — vs {prevMesLabel}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+            {[
+              { label: "Mes anterior", val: prevPilotos.length, bg: "bg-gray-50",  color: C_GRAY    },
+              { label: "Retenidos",    val: retenidos.length,   bg: "bg-green-50", color: C_GRN     },
+              { label: "Perdidos",     val: perdidos.length,    bg: "bg-red-50",   color: C_RED     },
+              { label: "Nuevos",       val: nuevos.length,      bg: "bg-blue-50",  color: "#3B82F6" },
+            ].map(({ label, val, bg, color }) => (
+              <div key={label} className={`${bg} rounded-xl p-4 text-center`}>
+                <p className="text-2xl font-extrabold" style={{ color }}>{val}</p>
+                <p className="text-xs text-gray-500 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
+          {prevPilotos.length > 0 && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden flex">
+                <div className="h-full bg-green-500" style={{ width: `${tasaRet}%` }} />
+                <div className="h-full bg-red-400"   style={{ width: `${100 - tasaRet}%` }} />
+              </div>
+              <span className="text-xs font-bold text-green-600 whitespace-nowrap">{tasaRet.toFixed(0)}% retención</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+          <p className="text-xs text-gray-400">Sube el archivo del mes anterior para ver rotación de pilotos.</p>
+        </div>
+      )}
+
+      {/* Distribución por actividad */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-sm font-bold text-gray-700 mb-4">📊 Distribución de Pilotos Nuevos por Actividad</p>
+        <div className="grid grid-cols-5 gap-3">
+          {distActividad.map(r => {
+            const p2 = pilotos.length > 0 ? (r.count / pilotos.length * 100) : 0;
+            return (
+              <div key={r.label} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <p className="text-2xl font-extrabold" style={{ color: r.color }}>{r.count}</p>
+                <p className="text-xs font-semibold text-gray-600 mt-1">{r.label} serv</p>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div className="h-2 rounded-full" style={{ width: `${Math.max(p2, 3)}%`, background: r.color }} />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">{p2.toFixed(0)}%</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Pilotos nuevos por ciudad */}
+      {porCiudad.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <p className="text-sm font-bold text-gray-700 mb-4">🏙️ Pilotos por Ciudad</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-white" style={{ background: linea.color }}>
+                  {["Ciudad", "Pilotos", "Servicios", "Prom/piloto", "% Entregados", "% Canc./Exp."].map(h => (
+                    <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {porCiudad.map((c, i) => (
+                  <tr key={c.ciudad} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                    <td className="px-3 py-2 font-semibold text-gray-800">{c.ciudad}</td>
+                    <td className="px-3 py-2 text-center font-bold" style={{ color: linea.color }}>{c.nPilotos}</td>
+                    <td className="px-3 py-2 text-center">{fmtNum(c.total)}</td>
+                    <td className="px-3 py-2 text-center">{c.nPilotos > 0 ? (c.total / c.nPilotos).toFixed(1) : "—"}</td>
+                    <td className="px-3 py-2 text-center font-semibold" style={{ color: c.pctEnt >= 0.95 ? C_GRN : c.pctEnt >= 0.85 ? C_AMB : C_RED }}>
+                      {fmtPct(c.pctEnt)}
+                    </td>
+                    <td className="px-3 py-2 text-center font-semibold" style={{ color: c.pctCanc > 0.15 ? C_RED : c.pctCanc > 0.08 ? C_AMB : C_GRN }}>
+                      {fmtPct(c.pctCanc)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Top 5 más activos por tipo de servicio */}
+      {(() => {
+        const SECCIONES = [
+          { key: "mostrador", label: "Cruz Verde Mostrador", icon: "🏪", color: C_TEAL    },
+          { key: "integ_sd",  label: "Same Day",             icon: "⚡", color: C_CYAN    },
+          { key: "integ_nd",  label: "Next Day",             icon: "🌙", color: "#6366F1" },
+        ];
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <p className="text-sm font-bold text-gray-700 mb-4">🏆 Top 5 Pilotos — {linea.label}</p>
+            {(() => {
+              const sec = SECCIONES.find(s => s.key === lineaSel);
+              if (!sec) return null;
+              const { label, icon, color } = sec;
+              const lr  = rows.filter(r => r.linea === lineaSel);
+              const gm  = groupBy(lr);
+              const top = Object.values(gm).map(toStats).sort((a,b) => b.total - a.total).slice(0, 5);
+              if (!top.length) return <p className="text-xs text-gray-400">Sin datos de pilotos para esta línea.</p>;
+              return (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <span>{icon}</span>
+                    <p className="text-xs font-bold text-gray-700">{label}</p>
+                  </div>
+                  <div className="space-y-2">
+                    {top.map((p, i) => {
+                      const entPct = pct(p.entregados, p.total);
+                      const slaPct = p.slaDef > 0 ? pct(p.slaMet, p.slaDef) : null;
+                      const medal  = ["🥇","🥈","🥉","4️⃣","5️⃣"][i];
+                      return (
+                        <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                          <span className="text-lg w-7 text-center flex-shrink-0">{medal}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-gray-800 truncate">{p.nombre || p.id}</p>
+                            <p className="text-[11px] text-gray-400">{p.ciudad} · ID: {p.id}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-extrabold" style={{ color }}>{fmtNum(p.total)} serv</p>
+                            <p className="text-[11px] font-semibold" style={{ color: entPct >= 0.9 ? C_GRN : C_AMB }}>
+                              {fmtPct(entPct)} entregados
+                            </p>
+                          </div>
+                          {hasSla && slaPct !== null && (
+                            <div className="text-right flex-shrink-0 ml-2">
+                              <p className="text-[10px] text-gray-400">SLA</p>
+                              <p className="text-xs font-bold" style={{ color: slaPct >= 0.9 ? C_GRN : C_RED }}>
+                                {fmtPct(slaPct)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+
+      {/* Top 5 pilotos nuevos */}
+      {hasPrev && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <p className="text-sm font-bold text-gray-700 mb-4">🆕 Top 5 Pilotos Nuevos</p>
+          {top5Nuevos.length > 0 ? (
+            <div className="space-y-2">
+              {top5Nuevos.map((p, i) => {
+                const entPct = pct(p.entregados, p.total);
+                const COLORS = ["#5B21B6","#7C3AED","#8B5CF6","#A78BFA","#C4B5FD"];
+                return (
+                  <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                    <span className="text-sm font-extrabold w-6 text-center" style={{ color: COLORS[i] }}>{i+1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-800 truncate">{p.nombre || p.id}</p>
+                      <p className="text-[10px] text-gray-400">{p.ciudad} · ID: {p.id}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-extrabold" style={{ color: linea.color }}>{fmtNum(p.total)} serv</p>
+                      <p className="text-[10px] font-semibold" style={{ color: entPct >= 0.9 ? C_GRN : C_AMB }}>
+                        {fmtPct(entPct)} entregados
+                      </p>
+                    </div>
+                    {hasSla && p.slaDef > 0 && (
+                      <div className="text-right ml-2">
+                        <p className="text-[10px] text-gray-400">SLA</p>
+                        <p className="text-xs font-bold" style={{ color: pct(p.slaMet,p.slaDef) >= 0.9 ? C_GRN : C_RED }}>
+                          {fmtPct(pct(p.slaMet,p.slaDef))}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-center text-blue-600 bg-blue-50 rounded-xl p-4 font-semibold">
+              Sin pilotos nuevos — todos los pilotos activos ya estaban en {prevMesLabel}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Buscador por ID de servicio o número de paquete ───────────────────────
+function BuscadorServicio({ rows }) {
+  const [query,    setQuery]    = useState("");
+  const [results,  setResults]  = useState(null);
+
+  const lineaLabel = { mostrador: "Mostrador", integ_sd: "Integ. Same Day", integ_nd: "Integ. Next Day" };
+
+  function buscar(q) {
+    const term = q.trim().toLowerCase();
+    if (!term) { setResults(null); return; }
+    const found = rows.filter(r =>
+      (r.idServicio     && r.idServicio.toLowerCase().includes(term)) ||
+      (r.numeroPaquete  && r.numeroPaquete.toLowerCase().includes(term)) ||
+      (r.uuid           && r.uuid.toLowerCase().includes(term))
+    ).slice(0, 15);
+    setResults(found);
+  }
+
+  function slaLabel(row) {
+    if (row.slaCumplido === true)  return { txt: "✅ Cumplido",     cls: "bg-green-100 text-green-700" };
+    if (row.slaCumplido === false) return { txt: "❌ Incumplido",   cls: "bg-red-100 text-red-700"   };
+    if (!row.esPerfecto)           return { txt: "⛔ No entregado", cls: "bg-amber-100 text-amber-700" };
+    return                                { txt: "⚪ N.A",          cls: "bg-gray-100 text-gray-500"  };
+  }
+
+  function estadoColor(e) {
+    const l = (e || "").toLowerCase();
+    if (l.includes("finaliz") && !l.includes("fallid")) return "bg-green-100 text-green-700";
+    if (l.includes("cancel"))  return "bg-amber-100 text-amber-700";
+    if (l.includes("expir") || l.includes("fallid")) return "bg-red-100 text-red-700";
+    return "bg-gray-100 text-gray-500";
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-md border border-teal-100 p-5">
+      <p className="text-sm font-bold text-gray-700 mb-3">🔎 Buscar servicio por ID o número de paquete</p>
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); if (!e.target.value.trim()) setResults(null); }}
+          onKeyDown={e => e.key === "Enter" && buscar(query)}
+          placeholder="Escribe el ID de servicio o número de paquete/orden..."
+          className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+        />
+        <button
+          onClick={() => buscar(query)}
+          className="px-5 py-2.5 rounded-xl text-white text-sm font-bold transition hover:opacity-90"
+          style={{ background: C_TEAL }}>
+          Buscar
+        </button>
+        {results !== null && (
+          <button onClick={() => { setQuery(""); setResults(null); }}
+            className="px-4 py-2.5 rounded-xl text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition">
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Sin resultados */}
+      {results !== null && results.length === 0 && (
+        <p className="text-sm text-gray-400 mt-4 text-center py-4">
+          No se encontraron servicios con ese ID o número de paquete.
+        </p>
+      )}
+
+      {/* Resultados */}
+      {results && results.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {results.length > 1 && (
+            <p className="text-xs text-gray-500">{results.length} resultado{results.length > 1 ? "s" : ""} encontrado{results.length > 1 ? "s" : ""}</p>
+          )}
+          {results.map((r, i) => {
+            const sla   = slaLabel(r);
+            const estCls = estadoColor(r.estado);
+            return (
+              <div key={i} className="border border-gray-100 rounded-xl p-4 bg-gray-50 hover:bg-teal-50/30 transition">
+                {/* Cabecera */}
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  {r.idServicio && (
+                    <span className="font-mono text-xs font-bold text-gray-700 bg-white border border-gray-200 px-2 py-0.5 rounded-lg">
+                      🆔 {r.idServicio}
+                    </span>
+                  )}
+                  {r.numeroPaquete && (
+                    <span className="font-mono text-xs font-bold text-gray-700 bg-white border border-gray-200 px-2 py-0.5 rounded-lg">
+                      📦 {r.numeroPaquete}
+                    </span>
+                  )}
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${estCls}`}>{r.estado}</span>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${sla.cls}`}>{sla.txt}</span>
+                  <span className="text-xs text-gray-400 ml-auto">{lineaLabel[r.linea] || r.linea}</span>
+                </div>
+
+                {/* Métricas */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <p className="text-xs text-gray-400">Tiempo servicio</p>
+                    <p className="text-sm font-bold text-gray-700">{fmtMin(r.minutos)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Límite SLA</p>
+                    <p className="text-sm font-bold" style={{ color: r.slaLimite ? C_TEAL : C_GRAY }}>
+                      {r.slaLimite
+                        ? r.linea === "integ_nd"
+                          ? `hasta las ${String(Math.floor(r.slaLimite / 60)).padStart(2,"0")}:${String(r.slaLimite % 60).padStart(2,"0")}`
+                          : `${r.slaLimite} min`
+                        : "N.A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Distancia</p>
+                    <p className="text-sm font-bold text-gray-700">{r.km ? `${r.km.toFixed(1)} km` : "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Fecha</p>
+                    <p className="text-sm font-bold text-gray-700">{r.fecha || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Ciudad</p>
+                    <p className="text-sm font-medium text-gray-700 truncate">{r.ciudad}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Usuario / Tienda</p>
+                    <p className="text-sm font-medium text-gray-700 truncate">{r.sucursal}</p>
+                  </div>
+                  {r.iniciadoRaw && (
+                    <div>
+                      <p className="text-xs text-gray-400">Asignado</p>
+                      <p className="text-sm font-medium text-gray-700">{fmtDatetime(r.iniciadoRaw)}</p>
+                    </div>
+                  )}
+                  {r.finalizadoRaw && (
+                    <div>
+                      <p className="text-xs text-gray-400">Fecha entrega</p>
+                      <p className="text-sm font-medium text-gray-700">{fmtDatetime(r.finalizadoRaw)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Constantes de meses ────────────────────────────────────────────────────
 const MESES_LABEL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+// ── Panel Análisis Entregas ────────────────────────────────────────────────
+const LINEAS_ENT = [
+  { key:"mostrador", label:"Cruz Verde Mostrador", short:"Mostrador", icon:"🏪", color:C_TEAL    },
+  { key:"integ_sd",  label:"Integración Same Day",  short:"Same Day",  icon:"⚡", color:C_CYAN    },
+  { key:"integ_nd",  label:"Integración Next Day",  short:"Next Day",  icon:"🌙", color:"#6366F1" },
+];
+
+function EntregasPanel({ rows }) {
+  const [lineaSel,  setLineaSel]  = useState("todas");
+  const [ciudadSel, setCiudadSel] = useState(null);      // null = todas las ciudades
+  const [vista,     setVista]     = useState("ciudad");  // "ciudad" | "origen" | "destino"
+  const [sortCol,   setSortCol]   = useState("total");
+  const [busq,      setBusq]      = useState("");
+
+  // Filas filtradas por línea
+  const lineRows = lineaSel === "todas" ? rows : rows.filter(r => r.linea === lineaSel);
+
+  // Lista de ciudades disponibles (ordenada)
+  const ciudades = [...new Set(lineRows.map(r => r.ciudad || "Sin ciudad"))].filter(Boolean).sort();
+
+  // Filas filtradas por ciudad (solo para vistas origen/destino)
+  const cityRows = ciudadSel ? lineRows.filter(r => (r.ciudad || "Sin ciudad") === ciudadSel) : lineRows;
+
+  // ── Función de agrupación ──────────────────────────────────────────────
+  const buildStats = (rws, keyFn) => {
+    const m = {};
+    rws.forEach(r => {
+      const k = keyFn(r) || "Sin dato";
+      if (!m[k]) m[k] = {
+        nombre:k, total:0, entregados:0, cancelados:0, expirados:0,
+        slaMet:0, slaDef:0, minsList:[],
+        lineas:{ mostrador:0, integ_sd:0, integ_nd:0 },
+      };
+      const d = m[k];
+      d.total++;
+      d.lineas[r.linea] = (d.lineas[r.linea]||0) + 1;
+      if (r.esPerfecto)               d.entregados++;
+      if (/cancelad/i.test(r.estado)) d.cancelados++;
+      if (/expirad/i.test(r.estado))  d.expirados++;
+      if (r.slaCumplido === true)     d.slaMet++;
+      if (r.slaCumplido !== null)     d.slaDef++;
+      if (r.minutos > 0)              d.minsList.push(r.minutos);
+    });
+    return Object.values(m).map(d => ({
+      ...d,
+      entPct: pct(d.entregados, d.total),
+      slaPct: d.slaDef > 0 ? pct(d.slaMet, d.slaDef) : null,
+      avgMin: d.minsList.length ? d.minsList.reduce((a,b)=>a+b,0)/d.minsList.length : null,
+    }));
+  };
+
+  const sortFn = (col) => (a, b) => {
+    if (col==="entPct") return (b.entPct||0)-(a.entPct||0);
+    if (col==="slaPct") return (b.slaPct??-1)-(a.slaPct??-1);
+    if (col==="avgMin") return (b.avgMin??-1)-(a.avgMin??-1);
+    return (b[col]||0)-(a[col]||0);
+  };
+
+  // Stats según la vista activa
+  const activeRows = vista === "ciudad" ? lineRows : cityRows;
+  const keyFn = vista==="ciudad" ? r=>r.ciudad||"Sin ciudad"
+              : vista==="origen" ? r=>r.localidadOrigen||"Sin localidad"
+              :                    r=>r.localidadDestino||"Sin localidad";
+
+  const allStats = buildStats(activeRows, keyFn);
+  const filtered = allStats
+    .filter(d => !busq || d.nombre.toLowerCase().includes(busq.toLowerCase()))
+    .sort(sortFn(sortCol));
+
+  const hasSla   = activeRows.some(r => r.slaCumplido !== null);
+  const totScope = activeRows.length;
+  const entScope = activeRows.filter(r => r.esPerfecto).length;
+  const canScope = activeRows.filter(r => /cancelad/i.test(r.estado)).length;
+  const expScope = activeRows.filter(r => /expirad/i.test(r.estado)).length;
+  const slaMetS  = activeRows.filter(r => r.slaCumplido === true).length;
+  const slaDefS  = activeRows.filter(r => r.slaCumplido !== null).length;
+
+  const noLocalidad = vista !== "ciudad" && !cityRows.some(r => r.localidadOrigen || r.localidadDestino);
+
+  const COLS = [
+    ["total","Total"],["entPct","% Entrega"],["cancelados","Cancel."],
+    ["expirados","Expir."],["slaPct","% SLA"],["avgMin","T. prom"],
+  ];
+
+  const SortBtn = ({ col, lbl }) => (
+    <button onClick={() => setSortCol(col)}
+      className={`text-[10px] font-semibold px-2 py-0.5 rounded transition-all ${sortCol===col?"bg-teal-600 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+      {lbl}
+    </button>
+  );
+
+  const TablaEntregas = ({ stats, showLineas, emptyMsg }) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-gray-100 text-gray-400">
+            <th className="text-left py-2 px-2 font-semibold">
+              {vista==="ciudad"?"Ciudad":vista==="origen"?"Localidad Origen":"Localidad Destino"}
+            </th>
+            {showLineas && <th className="text-left py-2 px-2 font-semibold">Líneas</th>}
+            <th className="text-right py-2 px-2 font-semibold">Total</th>
+            <th className="text-right py-2 px-2 font-semibold">Entregados</th>
+            <th className="text-right py-2 px-2 font-semibold">% Entrega</th>
+            <th className="text-right py-2 px-2 font-semibold">Cancelados</th>
+            <th className="text-right py-2 px-2 font-semibold">Expirados</th>
+            {hasSla && <th className="text-right py-2 px-2 font-semibold">% SLA</th>}
+            <th className="text-right py-2 px-2 font-semibold">T. prom.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stats.map((d, i) => (
+            <tr key={d.nombre}
+              className={`${i%2===0?"bg-gray-50/40":""} ${vista==="ciudad"?"cursor-pointer hover:bg-teal-50 transition-colors":""}`}
+              onClick={() => {
+                if (vista !== "ciudad") return;
+                setCiudadSel(d.nombre);
+                setVista("origen");
+                setBusq("");
+                setSortCol("total");
+              }}>
+              <td className="py-2 px-2 font-semibold text-gray-700 max-w-[200px]">
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate">{d.nombre}</p>
+                  {vista==="ciudad" && <span className="text-gray-300 text-[10px]">→</span>}
+                </div>
+              </td>
+              {showLineas && (
+                <td className="py-2 px-2">
+                  <div className="flex gap-1 flex-wrap">
+                    {LINEAS_ENT.map(l => d.lineas[l.key]>0 && (
+                      <span key={l.key} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{background:`${l.color}20`,color:l.color}}>
+                        {l.icon}{fmtNum(d.lineas[l.key])}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+              )}
+              <td className="py-2 px-2 text-right font-bold text-gray-800">{fmtNum(d.total)}</td>
+              <td className="py-2 px-2 text-right font-semibold" style={{color:C_GRN}}>{fmtNum(d.entregados)}</td>
+              <td className="py-2 px-2 text-right font-bold"
+                style={{color:d.entPct>=0.95?C_GRN:d.entPct>=0.85?C_AMB:C_RED}}>{fmtPct(d.entPct)}</td>
+              <td className="py-2 px-2 text-right" style={{color:C_RED}}>{fmtNum(d.cancelados)}</td>
+              <td className="py-2 px-2 text-right" style={{color:C_AMB}}>{fmtNum(d.expirados)}</td>
+              {hasSla && (
+                <td className="py-2 px-2 text-right font-bold"
+                  style={{color:d.slaPct===null?C_GRAY:d.slaPct>=0.95?C_GRN:d.slaPct>=0.80?C_AMB:C_RED}}>
+                  {d.slaPct!==null?fmtPct(d.slaPct):"—"}
+                </td>
+              )}
+              <td className="py-2 px-2 text-right text-gray-500">
+                {d.avgMin?`${Math.round(d.avgMin)} min`:"—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!stats.length && <p className="text-xs text-gray-400 text-center py-6">{emptyMsg||"Sin resultados."}</p>}
+    </div>
+  );
+
+  if (!rows.length) return <div className="text-center py-16 text-gray-400 text-sm">Sin datos cargados.</div>;
+
+  return (
+    <div className="space-y-5">
+
+      {/* Selector de línea */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Tipo de servicio</p>
+        <div className="flex flex-wrap gap-2">
+          {[{key:"todas",label:"Todas las líneas",icon:"🔍",color:C_TEAL},...LINEAS_ENT].map(l => (
+            <button key={l.key}
+              onClick={() => { setLineaSel(l.key); setCiudadSel(null); setVista("ciudad"); setBusq(""); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all"
+              style={lineaSel===l.key?{background:l.color,color:"#fff",borderColor:l.color}:{borderColor:"#e5e7eb",color:"#4b5563",background:"#fff"}}>
+              {l.icon} {l.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPIs del scope actual */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {[
+          {label:"Total",      value:fmtNum(totScope), color:"#1f2937"},
+          {label:"Entregados", value:fmtNum(entScope), color:C_GRN, sub:fmtPct(pct(entScope,totScope))},
+          {label:"Cancelados", value:fmtNum(canScope), color:C_RED, sub:fmtPct(pct(canScope,totScope))},
+          {label:"Expirados",  value:fmtNum(expScope), color:C_AMB, sub:fmtPct(pct(expScope,totScope))},
+          ...(hasSla?[{label:"% SLA",value:fmtPct(pct(slaMetS,slaDefS)),color:pct(slaMetS,slaDefS)>=0.9?C_GRN:C_RED,sub:`${fmtNum(slaMetS)}/${fmtNum(slaDefS)}`}]:[]),
+          {label:vista==="ciudad"?"Ciudades":vista==="origen"?"Loc. Origen":"Loc. Destino", value:fmtNum(allStats.length), color:"#6366F1"},
+        ].map((k,i) => (
+          <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3 text-center">
+            <p className="text-[11px] text-gray-400 mb-1">{k.label}</p>
+            <p className="text-lg font-extrabold" style={{color:k.color}}>{k.value}</p>
+            {k.sub && <p className="text-[10px] text-gray-400 mt-0.5">{k.sub}</p>}
+          </div>
+        ))}
+      </div>
+
+      {/* Panel principal con breadcrumb + navegación */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+
+        {/* Breadcrumb de navegación */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <button
+            onClick={() => { setVista("ciudad"); setCiudadSel(null); setBusq(""); setSortCol("total"); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${vista==="ciudad"?"bg-teal-600 text-white":"text-teal-600 hover:bg-teal-50"}`}>
+            🏙️ Ciudades
+          </button>
+
+          {ciudadSel && (
+            <>
+              <span className="text-gray-300 text-sm">›</span>
+              <div className="flex items-center gap-1 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
+                <span className="text-xs font-bold text-teal-700">{ciudadSel}</span>
+                <button
+                  onClick={() => { setCiudadSel(null); setVista("ciudad"); setBusq(""); setSortCol("total"); }}
+                  className="ml-1 text-teal-400 hover:text-teal-700 text-xs font-bold leading-none">✕</button>
+              </div>
+              <span className="text-gray-300 text-sm">›</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => { setVista("origen"); setBusq(""); setSortCol("total"); }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${vista==="origen"?"bg-teal-600 text-white border-teal-600":"border-gray-200 text-gray-600 hover:border-teal-300"}`}>
+                  📍 Loc. Origen
+                </button>
+                <button
+                  onClick={() => { setVista("destino"); setBusq(""); setSortCol("total"); }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${vista==="destino"?"bg-teal-600 text-white border-teal-600":"border-gray-200 text-gray-600 hover:border-teal-300"}`}>
+                  🏁 Loc. Destino
+                </button>
+              </div>
+            </>
+          )}
+
+          {vista==="ciudad" && (
+            <p className="ml-auto text-[11px] text-gray-400">Haz clic en una ciudad para ver sus localidades</p>
+          )}
+        </div>
+
+        {/* Controles de búsqueda y orden */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <input value={busq} onChange={e => setBusq(e.target.value)}
+            placeholder={`Buscar ${vista==="ciudad"?"ciudad":"localidad"}...`}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-teal-400 w-44" />
+          <div className="flex flex-wrap gap-1">
+            {COLS.map(([col,lbl]) => <SortBtn key={col} col={col} lbl={lbl} />)}
+          </div>
+          <span className="ml-auto text-[11px] text-gray-400">{filtered.length} registros</span>
+        </div>
+
+        {/* Tabla o aviso sin datos */}
+        {noLocalidad ? (
+          <div className="text-center py-10 text-sm text-gray-400 bg-gray-50 rounded-xl">
+            <p className="font-semibold">Sin datos de localidad en el archivo cargado.</p>
+            <p className="text-xs mt-1">Verifica que el Excel incluya columnas <code>localidad_origen</code> / <code>localidad_destino</code>.</p>
+          </div>
+        ) : (
+          <TablaEntregas stats={filtered} showLineas={lineaSel==="todas"} />
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+// ── Panel Insight ───────────────────────────────────────────────────────────
+const LINEAS_INSIGHT = [
+  { key: "mostrador", label: "Cruz Verde Mostrador", short: "Mostrador", icon: "🏪", color: C_TEAL,    hasSla: false },
+  { key: "integ_sd",  label: "Integración Same Day",  short: "Same Day",  icon: "⚡", color: C_CYAN,    hasSla: true  },
+  { key: "integ_nd",  label: "Integración Next Day",  short: "Next Day",  icon: "🌙", color: "#6366F1", hasSla: true  },
+];
+
+function InsightPanel({ rows, prevRows }) {
+  const [lineaSel, setLineaSel] = useState("todas");
+
+  const lineRows     = lineaSel === "todas" ? rows     : rows.filter(r => r.linea === lineaSel);
+  const prevLineRows = lineaSel === "todas" ? (prevRows||[]) : (prevRows||[]).filter(r => r.linea === lineaSel);
+  const hasPrev      = prevLineRows.length > 0;
+
+  // ── Stats por línea ───────────────────────────────────────────────────────
+  const lineStats = LINEAS_INSIGHT.map(({ key, label, short, icon, color, hasSla }) => {
+    const lr = rows.filter(r => r.linea === key);
+    const total      = lr.length;
+    const entregados = lr.filter(r => r.esPerfecto).length;
+    const cancelados = lr.filter(r => /cancelad/i.test(r.estado)).length;
+    const expirados  = lr.filter(r => /expirad/i.test(r.estado)).length;
+    const slaMet     = lr.filter(r => r.slaCumplido === true).length;
+    const slaDef     = lr.filter(r => r.slaCumplido !== null).length;
+    const minsList   = lr.filter(r => r.minutos > 0).map(r => r.minutos);
+    const avgMin     = minsList.length ? minsList.reduce((a,b)=>a+b,0)/minsList.length : 0;
+    const gmvTotal   = lr.reduce((s,r) => s + (r.costo||0), 0);
+    return { key, label, short, icon, color, hasSla, total, entregados, cancelados, expirados, slaMet, slaDef, avgMin, gmvTotal };
+  });
+
+  // ── Stats por ciudad ──────────────────────────────────────────────────────
+  const buildCiudadStats = (rws) => {
+    const m = {};
+    rws.forEach(r => {
+      const c = r.ciudad || "Sin ciudad";
+      if (!m[c]) m[c] = { ciudad: c, total: 0, entregados: 0, cancelados: 0, expirados: 0, slaMet: 0, slaDef: 0 };
+      const d = m[c]; d.total++;
+      if (r.esPerfecto) d.entregados++;
+      if (/cancelad/i.test(r.estado)) d.cancelados++;
+      if (/expirad/i.test(r.estado)) d.expirados++;
+      if (r.slaCumplido === true) d.slaMet++;
+      if (r.slaCumplido !== null) d.slaDef++;
+    });
+    return Object.values(m).map(d => ({
+      ...d,
+      entPct: pct(d.entregados, d.total),
+      slaPct: d.slaDef > 0 ? pct(d.slaMet, d.slaDef) : null,
+    }));
+  };
+
+  const ciudadStats     = buildCiudadStats(lineRows);
+  const prevCiudadStats = buildCiudadStats(prevLineRows);
+  const con5            = ciudadStats.filter(c => c.total >= 5);
+
+  // ── Stats por piloto ──────────────────────────────────────────────────────
+  const buildPilotoStats = (rws) => {
+    const m = {};
+    rws.forEach(r => {
+      const k = r.idPiloto || r.nombrePiloto;
+      if (!k) return;
+      if (!m[k]) m[k] = { id: r.idPiloto||k, nombre: r.nombrePiloto||k, ciudad: r.ciudad||"—", total:0, entregados:0, slaMet:0, slaDef:0 };
+      const d = m[k]; d.total++;
+      if (r.esPerfecto) d.entregados++;
+      if (r.slaCumplido === true) d.slaMet++;
+      if (r.slaCumplido !== null) d.slaDef++;
+    });
+    return Object.values(m).map(d => ({ ...d, entPct: pct(d.entregados,d.total), slaPct: d.slaDef>0 ? pct(d.slaMet,d.slaDef) : null }));
+  };
+
+  const pilotoStats = buildPilotoStats(lineRows).filter(p => p.total >= 3);
+  const hasPilotos  = pilotoStats.length > 0;
+
+  // candidatos con SLA definido para "bajo SLA"
+  const pilotosConSla   = pilotoStats.filter(p => p.slaPct !== null && p.slaDef >= 3);
+  const pilotoDestacado = [...pilotoStats].sort((a,b) => b.entregados - a.entregados)[0];
+  const pilotoBajoSla   = [...pilotosConSla].sort((a,b) => (a.slaPct??1) - (b.slaPct??1))[0];
+
+  // ── Comparativa ciudades vs mes anterior ─────────────────────────────────
+  const prevCiudadMap = Object.fromEntries(prevCiudadStats.map(c => [c.ciudad, c]));
+  const ciudadConCambio = ciudadStats
+    .map(c => {
+      const prev = prevCiudadMap[c.ciudad];
+      const delta = prev ? c.total - prev.total : null;
+      return { ...c, delta };
+    })
+    .filter(c => c.total >= 3);
+
+  const ciudadCrecimiento = hasPrev
+    ? [...ciudadConCambio].filter(c => c.delta !== null).sort((a,b) => (b.delta||0)-(a.delta||0))[0]
+    : null;
+  const ciudadCaida = hasPrev
+    ? [...ciudadConCambio].filter(c => c.delta !== null).sort((a,b) => (a.delta||0)-(b.delta||0))[0]
+    : null;
+
+  const ciudadMejorSla  = [...con5].filter(c => c.slaPct !== null).sort((a,b) => (b.slaPct??0)-(a.slaPct??0))[0];
+  const ciudadPeorSla   = [...con5].filter(c => c.slaPct !== null).sort((a,b) => (a.slaPct??1)-(b.slaPct??1))[0];
+
+  // ── Clasificar insights por línea ─────────────────────────────────────────
+  const positivos   = [];
+  const porMejorar  = [];
+
+  // Solo incluir la línea seleccionada (o todas si es "todas")
+  const lineStatsFiltradas = lineaSel === "todas" ? lineStats : lineStats.filter(l => l.key === lineaSel);
+
+  lineStatsFiltradas.forEach(({ label, icon, hasSla, total, entregados, cancelados, expirados, slaMet, slaDef, avgMin }) => {
+    if (!total) return;
+    const entPct = pct(entregados, total);
+    const slaPct = slaDef > 0 ? pct(slaMet, slaDef) : null;
+    const canPct = pct(cancelados, total);
+    const expPct = pct(expirados,  total);
+
+    if (entPct >= 0.97) positivos.push(`${icon} ${label}: tasa de entrega excelente (${fmtPct(entPct)} — ${fmtNum(entregados)} servicios entregados).`);
+    else if (entPct >= 0.93) positivos.push(`${icon} ${label}: buena tasa de entrega (${fmtPct(entPct)}).`);
+    else if (entPct < 0.85) porMejorar.push(`${icon} ${label}: tasa de entrega baja (${fmtPct(entPct)}). Revisar causas de no entrega.`);
+    else porMejorar.push(`${icon} ${label}: tasa de entrega en ${fmtPct(entPct)} — hay margen de mejora.`);
+
+    if (slaPct !== null) {
+      if (slaPct >= 0.95) positivos.push(`${icon} ${label}: cumplimiento SLA excelente (${fmtPct(slaPct)}).`);
+      else if (slaPct >= 0.88) positivos.push(`${icon} ${label}: SLA en buen nivel (${fmtPct(slaPct)}).`);
+      else if (slaPct < 0.80) porMejorar.push(`${icon} ${label}: SLA crítico (${fmtPct(slaPct)}). Acción inmediata requerida.`);
+      else porMejorar.push(`${icon} ${label}: SLA en ${fmtPct(slaPct)} — requiere atención.`);
+    }
+
+    if (canPct <= 0.02) positivos.push(`${icon} ${label}: cancelaciones muy bajas (${fmtPct(canPct)}).`);
+    else if (canPct > 0.05) porMejorar.push(`${icon} ${label}: alta tasa de cancelaciones (${fmtPct(canPct)} — ${fmtNum(cancelados)} servicios).`);
+
+    if (expPct > 0.05) porMejorar.push(`${icon} ${label}: alta tasa de expirados (${fmtPct(expPct)} — ${fmtNum(expirados)} servicios).`);
+
+    if (avgMin > 0 && entPct >= 0.95) positivos.push(`${icon} ${label}: tiempo promedio de servicio eficiente (${Math.round(avgMin)} min).`);
+  });
+
+  // Ciudades en insights generales
+  const bestCiudadEnt = [...con5].sort((a,b) => b.entPct - a.entPct)[0];
+  const worstCiudadEnt= [...con5].sort((a,b) => a.entPct - b.entPct)[0];
+  if (bestCiudadEnt && bestCiudadEnt.entPct >= 0.95)
+    positivos.push(`🏙️ Ciudad con mayor eficiencia de entrega: ${bestCiudadEnt.ciudad} (${fmtPct(bestCiudadEnt.entPct)} — ${fmtNum(bestCiudadEnt.total)} servicios).`);
+  if (worstCiudadEnt && worstCiudadEnt !== bestCiudadEnt && worstCiudadEnt.entPct < 0.90)
+    porMejorar.push(`🏙️ Ciudad con menor entrega: ${worstCiudadEnt.ciudad} (${fmtPct(worstCiudadEnt.entPct)} — ${fmtNum(worstCiudadEnt.total)} servicios).`);
+
+  // ── Tarjeta insight helper ────────────────────────────────────────────────
+  const InsightCard = ({ icon, titulo, color, bg, badge, children }) => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col gap-3"
+      style={{ borderTop:`4px solid ${color}` }}>
+      <div className="flex items-center gap-2">
+        <span className="text-lg">{icon}</span>
+        <p className="text-sm font-bold text-gray-800">{titulo}</p>
+        {badge && <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background:`${color}20`, color }}>{badge}</span>}
+      </div>
+      {children}
+    </div>
+  );
+
+  const ItemLista = ({ txt, color }) => (
+    <div className="flex items-start gap-2 rounded-xl px-3 py-2.5" style={{ background:`${color}12`, borderLeft:`3px solid ${color}` }}>
+      <p className="text-xs text-gray-700 leading-relaxed">{txt}</p>
+    </div>
+  );
+
+  const KpiRow = ({ label, value, color, sub }) => (
+    <div className="flex justify-between items-center py-1.5 border-b border-gray-50 last:border-0">
+      <p className="text-xs text-gray-400">{label}</p>
+      <div className="text-right">
+        <p className="text-sm font-extrabold" style={{ color }}>{value}</p>
+        {sub && <p className="text-[10px] text-gray-400">{sub}</p>}
+      </div>
+    </div>
+  );
+
+  if (!rows.length) return <div className="text-center py-16 text-gray-400 text-sm">Sin datos cargados.</div>;
+
+  return (
+    <div className="space-y-6">
+
+      {/* Selector de línea */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Filtrar por tipo de servicio</p>
+        <div className="flex flex-wrap gap-2">
+          {[{ key:"todas", label:"Todas las líneas", icon:"🔍", color: C_TEAL }, ...LINEAS_INSIGHT].map(l => (
+            <button key={l.key} onClick={() => setLineaSel(l.key)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all"
+              style={lineaSel === l.key
+                ? { background: l.color, color:"#fff", borderColor: l.color }
+                : { borderColor:"#e5e7eb", color:"#4b5563", background:"#fff" }}>
+              {l.icon} {l.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Comparativa entre las 3 líneas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {lineStats.map(({ key, label, short, icon, color, hasSla, total, entregados, cancelados, expirados, slaMet, slaDef, avgMin, gmvTotal }) => {
+          const entPct = pct(entregados, total);
+          const slaPct = slaDef > 0 ? pct(slaMet, slaDef) : null;
+          return (
+            <div key={key} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"
+              style={{ borderTop:`4px solid ${color}` }}>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xl">{icon}</span>
+                <div>
+                  <p className="text-xs font-bold text-gray-800">{short}</p>
+                  <p className="text-[10px] text-gray-400">{label}</p>
+                </div>
+              </div>
+              {!total ? <p className="text-xs text-gray-400 py-4 text-center">Sin datos</p> : (
+                <div className="space-y-2.5">
+                  <KpiRow label="Total servicios" value={fmtNum(total)} color="#1f2937" />
+                  <KpiRow label="% Entrega" value={fmtPct(entPct)} color={entPct>=0.95?C_GRN:entPct>=0.85?C_AMB:C_RED} sub={`${fmtNum(entregados)} entregados`} />
+                  <div className="bg-gray-100 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full" style={{ width:`${Math.min(100,entPct*100).toFixed(1)}%`, background:color }} />
+                  </div>
+                  <KpiRow label="Cancelados"    value={fmtNum(cancelados)} color={C_RED} sub={fmtPct(pct(cancelados,total))} />
+                  <KpiRow label="Expirados"     value={fmtNum(expirados)}  color={C_AMB} sub={fmtPct(pct(expirados,total))} />
+                  {hasSla && slaPct !== null && <KpiRow label="% SLA" value={fmtPct(slaPct)} color={slaPct>=0.95?C_GRN:slaPct>=0.80?C_AMB:C_RED} />}
+                  {avgMin > 0 && <KpiRow label="Tiempo promedio" value={`${Math.round(avgMin)} min`} color={C_GRAY} />}
+                  {gmvTotal > 0 && <KpiRow label="GMV total" value={`$${fmtNum(Math.round(gmvTotal))}`} color={C_TEAL} />}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Sección Positivos / Por mejorar ───────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <InsightCard icon="✅" titulo="Positivos" color={C_GRN} badge={`${positivos.length} hallazgos`}>
+          {positivos.length > 0
+            ? <div className="space-y-2">{positivos.map((t,i) => <ItemLista key={i} txt={t} color={C_GRN} />)}</div>
+            : <p className="text-xs text-gray-400 text-center py-4">Sin destacados aún.</p>}
+        </InsightCard>
+        <InsightCard icon="⚠️" titulo="Por mejorar" color={C_AMB} badge={`${porMejorar.length} alertas`}>
+          {porMejorar.length > 0
+            ? <div className="space-y-2">{porMejorar.map((t,i) => <ItemLista key={i} txt={t} color={C_AMB} />)}</div>
+            : <p className="text-xs text-gray-400 text-center py-4">Sin alertas — ¡todo en orden!</p>}
+        </InsightCard>
+      </div>
+
+      {/* ── Sección Pilotos ───────────────────────────────────────────────── */}
+      {hasPilotos && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <InsightCard icon="🚴" titulo="Piloto Destacado" color={C_GRN} badge="Mayor actividad">
+            {pilotoDestacado ? (
+              <div className="space-y-1">
+                <p className="text-sm font-extrabold text-gray-800 truncate">🥇 {pilotoDestacado.nombre || pilotoDestacado.id}</p>
+                <p className="text-xs text-gray-400">{pilotoDestacado.ciudad} · ID: {pilotoDestacado.id}</p>
+                <div className="mt-3 space-y-1.5">
+                  <KpiRow label="Total servicios"  value={fmtNum(pilotoDestacado.total)}     color="#1f2937" />
+                  <KpiRow label="Entregados"        value={fmtNum(pilotoDestacado.entregados)} color={C_GRN} sub={fmtPct(pilotoDestacado.entPct)} />
+                  {pilotoDestacado.slaPct !== null && <KpiRow label="% SLA" value={fmtPct(pilotoDestacado.slaPct)} color={pilotoDestacado.slaPct>=0.9?C_GRN:C_AMB} />}
+                </div>
+              </div>
+            ) : <p className="text-xs text-gray-400">Sin datos de pilotos.</p>}
+          </InsightCard>
+
+          <InsightCard icon="🔴" titulo="Piloto con Bajo SLA" color={C_RED} badge="Requiere atención">
+            {pilotoBajoSla ? (
+              <div className="space-y-1">
+                <p className="text-sm font-extrabold text-gray-800 truncate">⚠️ {pilotoBajoSla.nombre || pilotoBajoSla.id}</p>
+                <p className="text-xs text-gray-400">{pilotoBajoSla.ciudad} · ID: {pilotoBajoSla.id}</p>
+                <div className="mt-3 space-y-1.5">
+                  <KpiRow label="Total servicios"  value={fmtNum(pilotoBajoSla.total)}     color="#1f2937" />
+                  <KpiRow label="Entregados"        value={fmtNum(pilotoBajoSla.entregados)} color={C_GRN} sub={fmtPct(pilotoBajoSla.entPct)} />
+                  <KpiRow label="% SLA"             value={fmtPct(pilotoBajoSla.slaPct)}    color={pilotoBajoSla.slaPct<0.80?C_RED:C_AMB} />
+                  <KpiRow label="SLA incumplidos"   value={fmtNum(pilotoBajoSla.slaDef - pilotoBajoSla.slaMet)} color={C_RED} />
+                </div>
+              </div>
+            ) : <p className="text-xs text-gray-400">No hay pilotos con SLA definido.</p>}
+          </InsightCard>
+        </div>
+      )}
+
+      {/* ── Sección Ciudades ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Crecimiento */}
+        <InsightCard icon="📈" titulo="Ciudad: Crecimiento" color={C_GRN} badge={hasPrev ? "vs mes anterior" : "Sin comparativa"}>
+          {hasPrev && ciudadCrecimiento && ciudadCrecimiento.delta > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-sm font-extrabold text-gray-800">{ciudadCrecimiento.ciudad}</p>
+              <KpiRow label="Servicios actuales" value={fmtNum(ciudadCrecimiento.total)} color={C_GRN} />
+              <KpiRow label="Crecimiento"         value={`+${fmtNum(ciudadCrecimiento.delta)} serv`} color={C_GRN} />
+              <KpiRow label="% Entrega"           value={fmtPct(ciudadCrecimiento.entPct)} color={ciudadCrecimiento.entPct>=0.95?C_GRN:C_AMB} />
+            </div>
+          ) : <p className="text-xs text-gray-400 text-center py-3">{hasPrev ? "Sin crecimiento registrado." : "Carga el mes anterior para comparar."}</p>}
+        </InsightCard>
+
+        {/* Caída */}
+        <InsightCard icon="📉" titulo="Ciudad: Caída" color={C_RED} badge={hasPrev ? "vs mes anterior" : "Sin comparativa"}>
+          {hasPrev && ciudadCaida && ciudadCaida.delta < 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-sm font-extrabold text-gray-800">{ciudadCaida.ciudad}</p>
+              <KpiRow label="Servicios actuales" value={fmtNum(ciudadCaida.total)} color="#1f2937" />
+              <KpiRow label="Caída"              value={`${fmtNum(ciudadCaida.delta)} serv`} color={C_RED} />
+              <KpiRow label="% Entrega"          value={fmtPct(ciudadCaida.entPct)} color={ciudadCaida.entPct>=0.95?C_GRN:C_AMB} />
+            </div>
+          ) : <p className="text-xs text-gray-400 text-center py-3">{hasPrev ? "Sin caídas registradas." : "Carga el mes anterior para comparar."}</p>}
+        </InsightCard>
+
+        {/* Mejor SLA */}
+        <InsightCard icon="🏅" titulo="Ciudad: Mejor SLA" color={C_TEAL} badge="Top SLA">
+          {ciudadMejorSla ? (
+            <div className="space-y-1.5">
+              <p className="text-sm font-extrabold text-gray-800">{ciudadMejorSla.ciudad}</p>
+              <KpiRow label="% SLA"             value={fmtPct(ciudadMejorSla.slaPct)} color={C_GRN} />
+              <KpiRow label="Servicios con SLA" value={`${fmtNum(ciudadMejorSla.slaMet)} / ${fmtNum(ciudadMejorSla.slaDef)}`} color={C_TEAL} />
+              <KpiRow label="Total servicios"   value={fmtNum(ciudadMejorSla.total)} color="#1f2937" />
+            </div>
+          ) : <p className="text-xs text-gray-400 text-center py-3">Sin datos de SLA por ciudad.</p>}
+        </InsightCard>
+
+        {/* Peor SLA */}
+        <InsightCard icon="🚨" titulo="Ciudad: Peor SLA" color={C_RED} badge="Requiere acción">
+          {ciudadPeorSla && ciudadPeorSla !== ciudadMejorSla ? (
+            <div className="space-y-1.5">
+              <p className="text-sm font-extrabold text-gray-800">{ciudadPeorSla.ciudad}</p>
+              <KpiRow label="% SLA"              value={fmtPct(ciudadPeorSla.slaPct)} color={ciudadPeorSla.slaPct<0.80?C_RED:C_AMB} />
+              <KpiRow label="SLA incumplidos"    value={fmtNum(ciudadPeorSla.slaDef - ciudadPeorSla.slaMet)} color={C_RED} />
+              <KpiRow label="Total servicios"    value={fmtNum(ciudadPeorSla.total)} color="#1f2937" />
+            </div>
+          ) : <p className="text-xs text-gray-400 text-center py-3">Sin datos suficientes.</p>}
+        </InsightCard>
+      </div>
+
+    </div>
+  );
+}
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 const TABS = [
@@ -1192,8 +3201,11 @@ const TABS = [
   { id:"mostrador",  label:"Cruz Verde Mostrador",  icon:"🏪",  adminOnly: false },
   { id:"integ_sd",   label:"Integración Same Day",  icon:"⚡",  adminOnly: false },
   { id:"integ_nd",   label:"Integración Next Day",  icon:"📅",  adminOnly: false },
-  { id:"devolucion", label:"Devoluciones",           icon:"↩️",  adminOnly: false },
-  { id:"admin",      label:"Administrativo",         icon:"🔧",  adminOnly: true  },
+  { id:"pilotos",    label:"Pilotos Cruz Verde",    icon:"🚴",  adminOnly: false },
+  { id:"entregas",   label:"Análisis Entregas",     icon:"📦",  adminOnly: false },
+  { id:"admin",      label:"Administrativo",        icon:"🔧",  adminOnly: true  },
+  { id:"insight",    label:"Insight",               icon:"💡",  adminOnly: false },
+  { id:"notas",      label:"Notas y Tareas",        icon:"📝",  adminOnly: false },
 ];
 
 // ── Componente principal ───────────────────────────────────────────────────
@@ -1205,8 +3217,10 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [rows,       setRows]       = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [uploadMsg,  setUploadMsg]  = useState(null);
-  const [filtCiudad, setFiltCiudad] = useState("todas");
-  const [filtLinea,  setFiltLinea]  = useState("todas");
+  const [filtCiudad,    setFiltCiudad]    = useState("todas");
+  const [filtLinea,     setFiltLinea]     = useState("todas");
+  const [filtFechaIni,  setFiltFechaIni]  = useState("");
+  const [filtFechaFin,  setFiltFechaFin]  = useState("");
   // Upload year/month selectors
   const [upAnio,  setUpAnio]  = useState(now.getFullYear());
   const [upMesN,  setUpMesN]  = useState(now.getMonth() + 1);
@@ -1214,14 +3228,19 @@ export default function InformeCruzVerde({ isAdmin }) {
   // SLA config state
   const [slaConfig,    setSlaConfig]    = useState(() => getSlaConfig());
   const [horariosMap,  setHorariosMap]  = useState({});
+  const [prevRows,     setPrevRows]     = useState([]);
 
-  // Load horarios on mount from localStorage
+  // Load horarios on mount — prioriza el nuevo SK_HORARIOS_SD, cae al antiguo si no existe
   useEffect(() => {
     try {
-      const dir = JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null");
-      if (dir?.horarios) {
-        setHorariosMap(buildHorariosMap(dir.horarios));
+      const sd = JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null");
+      if (sd?.horarios?.length) {
+        setHorariosMap(buildHorariosMap(sd.horarios));
+        return;
       }
+      // Fallback: antiguo directorio.horarios
+      const dir = JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null");
+      if (dir?.horarios?.length) setHorariosMap(buildHorariosMap(dir.horarios));
     } catch { /* ignore */ }
   }, []);
 
@@ -1234,19 +3253,45 @@ export default function InformeCruzVerde({ isAdmin }) {
   // Cargar filas del mes seleccionado
   useEffect(() => {
     if (!mesSel) { setRows([]); return; }
-    idbLoad(mesSel).then(data => setRows(data?.rows || []));
+    idbLoad(mesSel).then(data =>
+      setRows((data?.rows || []).filter(r => !ESTADOS_EXCLUIDOS.has(r.estado)))
+    );
   }, [mesSel]);
+
+  // Mes anterior: el mes inmediatamente anterior al seleccionado en el índice
+  const prevMesSel = useMemo(() => {
+    const sorted = Object.keys(index).sort();
+    const idx = sorted.indexOf(mesSel);
+    return idx > 0 ? sorted[idx - 1] : null;
+  }, [index, mesSel]);
+
+  // Cargar y enriquecer filas del mes anterior
+  useEffect(() => {
+    if (!prevMesSel) { setPrevRows([]); return; }
+    idbLoad(prevMesSel).then(data => {
+      const enriched = (data?.rows || [])
+        .filter(r => !ESTADOS_EXCLUIDOS.has(r.estado))
+        .map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
+      setPrevRows(enriched);
+    });
+  }, [prevMesSel, slaConfig, horariosMap]);
 
   // Filtros derivados con SLA computado dinámicamente
   const filteredRows = useMemo(() => {
     let r = rows;
     if (filtLinea  !== "todas") r = r.filter(row => row.linea   === filtLinea);
     if (filtCiudad !== "todas") r = r.filter(row => row.ciudad  === filtCiudad);
-    // Enrich with dynamic SLA computation
+    if (filtFechaIni) r = r.filter(row => row.fecha >= filtFechaIni);
+    if (filtFechaFin) r = r.filter(row => row.fecha <= filtFechaFin);
     return r.map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
-  }, [rows, filtLinea, filtCiudad, slaConfig, horariosMap]);
+  }, [rows, filtLinea, filtCiudad, filtFechaIni, filtFechaFin, slaConfig, horariosMap]);
 
   const ciudades = useMemo(() => [...new Set(rows.map(r => r.ciudad))].filter(Boolean).sort(), [rows]);
+
+  // Todas las filas del mes enriquecidas con SLA (sin filtros de linea/ciudad) — para buscador por ID
+  const allEnrichedRows = useMemo(() =>
+    rows.map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) })),
+  [rows, slaConfig, horariosMap]);
 
   // Upload handler — usa año/mes del selector, no del archivo
   const handleUpload = async (e) => {
@@ -1259,7 +3304,7 @@ export default function InformeCruzVerde({ isAdmin }) {
       const ws      = wb.Sheets[wb.SheetNames[0]];
       const rawRows = XLSX.utils.sheet_to_json(ws, { range: 3, defval: "" });
       if (!rawRows.length) throw new Error("El archivo no contiene datos.");
-      if (!rawRows[0].uuid_booking && !rawRows[0].nombre_usuario)
+      if (!rawRows[0].nombre_usuario && !rawRows[0].nombre_empresa && !rawRows[0].estado)
         throw new Error("Formato no reconocido. ¿Es el archivo 'Cruz verde [mes].xlsx'?");
       const processed = procesarRows(rawRows);
       const mesKey    = `${MESES_LABEL[upMesN - 1]} ${upAnio}`;
@@ -1268,7 +3313,10 @@ export default function InformeCruzVerde({ isAdmin }) {
       saveIndex(newIdx);
       setIndex(newIdx);
       setMesSel(mesKey);
-      setUploadMsg({ ok: true, txt: `✅ ${mesKey}: ${processed.length.toLocaleString()} registros importados` });
+      const nd = processed.filter(r => r.linea === "integ_nd").length;
+      const sd = processed.filter(r => r.linea === "integ_sd").length;
+      const mo = processed.filter(r => r.linea === "mostrador").length;
+      setUploadMsg({ ok: true, txt: `✅ ${mesKey}: ${processed.length.toLocaleString()} registros — Mostrador: ${mo} · Same Day: ${sd} · Next Day: ${nd}` });
     } catch (err) {
       setUploadMsg({ ok: false, txt: `❌ ${err.message}` });
     } finally {
@@ -1325,7 +3373,7 @@ export default function InformeCruzVerde({ isAdmin }) {
               <span className="text-xs text-gray-500 font-medium">Mes:</span>
               <div className="flex gap-1 flex-wrap">
                 {meses.map(m => (
-                  <button key={m} onClick={() => setMesSel(m)}
+                  <button key={m} onClick={() => { setMesSel(m); setFiltFechaIni(""); setFiltFechaFin(""); }}
                     className={`px-3 py-1 rounded-full text-xs font-semibold transition border ${mesSel===m?"text-white border-transparent":"border-gray-200 text-gray-600 hover:bg-teal-50"}`}
                     style={mesSel===m?{background:C_TEAL}:{}}>
                     {m}
@@ -1350,6 +3398,22 @@ export default function InformeCruzVerde({ isAdmin }) {
                   {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500">Desde:</span>
+                <input type="date" value={filtFechaIni} onChange={e => setFiltFechaIni(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" />
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500">Hasta:</span>
+                <input type="date" value={filtFechaFin} onChange={e => setFiltFechaFin(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" />
+              </div>
+              {(filtFechaIni || filtFechaFin) && (
+                <button onClick={() => { setFiltFechaIni(""); setFiltFechaFin(""); }}
+                  className="text-xs text-gray-400 hover:text-red-500 transition px-1" title="Limpiar fechas">
+                  ✕ fechas
+                </button>
+              )}
               {rows.length > 0 && (
                 <span className="text-xs text-gray-400 ml-1">{filteredRows.length.toLocaleString()} servicios</span>
               )}
@@ -1373,7 +3437,7 @@ export default function InformeCruzVerde({ isAdmin }) {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
         {/* Estado vacío */}
-        {rows.length === 0 && !loading && tab !== "admin" && (
+        {rows.length === 0 && !loading && tab !== "admin" && tab !== "notas" && (
           <div className="text-center py-16">
             <div className="text-6xl mb-4">🟢</div>
             <p className="text-lg font-bold text-gray-700 mb-2">Informe Cruz Verde</p>
@@ -1385,13 +3449,27 @@ export default function InformeCruzVerde({ isAdmin }) {
         {/* Paneles de análisis */}
         {rows.length > 0 && (
           <>
-            {tab === "resumen"    && <ResumenPanel    rows={filteredRows} />}
-            {tab === "mostrador"  && <LineaPanel      rows={tabRows} linea="mostrador" />}
-            {tab === "integ_sd"   && <LineaPanel      rows={tabRows} linea="integ_sd" />}
-            {tab === "integ_nd"   && <LineaPanel      rows={tabRows} linea="integ_nd" />}
-            {tab === "devolucion" && <DevolucionesPanel rows={filteredRows} />}
+            {tab === "resumen"    && <ResumenPanel rows={filteredRows} />}
+            {tab === "mostrador"  && <LineaPanel rows={tabRows} linea="mostrador"
+              prevRows={prevRows.filter(r => r.linea === "mostrador")} prevMesLabel={prevMesSel} />}
+            {tab === "integ_sd"   && <LineaPanel rows={tabRows} linea="integ_sd"
+              prevRows={prevRows.filter(r => r.linea === "integ_sd")}  prevMesLabel={prevMesSel} />}
+            {tab === "integ_nd"   && <LineaPanel rows={tabRows} linea="integ_nd"
+              prevRows={prevRows.filter(r => r.linea === "integ_nd")}  prevMesLabel={prevMesSel} />}
+            {tab === "pilotos" && (
+              <PilotosPanel rows={filteredRows} prevRows={prevRows} prevMesLabel={prevMesSel} />
+            )}
+            {tab === "entregas" && (
+              <EntregasPanel rows={filteredRows} />
+            )}
+            {tab === "insight" && (
+              <InsightPanel rows={filteredRows} prevRows={prevRows} />
+            )}
           </>
         )}
+
+        {/* Panel Notas y Tareas — siempre visible, sin necesitar datos */}
+        {tab === "notas" && <NotasTareasCruzVerde />}
 
         {/* Panel Administrativo */}
         {tab === "admin" && isAdmin && (
@@ -1399,11 +3477,12 @@ export default function InformeCruzVerde({ isAdmin }) {
             slaConfig={slaConfig}
             setSlaConfig={setSlaConfig}
             setHorariosMap={setHorariosMap}
+            rows={rows}
           />
         )}
 
         {/* ── Panel: Subir nuevo mes ── */}
-        {tab !== "admin" && (
+        {tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <h3 className="font-bold text-gray-700 text-sm mb-4">📂 Subir nuevo mes</h3>
             <div className="flex flex-wrap gap-3 items-end">
