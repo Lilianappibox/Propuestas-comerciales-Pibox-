@@ -234,7 +234,7 @@ export default function Tendencias({ data }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
             <XAxis dataKey="mes" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={45} />
             <YAxis tickFormatter={Mx} tick={{ fontSize: 10 }} />
-            <Tooltip content={(props) => <TooltipMetaGMV {...props} fmt={Mx} />} />
+            <Tooltip content={(props) => <TooltipMetaGMV {...props} fmt={Mx} fmtFull={M} />} />
             <Legend />
             <Line type="monotone" dataKey="Meta" name="Meta" stroke={PIBOX_PURPLE} strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
             <Line type="monotone" dataKey="GMV" name="GMV Real" stroke={PIBOX_PINK} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />

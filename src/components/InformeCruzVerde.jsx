@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import NotasTareasCruzVerde from "./NotasTareasCruzVerde";
+import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend, LineChart, Line,
@@ -3229,6 +3230,28 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [slaConfig,    setSlaConfig]    = useState(() => getSlaConfig());
   const [horariosMap,  setHorariosMap]  = useState({});
   const [prevRows,     setPrevRows]     = useState([]);
+  const [publishing,   setPublishing]   = useState(false);
+  const [publishMsg,   setPublishMsg]   = useState(null);
+  const [loadingServer, setLoadingServer] = useState(false);
+
+  // No-admin: cargar snapshot publicado desde el servidor
+  useEffect(() => {
+    if (isAdmin) return;
+    setLoadingServer(true);
+    fetchFromServer("cruz_verde").then(async (snap) => {
+      if (!snap?.ok || !snap?.data?.index) { setLoadingServer(false); return; }
+      const d = snap.data;
+      saveIndex(d.index || {});
+      await Promise.all(Object.entries(d.meses || {}).map(([k, v]) => idbSave(k, v)));
+      if (d.directorio) localStorage.setItem("pibox_cv_directorio", JSON.stringify(d.directorio));
+      if (d.horariosSd) localStorage.setItem(SK_HORARIOS_SD, JSON.stringify(d.horariosSd));
+      if (d.sla) localStorage.setItem("pibox_cv_sla", JSON.stringify(d.sla));
+      if (d.umbrales) localStorage.setItem("pibox_cv_umbrales", JSON.stringify(d.umbrales));
+      setIndex(d.index || {});
+      if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
+      setLoadingServer(false);
+    }).catch(() => setLoadingServer(false));
+  }, [isAdmin]);
 
   // Load horarios on mount — prioriza el nuevo SK_HORARIOS_SD, cae al antiguo si no existe
   useEffect(() => {
@@ -3365,6 +3388,60 @@ export default function InformeCruzVerde({ isAdmin }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Informe Cruz Verde</p>
               <p className="text-xs text-gray-500">Mostrador · Integración Same Day · Integración Next Day · SLA en tiempo real</p>
             </div>
+            {!isAdmin && loadingServer && (
+              <span className="text-xs text-teal-600 font-medium animate-pulse shrink-0 ml-2">⏳ Cargando datos del equipo…</span>
+            )}
+            {isAdmin && (
+              <div className="flex items-center gap-2 shrink-0 ml-auto">
+                {publishMsg && (
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${publishMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    {publishMsg.txt}
+                  </span>
+                )}
+                <button disabled={publishing} onClick={async () => {
+                  if (!confirm("¿Limpiar los datos publicados? Los usuarios del equipo verán el módulo vacío.")) return;
+                  setPublishing(true); setPublishMsg(null);
+                  try {
+                    await clearFromServer("cruz_verde");
+                    setPublishMsg({ ok: true, txt: "🗑️ Datos del equipo eliminados" });
+                  } catch (err) {
+                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                  } finally {
+                    setPublishing(false);
+                    setTimeout(() => setPublishMsg(null), 6000);
+                  }
+                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-gray-400" : "bg-gray-500 hover:bg-gray-600"}`}>
+                  🗑️ Limpiar publicación
+                </button>
+                <button disabled={publishing} onClick={async () => {
+                  setPublishing(true); setPublishMsg(null);
+                  try {
+                    const idx = loadIndex();
+                    const allData = {
+                      index: idx,
+                      meses: {},
+                      directorio: JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null"),
+                      horariosSd: JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null"),
+                      sla: JSON.parse(localStorage.getItem("pibox_cv_sla") || "{}"),
+                      umbrales: JSON.parse(localStorage.getItem("pibox_cv_umbrales") || "{}"),
+                    };
+                    await Promise.all(Object.keys(idx).map(async (key) => {
+                      const d = await idbLoad(key);
+                      if (d) allData.meses[key] = d;
+                    }));
+                    const result = await publishToServer("cruz_verde", allData);
+                    setPublishMsg({ ok: true, txt: `✅ Publicado – ${new Date(result.published_at).toLocaleString("es-CO")}` });
+                  } catch (err) {
+                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                  } finally {
+                    setPublishing(false);
+                    setTimeout(() => setPublishMsg(null), 6000);
+                  }
+                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-teal-400" : "bg-teal-600 hover:bg-teal-700"}`}>
+                  {publishing ? "⏳ Publicando…" : "🌐 Publicar para el equipo"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Filtros de mes + línea + ciudad */}

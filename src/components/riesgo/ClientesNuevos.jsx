@@ -24,6 +24,10 @@ function downloadCSV(rows, filename) {
 export default function ClientesNuevos() {
   const meses = mesesDisponibles();
   const [mesKey, setMesKey] = useState(meses[meses.length - 1]?.key || "");
+  const [filtBuscar, setFiltBuscar] = useState("");
+  const [filtCiudad, setFiltCiudad] = useState("");
+  const [filtEjecutivo, setFiltEjecutivo] = useState("");
+  const [filtOrden, setFiltOrden] = useState("gmv");
 
   const { newClients, totals, distAgg, relaunchDist, top5 } = useMemo(() => {
     if (!mesKey) return { newClients: [], totals: {}, distAgg: [], relaunchDist: [], top5: [] };
@@ -160,8 +164,17 @@ export default function ClientesNuevos() {
       </div>
 
       {/* Table of new clients */}
+      {(() => {
+        const ciudades = [...new Set(newClients.map(c => c.ciudad).filter(Boolean))].sort();
+        const ejecutivos = [...new Set(newClients.map(c => c.ejecutivo).filter(Boolean))].sort();
+        const filtered = newClients
+          .filter(c => !filtBuscar || c.empresa?.toLowerCase().includes(filtBuscar.toLowerCase()))
+          .filter(c => !filtCiudad || c.ciudad === filtCiudad)
+          .filter(c => !filtEjecutivo || c.ejecutivo === filtEjecutivo)
+          .sort((a, b) => filtOrden === "gmv" ? (b.gmv||0)-(a.gmv||0) : filtOrden === "servicios" ? (b.total||0)-(a.total||0) : filtOrden === "completados" ? (b.completados||0)-(a.completados||0) : a.empresa?.localeCompare(b.empresa));
+        return (
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap", gap: 8 }}>
           <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: 0 }}>Detalle de clientes nuevos ({newClients.length})</h4>
           {newClients.length > 0 && (
             <button onClick={handleCSV} style={{ background: SEM_VERDE, color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -169,19 +182,60 @@ export default function ClientesNuevos() {
             </button>
           )}
         </div>
+        {/* Filtros */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "10px 16px", background: "#f9fafb", borderBottom: "1px solid #f3f4f6", alignItems: "flex-end" }}>
+          <div style={{ flex: "1 1 160px" }}>
+            <label style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Buscar empresa</label>
+            <input type="text" value={filtBuscar} onChange={e => setFiltBuscar(e.target.value)} placeholder="Nombre..."
+              style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 8px", fontSize: 11, outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Ciudad</label>
+            <select value={filtCiudad} onChange={e => setFiltCiudad(e.target.value)}
+              style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 8px", fontSize: 11, outline: "none" }}>
+              <option value="">Todas</option>
+              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Ejecutivo (KAM)</label>
+            <select value={filtEjecutivo} onChange={e => setFiltEjecutivo(e.target.value)}
+              style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 8px", fontSize: 11, outline: "none" }}>
+              <option value="">Todos</option>
+              {ejecutivos.map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Ordenar por</label>
+            <select value={filtOrden} onChange={e => setFiltOrden(e.target.value)}
+              style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 8px", fontSize: 11, outline: "none" }}>
+              <option value="gmv">Mayor GMV</option>
+              <option value="servicios">Mayor Servicios</option>
+              <option value="completados">Mayor Completados</option>
+              <option value="nombre">Nombre A-Z</option>
+            </select>
+          </div>
+          {(filtBuscar || filtCiudad || filtEjecutivo) && (
+            <button onClick={() => { setFiltBuscar(""); setFiltCiudad(""); setFiltEjecutivo(""); }}
+              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", cursor: "pointer" }}>
+              Limpiar
+            </button>
+          )}
+          <span style={{ fontSize: 10, color: "#9ca3af" }}>{filtered.length} de {newClients.length}</span>
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", minWidth: 900 }}>
             <thead>
               <tr>
-                {["Empresa", "Ciudad", "Ejecutivo", "Servicios", "Completados", "Cancelados", "Expirados", "GMV", "Relanzamientos", "Devueltos"].map(h => (
+                {["Empresa", "Ciudad", "Ejecutivo (KAM)", "Servicios", "Completados", "Cancelados", "Expirados", "GMV", "Relanzamientos", "Devueltos"].map(h => (
                   <th key={h} style={{ background: PIBOX_PURPLE, color: "#fff", padding: "8px 10px", textAlign: "left", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {newClients.length === 0 ? (
-                <tr><td colSpan={10} style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>No se encontraron clientes nuevos en este mes.</td></tr>
-              ) : newClients.map((c, i) => (
+              {filtered.length === 0 ? (
+                <tr><td colSpan={10} style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>No se encontraron clientes con los filtros aplicados.</td></tr>
+              ) : filtered.map((c, i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#faf5ff" }}>
                   <td style={{ padding: "6px 10px", fontWeight: 600, color: "#374151" }}>{c.empresa}</td>
                   <td style={{ padding: "6px 10px", color: "#6b7280" }}>{c.ciudad}</td>
@@ -190,7 +244,7 @@ export default function ClientesNuevos() {
                   <td style={{ padding: "6px 10px", color: SEM_VERDE }}>{c.completados}</td>
                   <td style={{ padding: "6px 10px", color: SEM_ROJO }}>{c.cancelados}</td>
                   <td style={{ padding: "6px 10px", color: SEM_AMARILLO }}>{c.expirados}</td>
-                  <td style={{ padding: "6px 10px", fontWeight: 600, color: PIBOX_PURPLE }}>{fmtM(c.gmv)}</td>
+                  <td style={{ padding: "6px 10px", fontWeight: 600, color: PIBOX_PURPLE, whiteSpace: "nowrap" }}>{fmtFull(c.gmv)}</td>
                   <td style={{ padding: "6px 10px", color: "#374151" }}>{c.relanzamientos || 0}</td>
                   <td style={{ padding: "6px 10px", color: "#374151" }}>{c.devueltos || 0}</td>
                 </tr>
@@ -199,6 +253,8 @@ export default function ClientesNuevos() {
           </table>
         </div>
       </div>
+        );
+      })()}
 
       {/* Distance distribution */}
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", marginBottom: 20, overflow: "hidden" }}>

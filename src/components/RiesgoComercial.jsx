@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, idbSaveDrivers, idbSaveHorasRows, UMBRALES_DEFAULT } from "./riesgo/utils";
+import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
@@ -34,6 +35,9 @@ export default function RiesgoComercial({ currentUser }) {
   const [, forceRender]     = useState(0);
   const [importMsg, setImportMsg] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishMsg, setPublishMsg] = useState(null);
+  const [loadingServer, setLoadingServer] = useState(false);
   const importRef = useRef();
   const isAdmin = currentUser?.rol === "Administrativo";
 
@@ -79,25 +83,43 @@ export default function RiesgoComercial({ currentUser }) {
     }
   }, []);
 
-  // No-admin: sincronizar meses del código que falten localmente
+  // No-admin: cargar snapshot publicado desde el servidor
   useEffect(() => {
     if (isAdmin) return;
-    const codeIndex = loadIndexReadonly();
-    const codeKeys = Object.keys(codeIndex);
-    if (codeKeys.length === 0) return;
-    const localIndex = loadIndex();
-    const missing = codeKeys.filter(k => !localIndex[k]);
-    if (missing.length === 0) return;
-    try {
-      const merged = { ...localIndex };
-      for (const key of missing) {
-        merged[key] = codeIndex[key];
-        const mesData = loadMesDataReadonly(key);
-        if (mesData) saveMesData(key, mesData);
+    setLoadingServer(true);
+    fetchFromServer("riesgo").then(async (snap) => {
+      if (!snap?.ok || !snap?.data?.index) {
+        // Fallback al JSON bundled si no hay snapshot en servidor
+        const codeIndex = loadIndexReadonly();
+        const codeKeys = Object.keys(codeIndex);
+        if (codeKeys.length > 0) {
+          const localIndex = loadIndex();
+          const missing = codeKeys.filter(k => !localIndex[k]);
+          if (missing.length > 0) {
+            const merged = { ...localIndex };
+            for (const key of missing) {
+              merged[key] = codeIndex[key];
+              const mesData = loadMesDataReadonly(key);
+              if (mesData) saveMesData(key, mesData);
+            }
+            saveIndex(merged);
+          }
+        }
+        setLoadingServer(false);
+        forceRender(n => n + 1);
+        return;
       }
-      saveIndex(merged);
-    } catch {}
-    forceRender(n => n + 1);
+      const d = snap.data;
+      saveIndex({ ...loadIndex(), ...d.index });
+      await Promise.all([
+        ...Object.entries(d.meses || {}).map(([k, v]) => saveMesData(k, v)),
+        ...Object.entries(d.horasRows || {}).map(([k, v]) => idbSaveHorasRows(k, v)),
+        ...Object.entries(d.drivers  || {}).map(([k, v]) => idbSaveDrivers(k, v)),
+      ]);
+      if (d.umbrales) localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(d.umbrales));
+      setLoadingServer(false);
+      forceRender(n => n + 1);
+    }).catch(() => setLoadingServer(false));
   }, [isAdmin]);
 
   const handleMesesChange = () => forceRender(n=>n+1);
@@ -114,48 +136,58 @@ export default function RiesgoComercial({ currentUser }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Riesgo Comercial 360°</p>
               <p className="text-xs text-gray-500">Monitoreo automático de clientes · Detección de fuga y deterioro</p>
             </div>
-            {!isAdmin && (
-              <div className="flex items-center gap-2 shrink-0">
-                <input ref={importRef} type="file" accept=".json" onChange={handleImport}
-                  disabled={importing} className="hidden" id="riesgo-import-input" />
-                <label htmlFor="riesgo-import-input"
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shrink-0 ${importing ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-700"}`}
-                  style={{background:"#2563EB", color:"#fff"}}>
-                  {importing ? "⏳ Importando..." : "📥 Importar datos"}
-                </label>
-                {importMsg && (
-                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${importMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                    {importMsg.txt}
-                  </span>
-                )}
-              </div>
+            {!isAdmin && loadingServer && (
+              <span className="text-xs text-purple-600 font-medium animate-pulse shrink-0">⏳ Cargando datos del equipo…</span>
             )}
             {isAdmin && (
-              <button onClick={async () => {
-                const idx = loadIndex();
-                const keys = Object.keys(idx);
-                const allData = { index: idx, meses: {}, horasRows: {}, drivers: {} };
-                // Datos de mes (métricas, ranking, ciudad, empresa, clientes nuevos/perdidos, informe)
-                await Promise.all(keys.map(async (key) => {
-                  const d = await loadMesDataAsync(key);
-                  if (d) allData.meses[key] = d;
-                  // Empresas por Horas
-                  const hr = await idbLoadHorasRows(key);
-                  if (hr) allData.horasRows[key] = hr;
-                  // Análisis Pilotos
-                  const dr = await idbLoadDrivers(key);
-                  if (dr) allData.drivers[key] = dr;
-                }));
-                // Umbrales de configuración
-                try {
-                  allData.umbrales = JSON.parse(localStorage.getItem("pibox_riesgo_umbrales") || "{}");
-                } catch { allData.umbrales = {}; }
-                const blob = new Blob([JSON.stringify(allData)], { type: "application/json" });
-                const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-                a.download = "riesgo-export.json"; a.click();
-              }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition shrink-0">
-                📤 Exportar para el equipo
-              </button>
+              <div className="flex items-center gap-2 shrink-0 ml-auto">
+                {publishMsg && (
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${publishMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    {publishMsg.txt}
+                  </span>
+                )}
+                <button disabled={publishing} onClick={async () => {
+                  if (!confirm("¿Limpiar los datos publicados? Los usuarios del equipo verán el módulo vacío.")) return;
+                  setPublishing(true); setPublishMsg(null);
+                  try {
+                    await clearFromServer("riesgo");
+                    setPublishMsg({ ok: true, txt: "🗑️ Datos del equipo eliminados" });
+                  } catch (err) {
+                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                  } finally {
+                    setPublishing(false);
+                    setTimeout(() => setPublishMsg(null), 6000);
+                  }
+                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-gray-400" : "bg-gray-500 hover:bg-gray-600"}`}>
+                  🗑️ Limpiar publicación
+                </button>
+                <button disabled={publishing} onClick={async () => {
+                  setPublishing(true); setPublishMsg(null);
+                  try {
+                    const idx = loadIndex();
+                    const keys = Object.keys(idx);
+                    const allData = { index: idx, meses: {}, horasRows: {}, drivers: {} };
+                    await Promise.all(keys.map(async (key) => {
+                      const d = await loadMesDataAsync(key);
+                      if (d) allData.meses[key] = d;
+                      const hr = await idbLoadHorasRows(key);
+                      if (hr) allData.horasRows[key] = hr;
+                      const dr = await idbLoadDrivers(key);
+                      if (dr) allData.drivers[key] = dr;
+                    }));
+                    try { allData.umbrales = JSON.parse(localStorage.getItem("pibox_riesgo_umbrales") || "{}"); } catch {}
+                    const result = await publishToServer("riesgo", allData);
+                    setPublishMsg({ ok: true, txt: `✅ Publicado – ${new Date(result.published_at).toLocaleString("es-CO")}` });
+                  } catch (err) {
+                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                  } finally {
+                    setPublishing(false);
+                    setTimeout(() => setPublishMsg(null), 6000);
+                  }
+                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-purple-400" : "bg-purple-600 hover:bg-purple-700"}`}>
+                  {publishing ? "⏳ Publicando…" : "🌐 Publicar para el equipo"}
+                </button>
+              </div>
             )}
           </div>
 

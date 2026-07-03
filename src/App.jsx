@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { TARIFAS_DEFAULT, MODULOS_CONFIG } from "./data/tarifas";
-import { loadUsers, saveUsers, getPermisos, ROLES, fetchCloudUsers, saveCloudUsers } from "./data/users";
+import { loadUsers, saveUsers, getPermisos, ROLES, fetchCloudUsers, saveCloudUsers, DEFAULT_USERS } from "./data/users";
 import { loadTemplate, saveTemplate, loadHistory, saveHistory, addHistoryEntry } from "./data/templateTexts";
 import PropuestaPreview from "./components/PropuestaPreview";
 import TarifasEditor from "./components/TarifasEditor";
@@ -86,6 +86,20 @@ function loadModulos() {
 export default function App() {
   const [users, setUsers]             = useState(loadUsers);
   const [currentUser, setCurrentUser] = useState(() => {
+    if (window.__RAILS_USER__) {
+      const railsUser = window.__RAILS_USER__;
+      // Merge DEFAULT_USERS (no localStorage) so code-level permission changes auto-apply
+      const fromCode = DEFAULT_USERS.find(u => u.email.toLowerCase() === railsUser.email.toLowerCase());
+      const merged = {
+        ...railsUser,
+        permisosCustom: {
+          ...(fromCode?.permisosCustom || {}),  // defaults del código (base)
+          ...(railsUser.permisosCustom || {}),   // Rails DB tiene la última palabra
+        },
+      };
+      try { localStorage.setItem(SK_SESSION, JSON.stringify(merged)); } catch {}
+      return merged;
+    }
     try {
       const s = localStorage.getItem(SK_SESSION);
       if (!s) return null;
@@ -100,7 +114,7 @@ export default function App() {
       return saved;
     } catch { return null; }
   });
-  const [view, setView]             = useState("welcome");
+  const [view, setView]             = useState(() => window.__RAILS_INITIAL_VIEW__ || "welcome");
   const [subTab, setSubTab]         = useState(SUB_BUILDER);
   const [propuesta, setPropuesta]   = useState(loadPropuesta);
   const [tarifas, setTarifas]       = useState(loadTarifas);
@@ -245,15 +259,17 @@ export default function App() {
 
   const modulosActivos = MODULOS_CONFIG.filter((m) => modulos[m.id]).length;
 
+  const railsMode = !!window.__RAILS_BACK_URL__;
+
   // ── Vistas principales (orden solicitado) ──
   const mainViews = [
-    { id: VIEW_PROPUESTAS, label: "Propuestas Comerciales", icon: "📋", visible: !!permisos.verPropuesta },
+    { id: VIEW_PROPUESTAS, label: "Propuestas Comerciales", icon: "📋", visible: !!permisos.verPropuesta && (!railsMode || window.__RAILS_INITIAL_VIEW__ === VIEW_PROPUESTAS) },
     { id: VIEW_TARIFARIO,  label: "Tarifario Pibox",         icon: "💰", visible: !!permisos.verTarifario },
     { id: VIEW_CIERRE,     label: "Cierre Comercial",       icon: "📊", visible: !!permisos.verCierreComercial },
     { id: VIEW_RIESGO,     label: "Riesgo Comercial",       icon: "🚨", visible: !!permisos.verRiesgoComercial },
     { id: VIEW_TADA,       label: "Informe TaDa",           icon: "🍺", visible: !!permisos.verInformeTada },
     { id: VIEW_CRUZ_VERDE, label: "Informe Cruz Verde",     icon: "🟢", visible: !!permisos.verInformeCruzVerde },
-    { id: VIEW_USUARIOS,   label: "Usuarios",               icon: "👥", visible: permisos.gestionarUsuarios },
+    { id: VIEW_USUARIOS,   label: "Usuarios",               icon: "👥", visible: permisos.gestionarUsuarios && !railsMode },
   ].filter((v) => v.visible);
 
   // ── Sub-tabs de Propuestas Comerciales ──
@@ -284,6 +300,13 @@ export default function App() {
 
         {/* Navigation */}
         <nav className="flex flex-col gap-1 px-2 py-3">
+          {railsMode && window.__RAILS_INITIAL_VIEW__ !== VIEW_PROPUESTAS && (
+            <a href={window.__RAILS_BACK_URL__}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap text-white/80 hover:bg-white/15">
+              <span className="text-lg shrink-0 w-6 text-center">📋</span>
+              {sidebarOpen && <span>Propuestas Comerciales</span>}
+            </a>
+          )}
           {mainViews.map((v) => (
             <button key={v.id} onClick={() => { setView(v.id); setSidebarOpen(false); }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
@@ -295,6 +318,13 @@ export default function App() {
               {sidebarOpen && <span>{v.label}</span>}
             </button>
           ))}
+          {railsMode && permisos.gestionarUsuarios && (
+            <a href="/users"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${window.location.pathname === "/users" ? "bg-white text-purple-700 shadow" : "text-white/80 hover:bg-white/15"}`}>
+              <span className="text-lg shrink-0 w-6 text-center">👥</span>
+              {sidebarOpen && <span>Usuarios</span>}
+            </a>
+          )}
         </nav>
 
         {/* Usuario (abajo) */}
@@ -312,10 +342,17 @@ export default function App() {
               </div>
             )}
           </div>
+          {railsMode ? (
+            <a href="/logout" onClick={(e) => { e.preventDefault(); const f=document.createElement('form'); f.method='POST'; f.action='/logout'; const m=document.createElement('input'); m.name='_method'; m.value='DELETE'; f.appendChild(m); const t=document.createElement('input'); t.name='authenticity_token'; t.value=document.querySelector('meta[name=csrf-token]')?.content||''; f.appendChild(t); document.body.appendChild(f); f.submit(); }}
+              className={`block w-full mt-1 text-white/60 hover:text-white text-xs px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors ${sidebarOpen ? "text-left" : "text-center"}`}>
+              {sidebarOpen ? "↩ Cerrar sesión" : "↩"}
+            </a>
+          ) : (
           <button onClick={handleLogout}
             className={`w-full mt-1 text-white/60 hover:text-white text-xs px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors ${sidebarOpen ? "text-left" : "text-center"}`}>
             {sidebarOpen ? "↩ Cerrar sesión" : "↩"}
           </button>
+          )}
         </div>
       </div>
 

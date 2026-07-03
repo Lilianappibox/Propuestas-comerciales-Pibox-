@@ -221,7 +221,7 @@ export default function ClientesPerdidos() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Ejecutivo</label>
+            <label style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Ejecutivo (KAM)</label>
             <select value={filtEjecutivo} onChange={e => setFiltEjecutivo(e.target.value)}
               style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 8px", fontSize: 11, outline: "none" }}>
               <option value="">Todos</option>
@@ -250,7 +250,7 @@ export default function ClientesPerdidos() {
           <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", minWidth: 850 }}>
             <thead>
               <tr>
-                {["Empresa", "Ciudad", "Ejecutivo", "Servicios (prev)", "GMV (prev)", "% Cancelacion (prev)", "Relanzamientos (prev)", "Devueltos (prev)"].map(h => (
+                {["Empresa", "Ciudad", "Ejecutivo (KAM)", "Servicios (prev)", "GMV (prev)", "% Cancelacion (prev)", "Relanzamientos (prev)", "Devueltos (prev)"].map(h => (
                   <th key={h} style={{ background: PIBOX_PURPLE, color: "#fff", padding: "8px 10px", textAlign: "left", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -264,7 +264,7 @@ export default function ClientesPerdidos() {
                   <td style={{ padding: "6px 10px", color: "#6b7280" }}>{c.ciudad}</td>
                   <td style={{ padding: "6px 10px", color: "#6b7280" }}>{c.ejecutivo}</td>
                   <td style={{ padding: "6px 10px", color: "#374151" }}>{c.total}</td>
-                  <td style={{ padding: "6px 10px", fontWeight: 600, color: SEM_ROJO }}>{fmtM(c.gmv)}</td>
+                  <td style={{ padding: "6px 10px", fontWeight: 600, color: SEM_ROJO, whiteSpace: "nowrap" }}>{fmtFull(c.gmv)}</td>
                   <td style={{ padding: "6px 10px", color: c.total > 0 && c.cancelados / c.total > 0.20 ? SEM_ROJO : "#374151" }}>
                     {c.total > 0 ? fmtPct(c.cancelados / c.total) : "0.0%"}
                   </td>

@@ -6,6 +6,151 @@ import { fmtMoney, fmtM, colorCumplimiento, PIBOX_PURPLE, PIBOX_PINK } from "./u
 import { useMoneda } from "./MonedaContext";
 import { TooltipMetaGMV } from "./TooltipCustom";
 
+const KAM_GRADIENTS = [
+  "linear-gradient(135deg,#5B17A8,#C026D3)",
+  "linear-gradient(135deg,#1d4ed8,#6366f1)",
+  "linear-gradient(135deg,#0d9488,#06b6d4)",
+  "linear-gradient(135deg,#be185d,#f43f5e)",
+  "linear-gradient(135deg,#92400e,#f59e0b)",
+  "linear-gradient(135deg,#065f46,#10b981)",
+];
+
+function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
+  const color    = colorCumplimiento(k.cumplimiento);
+  const pctNum   = k.cumplimiento;
+  const circumference = 2 * Math.PI * (expanded ? 52 : 34);
+  const progress = (pctNum / 100) * circumference;
+  const r        = expanded ? 52 : 34;
+
+  const nuevos   = (data.clientesNuevos   || []).filter((c) => c.kam === k.nombre).length;
+  const perdidos = (data.clientesPerdidos || []).filter((c) => c.kam === k.nombre).length;
+  const clientesKam    = (data.top10Clientes || []).filter((c) => c.kam === k.nombre);
+  const activos        = clientesKam.length;
+  const gmvActualTop   = clientesKam.reduce((a, c) => a + (c.gmvActual   || 0), 0);
+  const gmvAnteriorTop = clientesKam.reduce((a, c) => a + (c.gmvAnterior || 0), 0);
+  const crecPct = gmvAnteriorTop > 0 ? ((gmvActualTop - gmvAnteriorTop) / gmvAnteriorTop) * 100 : 0;
+
+  const metaProgress = Math.min((k.gmv / k.meta) * 100, 100);
+  const svgSize = expanded ? 120 : 80;
+  const cx = svgSize / 2;
+
+  return (
+    <div
+      onClick={onClick}
+      className={`rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 ${selected ? "ring-2 ring-offset-2 ring-purple-500 shadow-xl" : "shadow-md hover:shadow-xl hover:scale-[1.01]"}`}
+    >
+      {/* Header con gradiente */}
+      <div style={{ background: gradient }} className={`px-6 ${expanded ? "py-5" : "py-4"}`}>
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <p className={`text-white font-extrabold leading-tight ${expanded ? "text-2xl" : "text-base"}`}>{k.nombre.split(" ")[0]}</p>
+            <p className="text-white/60 text-sm">{k.nombre.split(" ").slice(1).join(" ")}</p>
+          </div>
+          <span className={`text-white font-black ${expanded ? "text-5xl" : "text-2xl"}`}>{pctNum.toFixed(0)}%</span>
+        </div>
+        <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${metaProgress}%`, background: color }} />
+        </div>
+        <div className="flex justify-between mt-1">
+          <span className="text-white/50 text-xs">GMV</span>
+          <span className="text-white/50 text-xs">{metaProgress.toFixed(0)}% de meta</span>
+        </div>
+      </div>
+
+      {/* Cuerpo blanco */}
+      <div className={`bg-white ${expanded ? "px-6 py-5" : "px-4 py-3"}`}>
+        {expanded ? (
+          /* ── Layout horizontal cuando está expandida ── */
+          <div className="flex items-center gap-8">
+            {/* Donut grande */}
+            <div className="shrink-0">
+              <svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`}>
+                <circle cx={cx} cy={cx} r={r} fill="none" stroke="#f3e8ff" strokeWidth={10} />
+                <circle cx={cx} cy={cx} r={r} fill="none" stroke={color} strokeWidth={10}
+                  strokeDasharray={`${progress} ${circumference}`} strokeLinecap="round"
+                  transform={`rotate(-90 ${cx} ${cx})`} />
+                <text x={cx} y={cx - 4} textAnchor="middle" fontSize={20} fontWeight="900" fill={color}>{pctNum.toFixed(0)}%</text>
+                <text x={cx} y={cx + 14} textAnchor="middle" fontSize={10} fill="#9ca3af">cumpl.</text>
+              </svg>
+            </div>
+
+            {/* Meta / GMV */}
+            <div className="shrink-0">
+              <p className="text-xs text-gray-500 mb-0.5">🎯 Meta</p>
+              <p className="font-extrabold text-purple-700 text-2xl leading-tight">{M(k.meta)}</p>
+              <p className="text-xs text-gray-500 mt-3 mb-0.5">📈 GMV acumulado</p>
+              <p className="font-extrabold text-pink-600 text-2xl leading-tight">{M(k.gmv)}</p>
+            </div>
+
+            {/* Divisor */}
+            <div className="w-px h-20 bg-gray-100 shrink-0" />
+
+            {/* Stats 2x2 expandidas */}
+            <div className="grid grid-cols-2 gap-3 flex-1">
+              <div className={`rounded-xl p-3 ${crecPct >= 0 ? "bg-emerald-50 border border-emerald-100" : "bg-red-50 border border-red-100"}`}>
+                <p className="text-xs text-gray-600 font-medium">vs mes anterior</p>
+                <p className={`font-bold text-lg mt-1 ${crecPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {crecPct >= 0 ? "▲" : "▼"} {Math.abs(crecPct).toFixed(1)}%
+                </p>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                <p className="text-xs text-gray-600 font-medium">Clientes activos</p>
+                <p className="font-bold text-lg text-blue-700 mt-1">{activos}</p>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                <p className="text-xs text-gray-600 font-medium">Clientes nuevos</p>
+                <p className="font-bold text-lg text-emerald-600 mt-1">{nuevos}</p>
+              </div>
+              <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+                <p className="text-xs text-gray-600 font-medium">Clientes perdidos</p>
+                <p className="font-bold text-lg text-red-500 mt-1">{perdidos}</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ── Layout compacto (modo grid múltiple) ── */
+          <>
+            <div className="flex items-center gap-3 mb-3">
+              <svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`} className="shrink-0">
+                <circle cx={cx} cy={cx} r={r} fill="none" stroke="#f3e8ff" strokeWidth={8} />
+                <circle cx={cx} cy={cx} r={r} fill="none" stroke={color} strokeWidth={8}
+                  strokeDasharray={`${progress} ${circumference}`} strokeLinecap="round"
+                  transform={`rotate(-90 ${cx} ${cx})`} />
+                <text x={cx} y={cx - 4} textAnchor="middle" fontSize={14} fontWeight="900" fill={color}>{pctNum.toFixed(0)}%</text>
+                <text x={cx} y={cx + 10} textAnchor="middle" fontSize={8} fill="#9ca3af">cumpl.</text>
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-gray-600">🎯 Meta</p>
+                <p className="font-extrabold text-purple-700 text-sm leading-tight">{M(k.meta)}</p>
+                <p className="text-[10px] text-gray-600 mt-1">📈 GMV</p>
+                <p className="font-extrabold text-pink-600 text-sm leading-tight">{M(k.gmv)}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className={`rounded-lg p-2 ${crecPct >= 0 ? "bg-emerald-50 border border-emerald-100" : "bg-red-50 border border-red-100"}`}>
+                <p className="text-[10px] text-gray-600">vs mes ant.</p>
+                <p className={`font-bold text-xs ${crecPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>{crecPct >= 0 ? "▲" : "▼"} {Math.abs(crecPct).toFixed(1)}%</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-2">
+                <p className="text-[10px] text-gray-600">Activos</p>
+                <p className="font-bold text-xs text-blue-700">{activos}</p>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2">
+                <p className="text-[10px] text-gray-600">Nuevos</p>
+                <p className="font-bold text-xs text-emerald-600">{nuevos}</p>
+              </div>
+              <div className="bg-red-50 border border-red-100 rounded-lg p-2">
+                <p className="text-[10px] text-gray-600">Perdidos</p>
+                <p className="font-bold text-xs text-red-500">{perdidos}</p>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CumplimientoKAM({ data }) {
   const { moneda, trm } = useMoneda();
   const M  = (n) => fmtMoney(n, moneda, trm);
@@ -22,21 +167,23 @@ export default function CumplimientoKAM({ data }) {
   }));
 
   return (
-    <section className="bg-white rounded-2xl shadow-md p-6">
-      <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-purple-800">Goal KAM Pibox</h2>
+    <section className="bg-white rounded-2xl shadow-md overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap gap-3 items-center justify-between">
+        <h2 className="text-xl font-extrabold text-purple-800">Goal KAM Pibox</h2>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setSelectedKAM(null)}
-            className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${!selectedKAM ? "bg-purple-600 text-white border-purple-600" : "border-gray-300 text-gray-600 hover:bg-purple-50"}`}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${!selectedKAM ? "bg-purple-600 text-white border-purple-600 shadow" : "border-gray-200 text-gray-600 hover:bg-purple-50"}`}
           >
             Todos
           </button>
-          {data.kams.map((k) => (
+          {data.kams.map((k, i) => (
             <button
               key={k.nombre}
               onClick={() => setSelectedKAM(k.nombre === selectedKAM ? null : k.nombre)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${selectedKAM === k.nombre ? "bg-purple-600 text-white border-purple-600" : "border-gray-300 text-gray-600 hover:bg-purple-50"}`}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${selectedKAM === k.nombre ? "text-white border-transparent shadow" : "border-gray-200 text-gray-600 hover:bg-purple-50"}`}
+              style={selectedKAM === k.nombre ? { background: KAM_GRADIENTS[i % KAM_GRADIENTS.length] } : {}}
             >
               {k.nombre.split(" ")[0]}
             </button>
@@ -44,79 +191,41 @@ export default function CumplimientoKAM({ data }) {
         </div>
       </div>
 
-      {/* Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-5">
-        {kamsFiltrados.map((k) => {
-          const nuevos = (data.clientesNuevos || []).filter((c) => c.kam === k.nombre);
-          const perdidos = (data.clientesPerdidos || []).filter((c) => c.kam === k.nombre);
-          // Clientes activos: todos los del Top 10 asignados a este KAM
-          const clientesKam = (data.top10Clientes || []).filter((c) => c.kam === k.nombre);
-          const activos = clientesKam.length;
-          // Crecimiento calculado desde Top 10: GMV actual vs anterior
-          const gmvActualTop = clientesKam.reduce((a, c) => a + (c.gmvActual || 0), 0);
-          const gmvAnteriorTop = clientesKam.reduce((a, c) => a + (c.gmvAnterior || 0), 0);
-          const crecPct = gmvAnteriorTop > 0 ? ((gmvActualTop - gmvAnteriorTop) / gmvAnteriorTop) * 100 : 0;
-          const crecVal = gmvActualTop - gmvAnteriorTop;
-          return (
-            <div
-              key={k.nombre}
-              className="rounded-xl border border-purple-100 p-3 text-center cursor-pointer hover:shadow-md transition"
-              onClick={() => setSelectedKAM(k.nombre === selectedKAM ? null : k.nombre)}
-            >
-              <p className="text-xs font-semibold text-purple-700 mb-1 truncate">{k.nombre.split(" ")[0]}</p>
-              <svg width={56} height={56} viewBox="0 0 64 64" className="mx-auto">
-                <circle cx={32} cy={32} r={26} fill="none" stroke="#e9d5ff" strokeWidth={7} />
-                <circle
-                  cx={32} cy={32} r={26} fill="none"
-                  stroke={colorCumplimiento(k.cumplimiento)}
-                  strokeWidth={7}
-                  strokeDasharray={`${(k.cumplimiento / 100) * 163.4} 163.4`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 32 32)"
-                />
-                <text x={32} y={36} textAnchor="middle" fontSize={13} fontWeight="bold" fill={colorCumplimiento(k.cumplimiento)}>
-                  {k.cumplimiento.toFixed(0)}%
-                </text>
-              </svg>
-              <p className="text-[10px] text-gray-500 mt-1">Meta: <span className="font-semibold text-purple-700">{M(k.meta)}</span></p>
-              <p className="text-[10px] font-semibold text-pink-600">GMV: {M(k.gmv)}</p>
+      <div className="p-5">
+        {/* KAM Cards */}
+        <div className={`grid gap-4 mb-6 ${kamsFiltrados.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"}`}>
+          {kamsFiltrados.map((k) => {
+            const gradIdx = data.kams.indexOf(k);
+            return (
+              <KAMCard
+                key={k.nombre}
+                k={k}
+                data={data}
+                selected={selectedKAM === k.nombre}
+                onClick={() => setSelectedKAM(k.nombre === selectedKAM ? null : k.nombre)}
+                gradient={KAM_GRADIENTS[gradIdx % KAM_GRADIENTS.length]}
+                M={M}
+                expanded={kamsFiltrados.length === 1}
+              />
+            );
+          })}
+        </div>
 
-              {/* Métricas adicionales */}
-              <div className="mt-2 pt-2 border-t border-purple-100 grid grid-cols-2 gap-1 text-[10px]">
-                <div className={`rounded-md px-1 py-0.5 ${crecPct >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-                  <p className="text-gray-400">vs mes ant.</p>
-                  <p className={`font-bold ${crecPct >= 0 ? "text-green-600" : "text-red-500"}`}>
-                    {crecPct >= 0 ? "▲" : "▼"} {Math.abs(crecPct).toFixed(1)}%
-                  </p>
-                </div>
-                <div className="bg-blue-50 rounded-md px-1 py-0.5">
-                  <p className="text-gray-400">Activos</p>
-                  <p className="font-bold text-blue-700">{activos}</p>
-                </div>
-                <div className="bg-emerald-50 rounded-md px-1 py-0.5">
-                  <p className="text-gray-400">Nuevos</p>
-                  <p className="font-bold text-emerald-600">{nuevos.length}</p>
-                </div>
-                <div className="bg-red-50 rounded-md px-1 py-0.5">
-                  <p className="text-gray-400">Perdidos</p>
-                  <p className="font-bold text-red-500">{perdidos.length}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {/* Gráfico comparativo */}
+        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Meta vs GMV por KAM</p>
+        <div className="bg-gray-50 rounded-xl p-4">
+          <ResponsiveContainer width="100%" height={Math.max(kamsFiltrados.length * 40, 160)}>
+            <BarChart data={chartData} layout="vertical" margin={{ left: 10 }}>
+              <XAxis type="number" tickFormatter={Mx} tick={{ fontSize: 10 }} />
+              <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={70} />
+              <Tooltip content={(props) => <TooltipMetaGMV {...props} fmt={Mx} />} />
+              <Legend />
+              <Bar dataKey="Meta" fill={PIBOX_PURPLE} radius={[0, 4, 4, 0]} />
+              <Bar dataKey="GMV"  fill={PIBOX_PINK}   radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
-
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={chartData} layout="vertical" margin={{ left: 10 }}>
-          <XAxis type="number" tickFormatter={Mx} tick={{ fontSize: 10 }} />
-          <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={70} />
-          <Tooltip content={(props) => <TooltipMetaGMV {...props} fmt={Mx} />} />
-          <Legend />
-          <Bar dataKey="Meta" fill={PIBOX_PURPLE} radius={[0, 4, 4, 0]} />
-          <Bar dataKey="GMV"  fill={PIBOX_PINK}   radius={[0, 4, 4, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
     </section>
   );
 }

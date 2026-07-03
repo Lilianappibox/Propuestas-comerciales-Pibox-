@@ -19,6 +19,7 @@ const PIE_COLORS   = [SEM_VERDE, SEM_ROJO];
 const BAR_COLORS   = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7", "#6366F1", "#EC4899", "#8B5CF6", "#F59E0B", "#10B981"];
 import tadaInicial from "../data/tadaInicial.json";
 import NotasTareas from "./NotasTareas";
+import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
 
 /* ── Tráfico storage (por mes) ──────────────────────────────────────────── */
 const SK_TRAF_IDX = "pibox_tada_traf_index";
@@ -1945,8 +1946,11 @@ export default function InformeTada({ isAdmin }) {
   const _loadFactIndex = isAdmin ? loadFactIndex : loadFactIndexReadonly;
   const _loadFactMes = isAdmin ? loadFactMes : loadFactMesReadonly;
 
-  // Datos importados por usuario no-admin
+  // Datos importados por usuario no-admin (manual o desde servidor)
   const [importedData, setImportedData] = useState(null);
+  const [loadingServer, setLoadingServer] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishMsg, setPublishMsg] = useState(null);
 
   // Tráfico por mes
   const [trafIndex, setTrafIndex] = useState(_loadTrafIndex);
@@ -1992,6 +1996,27 @@ export default function InformeTada({ isAdmin }) {
     if (importedData?.meses?.[`traf_${trafPrevKey}`]) return importedData.meses[`traf_${trafPrevKey}`];
     return _loadTrafMes(trafPrevKey);
   }, [trafPrevKey, trafIndex, importedData]);
+
+  // No-admin: cargar snapshot publicado desde el servidor
+  useEffect(() => {
+    if (isAdmin) return;
+    setLoadingServer(true);
+    fetchFromServer("tada").then((snap) => {
+      if (!snap?.ok || !snap?.data?.trafIndex) { setLoadingServer(false); return; }
+      const d = snap.data;
+      setImportedData(d);
+      setTrafIndex(d.trafIndex || {});
+      setFactIndex(d.factIndex || {});
+      const trafKeys = Object.keys(d.trafIndex || {}).sort().reverse();
+      if (trafKeys[0]) setTrafMesSel(trafKeys[0]);
+      const factKeys = Object.keys(d.factIndex || {}).sort().reverse();
+      if (factKeys[0]) setFactMesSel(factKeys[0]);
+      if (d.notas) localStorage.setItem("pibox_tada_notas", JSON.stringify(d.notas));
+      if (d.tareas) localStorage.setItem("pibox_tada_tareas", JSON.stringify(d.tareas));
+      if (d.umbrales) localStorage.setItem("pibox_tada_umbrales", JSON.stringify(d.umbrales));
+      setLoadingServer(false);
+    }).catch(() => setLoadingServer(false));
+  }, [isAdmin]);
 
   // Cargar rows (IndexedDB para admin, importedData o tadaInicial para readonly)
   const [trafRows, setTrafRows] = useState(null);
@@ -2324,62 +2349,65 @@ export default function InformeTada({ isAdmin }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Informe TaDa (Bavaria)</p>
               <p className="text-xs text-gray-500">Tráfico de pilotos y facturación</p>
             </div>
-            {isAdmin && (
-              <button onClick={async () => {
-                const allData = {
-                  trafIndex: loadTrafIndex(),
-                  factIndex: loadFactIndex(),
-                  meses: {},
-                  notas: JSON.parse(localStorage.getItem("pibox_tada_notas") || "[]"),
-                  tareas: JSON.parse(localStorage.getItem("pibox_tada_tareas") || "[]"),
-                  umbrales: JSON.parse(localStorage.getItem("pibox_tada_umbrales") || "{}"),
-                };
-                for (const key of Object.keys(allData.trafIndex)) {
-                  const d = loadTrafMes(key);
-                  if (d) {
-                    const rows = await idbLoadRows(SK_TRAF_MES(key));
-                    allData.meses[`traf_${key}`] = rows ? { ...d, rows } : d;
-                  }
-                }
-                for (const key of Object.keys(allData.factIndex)) {
-                  const d = loadFactMes(key);
-                  if (d) allData.meses[`fact_${key}`] = d;
-                }
-                const blob = new Blob([JSON.stringify(allData)], { type: "application/json" });
-                const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-                a.download = "tada-export.json"; a.click();
-              }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition">
-                📤 Exportar para el equipo
-              </button>
+            {!isAdmin && loadingServer && (
+              <span className="text-xs text-purple-600 font-medium animate-pulse shrink-0">⏳ Cargando datos del equipo…</span>
             )}
-            {!isAdmin && (
-              <label className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition cursor-pointer">
-                📥 Importar datos
-                <input type="file" accept=".json" className="hidden" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = (ev) => {
-                    try {
-                      const imported = JSON.parse(ev.target.result);
-                      if (!imported.trafIndex || !imported.meses) { alert("Archivo inválido"); return; }
-                      setImportedData(imported);
-                      setTrafIndex(imported.trafIndex || {});
-                      setFactIndex(imported.factIndex || {});
-                      const trafKeys = Object.keys(imported.trafIndex || {}).sort().reverse();
-                      if (trafKeys[0]) setTrafMesSel(trafKeys[0]);
-                      const factKeys = Object.keys(imported.factIndex || {}).sort().reverse();
-                      if (factKeys[0]) setFactMesSel(factKeys[0]);
-                      if (imported.notas) localStorage.setItem("pibox_tada_notas", JSON.stringify(imported.notas));
-                      if (imported.tareas) localStorage.setItem("pibox_tada_tareas", JSON.stringify(imported.tareas));
-                      if (imported.umbrales && Object.keys(imported.umbrales).length) localStorage.setItem("pibox_tada_umbrales", JSON.stringify(imported.umbrales));
-                      alert("Datos importados correctamente");
-                    } catch { alert("Error al leer el archivo JSON"); }
-                  };
-                  reader.readAsText(file);
-                  e.target.value = "";
-                }} />
-              </label>
+            {isAdmin && (
+              <div className="flex items-center gap-2 shrink-0 ml-auto">
+                {publishMsg && (
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${publishMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                    {publishMsg.txt}
+                  </span>
+                )}
+                <button disabled={publishing} onClick={async () => {
+                  if (!confirm("¿Limpiar los datos publicados? Los usuarios del equipo verán el módulo vacío.")) return;
+                  setPublishing(true); setPublishMsg(null);
+                  try {
+                    await clearFromServer("tada");
+                    setPublishMsg({ ok: true, txt: "🗑️ Datos del equipo eliminados" });
+                  } catch (err) {
+                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                  } finally {
+                    setPublishing(false);
+                    setTimeout(() => setPublishMsg(null), 6000);
+                  }
+                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-gray-400" : "bg-gray-500 hover:bg-gray-600"}`}>
+                  🗑️ Limpiar publicación
+                </button>
+                <button disabled={publishing} onClick={async () => {
+                  setPublishing(true); setPublishMsg(null);
+                  try {
+                    const allData = {
+                      trafIndex: loadTrafIndex(),
+                      factIndex: loadFactIndex(),
+                      meses: {},
+                      notas: JSON.parse(localStorage.getItem("pibox_tada_notas") || "[]"),
+                      tareas: JSON.parse(localStorage.getItem("pibox_tada_tareas") || "[]"),
+                      umbrales: JSON.parse(localStorage.getItem("pibox_tada_umbrales") || "{}"),
+                    };
+                    for (const key of Object.keys(allData.trafIndex)) {
+                      const d = loadTrafMes(key);
+                      if (d) {
+                        const rows = await idbLoadRows(SK_TRAF_MES(key));
+                        allData.meses[`traf_${key}`] = rows ? { ...d, rows } : d;
+                      }
+                    }
+                    for (const key of Object.keys(allData.factIndex)) {
+                      const d = loadFactMes(key);
+                      if (d) allData.meses[`fact_${key}`] = d;
+                    }
+                    const result = await publishToServer("tada", allData);
+                    setPublishMsg({ ok: true, txt: `✅ Publicado – ${new Date(result.published_at).toLocaleString("es-CO")}` });
+                  } catch (err) {
+                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                  } finally {
+                    setPublishing(false);
+                    setTimeout(() => setPublishMsg(null), 6000);
+                  }
+                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-purple-400" : "bg-purple-600 hover:bg-purple-700"}`}>
+                  {publishing ? "⏳ Publicando…" : "🌐 Publicar para el equipo"}
+                </button>
+              </div>
             )}
           </div>
           <div className="flex gap-1 overflow-x-auto">

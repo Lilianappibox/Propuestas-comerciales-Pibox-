@@ -19,26 +19,38 @@ const TOOLTIP_STYLE = {
  *  "comparativo"→ muestra dos valores (mes actual vs anterior) y % crecimiento
  *  "simple"     → muestra sólo el valor de cada barra
  */
-export function TooltipMetaGMV({ active, payload, label, fmt }) {
+export function TooltipMetaGMV({ active, payload, label, fmt, fmtFull }) {
   if (!active || !payload?.length) return null;
   const meta  = payload.find((p) => p.dataKey === "Meta")?.value  ?? 0;
-  const gmv   = payload.find((p) => p.dataKey === "GMV")?.value   ?? 0;
+  const gmvP  = payload.find((p) => p.dataKey === "GMV");
+  const gmv   = gmvP?.value ?? 0;
   const cumpl = meta > 0 ? ((gmv / meta) * 100).toFixed(1) : null;
   const color = cumpl ? colorCumplimiento(Number(cumpl)) : "#6b7280";
 
   return (
     <div style={TOOLTIP_STYLE}>
-      <p style={{ fontWeight: 700, color: "#374151", marginBottom: 8 }}>{label}</p>
-      {payload.map((p) => (
-        <p key={p.dataKey} style={{ color: p.fill, marginBottom: 4 }}>
-          {p.dataKey} : <strong>{fmt ? fmt(p.value) : p.value}</strong>
+      <p style={{ fontWeight: 800, color: "#374151", marginBottom: 6, fontSize: 14 }}>{label}</p>
+
+      {/* GMV destacado */}
+      {gmvP && (
+        <div style={{ marginBottom: 6 }}>
+          <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>GMV Real</p>
+          <p style={{ fontWeight: 800, fontSize: 16, color: gmvP.stroke || gmvP.color || "#E040FB", lineHeight: 1 }}>
+            {fmtFull ? fmtFull(gmv) : fmt ? fmt(gmv) : gmv}
+          </p>
+        </div>
+      )}
+
+      {/* Resto del payload (Meta, Predicción, etc.) */}
+      {payload.filter((p) => p.dataKey !== "GMV").map((p) => (
+        <p key={p.dataKey} style={{ color: p.stroke || p.fill || p.color || "#6b7280", marginBottom: 3, fontSize: 12 }}>
+          {p.name ?? p.dataKey}: <strong>{fmtFull ? fmtFull(p.value) : fmt ? fmt(p.value) : p.value}</strong>
         </p>
       ))}
+
       {cumpl && (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #f3e8ff" }}>
-          <p style={{ color, fontWeight: 700, fontSize: 14 }}>
-            Cumplimiento: {cumpl}%
-          </p>
+          <p style={{ color, fontWeight: 700, fontSize: 13 }}>Cumplimiento: {cumpl}%</p>
           <div style={{ marginTop: 4, height: 6, background: "#f3e8ff", borderRadius: 99, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${Math.min(Number(cumpl), 100)}%`, background: color, borderRadius: 99 }} />
           </div>

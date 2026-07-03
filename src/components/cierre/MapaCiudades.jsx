@@ -111,135 +111,126 @@ export default function MapaCiudades({ data }) {
   const departments = deptData.departments;
 
   return (
-    <section className="bg-white rounded-2xl shadow-md p-6">
-      <h2 className="text-xl font-bold text-purple-800 mb-4">Facturación por Departamento</h2>
+    <section className="bg-white rounded-2xl shadow-md px-5 pt-2 pb-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-
-        {/* ── Mapa SVG (protagonista — 2 columnas) ── */}
-        <div className="lg:col-span-2">
+        {/* ── Mapa SVG ── */}
+        <div className="lg:col-span-2 flex flex-col">
           <svg
             viewBox={deptData.viewBox}
             width="100%"
-            style={{ maxHeight: 700, filter: "drop-shadow(0 2px 8px rgba(124,34,212,0.1))" }}
+            preserveAspectRatio="xMidYMin meet"
+            style={{ height: "calc(100vh - 90px)", maxHeight: 860, filter: "drop-shadow(0 2px 8px rgba(124,34,212,0.08))" }}
           >
             {Object.entries(departments).map(([key, pathD]) => {
               const gmv = deptGmv[key] || 0;
               const isHover = hover === key;
-              const fill = getColor(gmv, maxGmv);
               return (
-                <path
-                  key={key}
-                  d={pathD}
-                  fill={isHover ? "#7C22D4" : fill}
-                  stroke="#9ca3af"
-                  strokeWidth={isHover ? 1.8 : 0.6}
+                <path key={key} d={pathD}
+                  fill={isHover ? "#7C22D4" : getColor(gmv, maxGmv)}
+                  stroke="#9ca3af" strokeWidth={isHover ? 1.8 : 0.6}
                   opacity={isHover ? 0.9 : 1}
-                  style={{ cursor: "pointer", transition: "fill 0.2s, stroke-width 0.2s" }}
+                  style={{ cursor: "pointer", transition: "fill 0.2s" }}
                   onMouseEnter={() => setHover(key)}
                   onMouseLeave={() => setHover(null)}
                 />
               );
             })}
-
-            {/* Department labels for departments with data */}
             {ranking.map(({ key }) => {
               const pathD = departments[key];
               if (!pathD) return null;
-              // Extract approximate center from path for label
               const coords = pathD.match(/[\d.]+/g);
               if (!coords || coords.length < 4) return null;
               const xs = [], ys = [];
               for (let i = 0; i < coords.length - 1; i += 2) {
-                xs.push(parseFloat(coords[i]));
-                ys.push(parseFloat(coords[i + 1]));
+                xs.push(parseFloat(coords[i])); ys.push(parseFloat(coords[i + 1]));
               }
               const cx = xs.reduce((a, b) => a + b, 0) / xs.length;
               const cy = ys.reduce((a, b) => a + b, 0) / ys.length;
               return (
-                <text
-                  key={`lbl-${key}`}
-                  x={cx}
-                  y={cy}
-                  textAnchor="middle"
-                  fontSize={hover === key ? 14 : 11}
-                  fontWeight="700"
-                  fill={hover === key ? "#ffffff" : "#4c1d95"}
-                  style={{ pointerEvents: "none", transition: "font-size 0.15s" }}
-                >
+                <text key={`lbl-${key}`} x={cx} y={cy} textAnchor="middle"
+                  fontSize={hover === key ? 13 : 10} fontWeight="700"
+                  fill={hover === key ? "#fff" : "#4c1d95"}
+                  style={{ pointerEvents: "none" }}>
                   {displayName(key).split(" ")[0]}
                 </text>
               );
             })}
           </svg>
 
-          {/* Legend */}
-          <div className="flex items-center gap-2 mt-3 justify-center">
-            <span className="text-xs text-gray-400">Menor</span>
-            <div className="flex h-3 rounded-full overflow-hidden" style={{ width: 140 }}>
-              {PURPLE_SCALE.map((c, i) => (
-                <div key={i} style={{ flex: 1, background: c }} />
-              ))}
+          {/* Leyenda */}
+          <div className="flex items-center gap-2 mt-1 justify-center">
+            <span className="text-[10px] text-gray-400">Menor</span>
+            <div className="flex h-2 rounded-full overflow-hidden" style={{ width: 100 }}>
+              {PURPLE_SCALE.map((c, i) => <div key={i} style={{ flex: 1, background: c }} />)}
             </div>
-            <span className="text-xs text-gray-400">Mayor</span>
-            <div className="flex items-center gap-1 ml-3">
-              <div className="w-3 h-3 rounded" style={{ background: NO_DATA_COLOR, border: "1px solid #d1d5db" }} />
-              <span className="text-xs text-gray-400">Sin datos</span>
+            <span className="text-[10px] text-gray-400">Mayor</span>
+            <div className="flex items-center gap-1 ml-2">
+              <div className="w-2.5 h-2.5 rounded" style={{ background: NO_DATA_COLOR, border: "1px solid #d1d5db" }} />
+              <span className="text-[10px] text-gray-400">Sin datos</span>
             </div>
           </div>
-
-          {/* Hover tooltip */}
-          {hover && (
-            <div className="mt-3 bg-purple-50 border border-purple-200 rounded-xl p-3 text-sm">
-              <p className="font-bold text-purple-800">{displayName(hover)}</p>
-              {deptGmv[hover] ? (
-                <>
-                  <p className="text-gray-700">GMV: <strong>{M(deptGmv[hover])}</strong></p>
-                  <p className="text-gray-500">Participación: <strong>{((deptGmv[hover] / totalGmv) * 100).toFixed(1)}%</strong></p>
-                  <p className="text-gray-400 text-xs mt-1">
-                    Ciudades: {(deptCities[hover] || []).map((c) => c.ciudad).join(", ")}
-                  </p>
-                </>
-              ) : (
-                <p className="text-gray-400">Sin datos de facturación</p>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* ── Ranking lateral compacto ── */}
-        <div className="lg:col-span-1">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ranking</h3>
-          <div className="space-y-1.5">
-            {ranking.map(({ key, gmv, pct }, i) => (
-              <div
-                key={key}
-                className={`rounded-lg px-3 py-2 border cursor-pointer transition ${
-                  hover === key
-                    ? "bg-purple-50 border-purple-300"
-                    : "bg-white border-gray-100 hover:bg-purple-50"
-                }`}
-                onMouseEnter={() => setHover(key)}
-                onMouseLeave={() => setHover(null)}
-              >
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-purple-700">
-                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`} {displayName(key)}
-                  </span>
-                  <span className="text-xs text-gray-400">{pct.toFixed(1)}%</span>
-                </div>
-                <p className="text-sm font-bold text-purple-900">{M(gmv)}</p>
-                <div className="mt-1 h-1.5 bg-purple-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-purple-600 rounded-full transition-all duration-500"
-                    style={{ width: `${(gmv / maxGmv) * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-0.5 truncate">
-                  {(deptCities[key] || []).map((c) => c.ciudad).join(", ")}
-                </p>
+        {/* ── Panel derecho: título + detail card + ranking ── */}
+        {/* paddingTop = 17.1% del alto del SVG (La Guajira empieza en y=171/1000 del viewBox) */}
+        <div className="lg:col-span-1 sticky top-4 flex flex-col gap-2"
+          style={{ paddingTop: "min(calc((100vh - 90px) * 0.171), 148px)" }}>
+          <h2 className="text-lg font-bold text-purple-800">Facturación por Departamento</h2>
+
+          {/* Detail card (aparece al hacer hover — dentro de la vista) */}
+          <div className={`rounded-xl border transition-all duration-200 overflow-hidden ${hover ? "border-purple-200 bg-purple-50" : "border-gray-100 bg-gray-50"}`}
+            style={{ minHeight: 72 }}>
+            {hover ? (
+              <div className="px-3 py-2.5">
+                <p className="text-sm font-extrabold text-purple-800 leading-tight">{displayName(hover)}</p>
+                {deptGmv[hover] ? (
+                  <>
+                    <p className="text-base font-extrabold text-purple-900 mt-0.5">{M(deptGmv[hover])}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-gray-500">Participación</span>
+                      <span className="text-xs font-bold text-purple-600">{((deptGmv[hover] / totalGmv) * 100).toFixed(1)}%</span>
+                      <span className="text-[10px] text-gray-400">·</span>
+                      <span className="text-[10px] text-gray-500 truncate">{(deptCities[hover] || []).map(c => c.ciudad).join(", ")}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1">Sin datos de facturación</p>
+                )}
               </div>
-            ))}
+            ) : (
+              <p className="px-3 py-3 text-[10px] text-gray-400 italic">Pasa el cursor sobre un departamento</p>
+            )}
+          </div>
+
+          {/* Ranking ultra-compacto */}
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Ranking</p>
+            <div className="space-y-0.5 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
+              {ranking.map(({ key, gmv, pct }, i) => (
+                <div key={key}
+                  className={`rounded-lg px-2.5 py-1.5 cursor-pointer transition ${hover === key ? "bg-purple-100" : "hover:bg-purple-50"}`}
+                  onMouseEnter={() => setHover(key)}
+                  onMouseLeave={() => setHover(null)}
+                >
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-[11px] font-bold text-purple-700 truncate">
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`} {displayName(key)}
+                    </span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{pct.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-1 bg-purple-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-purple-600 rounded-full"
+                        style={{ width: `${(gmv / maxGmv) * 100}%` }} />
+                    </div>
+                    <span className="text-[10px] font-semibold text-purple-900 shrink-0 whitespace-nowrap">
+                      {M(gmv)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

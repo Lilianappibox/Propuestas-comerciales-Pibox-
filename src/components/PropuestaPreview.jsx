@@ -110,7 +110,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
       >
         <PiboxLogo size="md" white />
         <div className="text-right text-white">
-          <p className="text-sm font-semibold">Bogotá, {fechaFmt}</p>
+          <p className="text-sm font-semibold">{fechaFmt}</p>
           {ciudad && <p className="text-xs text-white/80">{ciudad}</p>}
           <p className="text-xs text-white/60 mt-1">{RS}</p>
         </div>
