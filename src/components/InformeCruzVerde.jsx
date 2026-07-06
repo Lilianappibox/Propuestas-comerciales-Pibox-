@@ -3709,7 +3709,6 @@ export default function InformeCruzVerde({ isAdmin }) {
                  style={{ background: BRAND }}>🟢</div>
             <div>
               <p className="font-bold text-gray-800 text-sm leading-tight">Informe Cruz Verde</p>
-              <p className="text-xs text-gray-500">Mostrador · Integración Same Day · Integración Next Day · SLA en tiempo real</p>
             </div>
             {loadingServer && (
               <span className="text-xs text-teal-600 font-medium animate-pulse shrink-0 ml-2">⏳ Sincronizando con el servidor…</span>
@@ -3820,11 +3819,6 @@ export default function InformeCruzVerde({ isAdmin }) {
                     className="text-xs text-gray-400 hover:text-red-500 transition" title="Limpiar fechas">
                     ✕ fechas
                   </button>
-                </div>
-              )}
-              {rows.length > 0 && (
-                <div className="self-end pb-2">
-                  <span className="text-xs text-gray-400">{filteredRows.length.toLocaleString()} servicios</span>
                 </div>
               )}
             </div>
