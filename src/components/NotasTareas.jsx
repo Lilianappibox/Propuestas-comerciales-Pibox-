@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { publishToServer, fetchFromServer } from "./serverSync";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const PIBOX_PURPLE = "#7C22D4";
@@ -321,7 +322,7 @@ export default function NotasTareas({ isAdmin = false }) {
   }
 
   /* ── Notas ──────────────────────────────────────────────────────────── */
-  const [notas, setNotas] = useState(loadNotas);
+  const [notas, setNotas] = useState(() => isAdmin ? loadNotas() : []);
   const [titulo, setTitulo] = useState("Tráfico TaDa / Pibox");
   const [fecha, setFecha] = useState(today);
   const [contenido, setContenido] = useState("");
@@ -387,8 +388,30 @@ export default function NotasTareas({ isAdmin = false }) {
   }
 
   /* ── Tareas ─────────────────────────────────────────────────────────── */
-  const [tareas, setTareas] = useState(loadTareas);
+  const [tareas, setTareas] = useState(() => isAdmin ? loadTareas() : []);
   const [filtro, setFiltro] = useState("todas");
+  const [publishMsg, setPublishMsg] = useState("");
+
+  // No-admin: cargar snapshot publicado desde el servidor
+  useEffect(() => {
+    if (isAdmin) return;
+    fetchFromServer("tada_notas").then(snap => {
+      if (snap?.data) {
+        setTareas(snap.data.tareas || []);
+        setNotas(snap.data.notas || []);
+      }
+    });
+  }, [isAdmin]);
+
+  async function publicarParaEquipo() {
+    try {
+      await publishToServer("tada_notas", { tareas, notas });
+      setPublishMsg("✅ Publicado para el equipo");
+    } catch {
+      setPublishMsg("❌ Error al publicar");
+    }
+    setTimeout(() => setPublishMsg(""), 3000);
+  }
   const [showNewTask, setShowNewTask] = useState(false);
   const [newTarea, setNewTarea] = useState("");
   const [newResp, setNewResp] = useState("");
@@ -661,16 +684,27 @@ export default function NotasTareas({ isAdmin = false }) {
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm flex items-center justify-between" style={{ background: BRAND_GRADIENT }}>
           <span>✅ Tablero de Tareas</span>
-          <div className="flex gap-2">
-            <button onClick={enviarReporte}
-              className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition"
-              title="Enviar reporte por email a los clientes de TaDa">
-              📧 Enviar reporte
-            </button>
-            <button onClick={() => setShowNewTask(v => !v)}
-              className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition">
-              + Nueva tarea
-            </button>
+          <div className="flex gap-2 items-center">
+            {isAdmin && publishMsg && <span className="text-xs font-medium text-white/90">{publishMsg}</span>}
+            {isAdmin && (
+              <button onClick={publicarParaEquipo}
+                className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition">
+                🌐 Publicar para el equipo
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={enviarReporte}
+                className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition"
+                title="Enviar reporte por email a los clientes de TaDa">
+                📧 Enviar reporte
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={() => setShowNewTask(v => !v)}
+                className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-lg transition">
+                + Nueva tarea
+              </button>
+            )}
           </div>
         </div>
         <div className="p-5 space-y-4">
