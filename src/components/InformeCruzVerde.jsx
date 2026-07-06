@@ -799,6 +799,25 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
   const slaRanges  = slaByRange(rows);
   const isNextDay  = linea === "integ_nd";
 
+  function descargarNoPerfectos() {
+    const noPerfectos = rows.filter(r => !r.esPerfecto);
+    const data = noPerfectos.map(r => ({
+      "Booking ID":          r.idServicio || r.uuid || "—",
+      "Estado":              r.estado || "—",
+      "Hora Asignado":       fmtDatetime(r.iniciadoRaw),
+      "Tiempo efectivo":     r.minutos != null ? fmtMin(r.minutos) : "—",
+      "Ciudad":              r.ciudad || "—",
+      "Dirección de Origen": r.direccionOrigen || "—",
+      "Sede":                r.sucursal || "—",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [{ wch: 28 }, { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 45 }, { wch: 30 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "No Perfectos");
+    const lineaLabel = linea === "mostrador" ? "mostrador" : linea === "integ_sd" ? "integ-sd" : "integ-nd";
+    XLSX.writeFile(wb, `no-perfectos-${lineaLabel}.xlsx`);
+  }
+
   return (
     <div className="space-y-6">
       {/* KPIs */}
@@ -815,6 +834,19 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
         <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(m.devol)} sub={m.total>0?fmtPct(pct(m.devol,m.total)):undefined} color={C_AMB} />
         <KpiCard icon="📊" label="Servicios c/SLA" value={fmtNum(m.slaDef)} color={C_GRAY} />
       </div>
+
+      {/* Descarga No Perfectos */}
+      {m.noPerfectos > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={descargarNoPerfectos}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90"
+            style={{ background: C_RED }}
+          >
+            ⬇ Descargar No Perfectos ({fmtNum(m.noPerfectos)})
+          </button>
+        </div>
+      )}
 
       <GmvDiarioCV rows={rows} />
 
