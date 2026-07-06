@@ -300,7 +300,7 @@ export default function App() {
 
         {/* Navigation */}
         <nav className="flex flex-col gap-1 px-2 py-3">
-          {railsMode && window.__RAILS_INITIAL_VIEW__ !== VIEW_PROPUESTAS && (
+          {railsMode && window.__RAILS_INITIAL_VIEW__ !== VIEW_PROPUESTAS && permisos.verPropuesta && (
             <a href={window.__RAILS_BACK_URL__}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap text-white/80 hover:bg-white/15">
               <span className="text-lg shrink-0 w-6 text-center">📋</span>
