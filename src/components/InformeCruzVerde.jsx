@@ -3577,7 +3577,7 @@ export default function InformeCruzVerde({ isAdmin }) {
         setChMsg(`⚠️ Sin datos para el rango ${chDesde} – ${chHasta}`);
         return;
       }
-      const processed = procesarRows(rawRows);
+      const processed = procesarRows(rawRows).filter(r => !isEstadoExcluido(r.estado));
       const d0 = new Date(chDesde + "T12:00:00");
       const mesKey = `${MESES_LABEL[d0.getMonth()]} ${d0.getFullYear()}`;
       const fmtD = (s) => s.split("-").reverse().join("/");
@@ -3653,7 +3653,7 @@ export default function InformeCruzVerde({ isAdmin }) {
       if (!rawRows.length) throw new Error("El archivo no contiene datos.");
       if (!rawRows[0].nombre_usuario && !rawRows[0].nombre_empresa && !rawRows[0].estado)
         throw new Error("Formato no reconocido. ¿Es el archivo 'Cruz verde [mes].xlsx'?");
-      const processed = procesarRows(rawRows);
+      const processed = procesarRows(rawRows).filter(r => !isEstadoExcluido(r.estado));
       const mesKey    = `${MESES_LABEL[upMesN - 1]} ${upAnio}`;
       await idbSave(mesKey, { rows: processed, archivo: file.name, fecha: new Date().toISOString(), total: processed.length });
       const newIdx = { ...index, [mesKey]: { archivo: file.name, fecha: new Date().toISOString(), total: processed.length } };
