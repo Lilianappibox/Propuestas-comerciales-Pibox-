@@ -1456,9 +1456,48 @@ function HeatmapDiaHora({ rows }) {
     return t >= 0.40 ? "#fff" : "#4C1D95";
   };
 
+  function descargarDetalle() {
+    const data = rows
+      .filter(r => r.tsalida)
+      .map(r => {
+        const d = new Date(r.tsalida);
+        const diaIdx = DOW_ORDER.indexOf(d.getDay());
+        const dia  = diaIdx >= 0 ? DIAS[diaIdx] : "—";
+        const hora = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+        return {
+          "Día":                dia,
+          "Booking ID":         r.idServicio || r.uuid || "—",
+          "Hora":               hora,
+          "Dirección de Origen": r.direccionOrigen || "—",
+          "Sede":               r.sucursal || "—",
+        };
+      })
+      .sort((a, b) => {
+        const dA = DIAS.indexOf(a["Día"]);
+        const dB = DIAS.indexOf(b["Día"]);
+        if (dA !== dB) return dA - dB;
+        return a["Hora"].localeCompare(b["Hora"]);
+      });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [{ wch: 12 }, { wch: 28 }, { wch: 8 }, { wch: 45 }, { wch: 30 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Servicios por Día y Hora");
+    XLSX.writeFile(wb, "servicios-asignados-dia-hora.xlsx");
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-      <p className="text-sm font-bold text-gray-700 mb-4">📊 Servicios asignados por día y hora</p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm font-bold text-gray-700">📊 Servicios asignados por día y hora</p>
+        <button
+          onClick={descargarDetalle}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
+          style={{ background: "#7C3AED" }}
+        >
+          ⬇ Descargar detalle
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="text-xs border-collapse w-full">
           <thead>
@@ -3662,6 +3701,14 @@ export default function InformeCruzVerde({ isAdmin }) {
                   setPublishing(true); setPublishMsg(null);
                   try {
                     const idx = loadIndex();
+                    // Campos mínimos para gráficas y métricas — excluye strings largos
+                    // (descripcion, iniciadoRaw, finalizadoRaw, uuid, idPiloto, etc.)
+                    // que solo usa el admin para búsqueda interna y no caben en el payload.
+                    const SLIM = new Set(['fecha','mes','linea','ciudad','sucursal','km',
+                      'minutos','horaEntrega','esPerfecto','esDevolucion','estado','costo',
+                      'dayOfWeek','localidadOrigen','localidadDestino','nombrePiloto',
+                      'tsalida','direccionOrigen']);
+                    const slimRow = (r) => { const s = {}; for (const k of SLIM) if (k in r) s[k] = r[k]; return s; };
                     const allData = {
                       index: idx,
                       meses: {},
@@ -3672,7 +3719,7 @@ export default function InformeCruzVerde({ isAdmin }) {
                     };
                     await Promise.all(Object.keys(idx).map(async (key) => {
                       const d = await idbLoad(key);
-                      if (d) allData.meses[key] = d;
+                      if (d) allData.meses[key] = { ...d, rows: (d.rows || []).map(slimRow) };
                     }));
                     const result = await publishToServer("cruz_verde", allData);
                     setPublishMsg({ ok: true, txt: `✅ Publicado – ${new Date(result.published_at).toLocaleString("es-CO")}` });
