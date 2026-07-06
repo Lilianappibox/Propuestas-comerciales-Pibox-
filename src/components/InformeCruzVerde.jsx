@@ -238,14 +238,13 @@ const FESTIVOS_CO = new Set([
 ]);
 
 // Estados excluidos de todos los indicadores (comparación case-insensitive)
-const ESTADOS_EXCLUIDOS_NORM = new Set([
-  "status [202] - sin clasificar",
-  "status [201] - sin clasificar",
-  "other",
-  "optimizando",
-]);
+const ESTADOS_EXCLUIDOS_EXACT = new Set(["other", "optimizando"]);
 function isEstadoExcluido(estado) {
-  return ESTADOS_EXCLUIDOS_NORM.has((estado || "").toLowerCase().trim());
+  const s = (estado || "").toLowerCase().trim();
+  if (ESTADOS_EXCLUIDOS_EXACT.has(s)) return true;
+  // Excluye cualquier variante de "Status [N] - Sin clasificar"
+  if (/^status\s*\[.*\]\s*-\s*sin clasificar$/i.test(s)) return true;
+  return false;
 }
 
 // ── computeRowSla ──────────────────────────────────────────────────────────
