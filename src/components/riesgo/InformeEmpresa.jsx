@@ -168,6 +168,10 @@ export default function InformeEmpresa() {
   const umb     = getUmbrales();
 
   const [mesKey, setMesKey]     = useState(meses[meses.length-1]?.key||"");
+  useEffect(() => {
+    if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
+      setMesKey(meses[meses.length - 1].key);
+  }, [meses.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [empresasSel, setEmpresasSel] = useState([]);
   const [buscarEmp, setBuscarEmp] = useState("");
 
@@ -219,7 +223,14 @@ export default function InformeEmpresa() {
     if (!selected.length) return null;
     if (selected.length === 1) return selected[0];
     const m = { total: 0, completados: 0, cancelados: 0, gmv: 0, paquetes: 0, tasa_completado: 0, tasa_cancelacion: 0, topUsuarios: [], topSedes: [] };
-    for (const e of selected) { m.total += e.total; m.completados += e.completados; m.cancelados += e.cancelados; m.gmv += e.gmv; m.paquetes += e.paquetes; }
+    const userMap = {}, sedeMap = {};
+    for (const e of selected) {
+      m.total += e.total; m.completados += e.completados; m.cancelados += e.cancelados; m.gmv += e.gmv; m.paquetes += e.paquetes;
+      for (const u of (e.topUsuarios || [])) { if (!userMap[u.usuario]) userMap[u.usuario] = { ...u }; else { userMap[u.usuario].total += u.total; userMap[u.usuario].completados += u.completados; userMap[u.usuario].gmv += u.gmv; } }
+      for (const s of (e.topSedes   || [])) { if (!sedeMap[s.sede])    sedeMap[s.sede]    = { ...s }; else { sedeMap[s.sede].total    += s.total;    sedeMap[s.sede].completados    += s.completados;    sedeMap[s.sede].gmv    += s.gmv;    } }
+    }
+    m.topUsuarios = Object.values(userMap).sort((a, b) => b.total - a.total);
+    m.topSedes    = Object.values(sedeMap).sort((a, b) => b.total - a.total);
     m.tasa_completado = m.total > 0 ? m.completados / m.total : 0;
     m.tasa_cancelacion = m.total > 0 ? m.cancelados / m.total : 0;
     return m;
@@ -492,24 +503,24 @@ export default function InformeEmpresa() {
                               <th className="px-3 py-2 text-left">Usuario</th>
                               <th className="px-3 py-2 text-right">Servicios</th>
                               <th className="px-3 py-2 text-right">GMV</th>
-                              <th className="px-3 py-2 text-center">Var</th>
+                              <th className="px-3 py-2 text-right">▲▼ GMV</th>
                             </tr>
                           </thead>
                           <tbody>
                             {empData.topUsuarios.slice(0, 15).map((u, i) => {
                               const prev = prevData?.topUsuarios?.find(p => p.usuario === u.usuario);
-                              const varSvc = prev?.total > 0 ? ((u.total - prev.total) / prev.total) : null;
+                              const varGmv = prev?.gmv > 0 ? ((u.gmv - prev.gmv) / prev.gmv) : null;
                               return (
                                 <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-purple-50/30"}>
                                   <td className="px-3 py-1.5 font-medium text-gray-700 max-w-[140px] truncate" title={u.usuario}>{u.usuario}</td>
                                   <td className="px-3 py-1.5 text-right">{u.total.toLocaleString()}</td>
                                   <td className="px-3 py-1.5 text-right font-semibold" style={{color:PIBOX_PURPLE}}>{fmtFull(u.gmv)}</td>
-                                  <td className="px-3 py-1.5 text-center">
-                                    {varSvc !== null ? (
-                                      <span className={`font-bold ${varSvc >= 0 ? "text-green-600" : "text-red-500"}`}>
-                                        {varSvc >= 0 ? "▲" : "▼"} {Math.abs(varSvc * 100).toFixed(0)}%
+                                  <td className="px-3 py-1.5 text-right">
+                                    {varGmv !== null ? (
+                                      <span className={`font-bold ${varGmv >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                        {varGmv >= 0 ? "▲" : "▼"} {Math.abs(varGmv * 100).toFixed(1)}%
                                       </span>
-                                    ) : <span className="text-gray-300">—</span>}
+                                    ) : <span className="text-gray-300 text-xs">—</span>}
                                   </td>
                                 </tr>
                               );
@@ -531,24 +542,24 @@ export default function InformeEmpresa() {
                               <th className="px-3 py-2 text-left">Sede</th>
                               <th className="px-3 py-2 text-right">Servicios</th>
                               <th className="px-3 py-2 text-right">GMV</th>
-                              <th className="px-3 py-2 text-center">Var</th>
+                              <th className="px-3 py-2 text-right">▲▼ GMV</th>
                             </tr>
                           </thead>
                           <tbody>
                             {empData.topSedes.slice(0, 15).map((s, i) => {
                               const prev = prevData?.topSedes?.find(p => p.sede === s.sede);
-                              const varSvc = prev?.total > 0 ? ((s.total - prev.total) / prev.total) : null;
+                              const varGmv = prev?.gmv > 0 ? ((s.gmv - prev.gmv) / prev.gmv) : null;
                               return (
                                 <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-purple-50/30"}>
                                   <td className="px-3 py-1.5 font-medium text-gray-700 max-w-[140px] truncate" title={s.sede}>{s.sede}</td>
                                   <td className="px-3 py-1.5 text-right">{s.total.toLocaleString()}</td>
                                   <td className="px-3 py-1.5 text-right font-semibold" style={{color:PIBOX_PURPLE}}>{fmtFull(s.gmv)}</td>
-                                  <td className="px-3 py-1.5 text-center">
-                                    {varSvc !== null ? (
-                                      <span className={`font-bold ${varSvc >= 0 ? "text-green-600" : "text-red-500"}`}>
-                                        {varSvc >= 0 ? "▲" : "▼"} {Math.abs(varSvc * 100).toFixed(0)}%
+                                  <td className="px-3 py-1.5 text-right">
+                                    {varGmv !== null ? (
+                                      <span className={`font-bold ${varGmv >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                        {varGmv >= 0 ? "▲" : "▼"} {Math.abs(varGmv * 100).toFixed(1)}%
                                       </span>
-                                    ) : <span className="text-gray-300">—</span>}
+                                    ) : <span className="text-gray-300 text-xs">—</span>}
                                   </td>
                                 </tr>
                               );

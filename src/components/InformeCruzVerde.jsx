@@ -4,6 +4,7 @@ import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend, LineChart, Line,
+  ComposedChart, Area, ReferenceLine,
 } from "recharts";
 import XLSX from "../utils/xlsxHelper";
 
@@ -67,7 +68,8 @@ function horaMin(dateStr) {
 
 function getLinea(row) {
   const empresa = String(row.nombre_empresa || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const tipo    = String(row.tipo_servicio  || "").trim().toLowerCase();
+  // tipo_servicio viene del Excel; next_day viene de ClickHouse (misma info, distinto nombre)
+  const tipo    = String(row.tipo_servicio || row.next_day || "").trim().toLowerCase();
   const esCruzVerde = empresa === "cruz verde integracion";
   if (esCruzVerde && tipo === "next day") return "integ_nd";
   if (esCruzVerde || isInteg(row.nombre_usuario)) return "integ_sd";
@@ -343,6 +345,138 @@ function fmtDatetime(val) {
   const d = new Date(val);
   if (isNaN(d)) return String(val);
   return d.toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" });
+}
+
+function fmtFull(n) { return "$" + Math.round(n || 0).toLocaleString("es-CO"); }
+function fmtMCV(n) {
+  const v = Math.abs(n || 0);
+  if (v >= 1e9) return `$${(n/1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `$${(n/1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `$${(n/1e3).toFixed(0)}K`;
+  return `$${Math.round(n)}`;
+}
+
+function GmvDiarioCV({ rows }) {
+  const daily = useMemo(() => {
+    const map = {};
+    for (const r of rows) {
+      if (!r.fecha || !r.costo) continue;
+      if (!map[r.fecha]) map[r.fecha] = { fecha: r.fecha, gmv: 0, servicios: 0 };
+      map[r.fecha].gmv += r.costo;
+      map[r.fecha].servicios++;
+    }
+    return Object.values(map)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+      .map(d => {
+        const [, m, day] = d.fecha.split("-");
+        return { ...d, label: `${day}/${m}` };
+      });
+  }, [rows]);
+
+  if (!daily.length) return null;
+
+  let acum = 0;
+  const chartData = daily.map((d, i, arr) => {
+    const ventana = arr.slice(Math.max(0, i - 6), i + 1);
+    const ma7 = ventana.reduce((s, w) => s + w.gmv, 0) / ventana.length;
+    acum += d.gmv;
+    return { ...d, ma7, acum };
+  });
+
+  const avgGmv = chartData.reduce((s, d) => s + d.gmv, 0) / chartData.length;
+  const topDia = chartData.reduce((m, d) => d.gmv > m.gmv ? d : m, chartData[0]);
+  const minDia = chartData.reduce((m, d) => d.gmv < m.gmv ? d : m, chartData[0]);
+  const step   = chartData.length <= 15 ? 1 : chartData.length <= 25 ? 3 : 5;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+      <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
+        <div>
+          <h3 className="font-bold text-gray-700 text-sm">📆 GMV Diario</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Barras: GMV del día · Línea: media móvil 7 días · {chartData.length} días con datos
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3 text-xs">
+          <div className="rounded-xl px-3 py-1.5 border" style={{background:"#E0F7FA", borderColor:"#B2EBF2"}}>
+            <span className="text-gray-500">Prom/día </span>
+            <span className="font-bold" style={{color:C_TEAL}}>{fmtFull(avgGmv)}</span>
+          </div>
+          <div className="bg-green-50 rounded-xl px-3 py-1.5 border border-green-100">
+            <span className="text-gray-500">Mejor día </span>
+            <span className="font-bold text-green-700">{topDia.label} · {fmtFull(topDia.gmv)}</span>
+          </div>
+          <div className="bg-red-50 rounded-xl px-3 py-1.5 border border-red-100">
+            <span className="text-gray-500">Menor día </span>
+            <span className="font-bold text-red-600">{minDia.label} · {fmtFull(minDia.gmv)}</span>
+          </div>
+          <div className="bg-blue-50 rounded-xl px-3 py-1.5 border border-blue-100">
+            <span className="text-gray-500">Acumulado </span>
+            <span className="font-bold text-blue-700">{fmtFull(acum)}</span>
+          </div>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={chartData} margin={{top:8,right:60,left:0,bottom:20}}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#E0F7FA" vertical={false}/>
+          <XAxis dataKey="label" tick={{fontSize:9}} angle={-45} textAnchor="end" height={45} interval={step - 1}/>
+          <YAxis yAxisId="left" tick={{fontSize:9}} tickFormatter={fmtMCV} width={55}/>
+          <YAxis yAxisId="right" orientation="right" tick={{fontSize:9}} tickFormatter={fmtMCV} width={55}/>
+          <Tooltip
+            content={({active, payload}) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload;
+              return (
+                <div className="bg-white border rounded-xl shadow-lg px-3 py-2.5 text-xs space-y-1 min-w-[180px]" style={{borderColor:"#B2EBF2"}}>
+                  <p className="font-bold mb-1" style={{color:C_TEAL}}>📅 {d?.fecha}</p>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500">GMV del día</span>
+                    <span className="font-bold" style={{color:C_TEAL}}>{fmtFull(d?.gmv)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500">MA-7</span>
+                    <span className="font-bold" style={{color:C_CYAN}}>{fmtFull(d?.ma7)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-gray-500">Acumulado</span>
+                    <span className="font-bold text-blue-600">{fmtFull(d?.acum)}</span>
+                  </div>
+                  <div className="border-t border-gray-100 pt-1 mt-1 flex justify-between gap-4">
+                    <span className="text-gray-500">Servicios</span>
+                    <span className="font-semibold text-gray-700">{(d?.servicios||0).toLocaleString()}</span>
+                  </div>
+                </div>
+              );
+            }}
+          />
+          <Area yAxisId="right" dataKey="acum" fill="#DBEAFE" stroke="#93C5FD" strokeWidth={1.5} fillOpacity={0.4} dot={false} activeDot={false}/>
+          <Bar yAxisId="left" dataKey="gmv" fill={C_TEAL} fillOpacity={0.85} radius={[3,3,0,0]} maxBarSize={28}/>
+          <Line yAxisId="left" dataKey="ma7" stroke={C_CYAN} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0}} strokeDasharray="5 3"/>
+          <ReferenceLine yAxisId="left" y={avgGmv} stroke="#9CA3AF" strokeDasharray="3 2" label={{value:"Prom.", position:"insideTopRight", fontSize:9, fill:"#9CA3AF"}}/>
+        </ComposedChart>
+      </ResponsiveContainer>
+
+      <div className="flex flex-wrap justify-center gap-4 mt-1 text-[10px] text-gray-500">
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm inline-block" style={{background:C_TEAL, opacity:0.85}}/>
+          GMV diario
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-6 border-t-2 inline-block" style={{borderColor:C_CYAN, borderStyle:"dashed"}}/>
+          Media móvil 7 días
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm inline-block bg-blue-200"/>
+          GMV acumulado (eje der.)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-6 border-t inline-block border-gray-400" style={{borderStyle:"dashed"}}/>
+          Promedio diario
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function calcMetricas(rows) {
@@ -681,6 +815,8 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
         <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(m.devol)} sub={m.total>0?fmtPct(pct(m.devol,m.total)):undefined} color={C_AMB} />
         <KpiCard icon="📊" label="Servicios c/SLA" value={fmtNum(m.slaDef)} color={C_GRAY} />
       </div>
+
+      <GmvDiarioCV rows={rows} />
 
       {/* Tendencia diaria */}
       {tendencia.length > 1 && (
@@ -1388,6 +1524,8 @@ function ResumenPanel({ rows }) {
         <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(mTotal.devol)} sub={mTotal.total>0?fmtPct(pct(mTotal.devol,mTotal.total)):undefined} color={C_AMB} />
         <KpiCard icon="📊" label="Con SLA medido" value={fmtNum(mTotal.slaDef)} color={C_GRAY} />
       </div>
+
+      <GmvDiarioCV rows={rows} />
 
       {/* Composición por línea */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -3234,20 +3372,46 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [publishMsg,   setPublishMsg]   = useState(null);
   const [loadingServer, setLoadingServer] = useState(false);
 
-  // No-admin: cargar snapshot publicado desde el servidor
+  // ── ClickHouse integration ──
+  const [chDesde,    setChDesde]    = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; });
+  const [chHasta,    setChHasta]    = useState(() => new Date().toISOString().slice(0,10));
+  const [chStatus,   setChStatus]   = useState("idle");   // idle | running | done | error
+  const [chError,    setChError]    = useState(null);
+  const [chMsg,      setChMsg]      = useState(null);
+  const [chPollRef,  setChPollRef]  = useState(null);
+
+  // No-admin: cargar snapshot publicado desde el servidor.
+  // Solo sobreescribe un mes en IDB si el servidor tiene datos más nuevos que
+  // los locales, para no pisar datos cargados localmente desde ClickHouse.
   useEffect(() => {
     if (isAdmin) return;
     setLoadingServer(true);
     fetchFromServer("cruz_verde").then(async (snap) => {
       if (!snap?.ok || !snap?.data?.index) { setLoadingServer(false); return; }
       const d = snap.data;
-      saveIndex(d.index || {});
-      await Promise.all(Object.entries(d.meses || {}).map(([k, v]) => idbSave(k, v)));
+      // Merge índice: preservar entradas locales más nuevas
+      const localIdx = loadIndex();
+      const mergedIdx = { ...d.index };
+      for (const [k, serverEntry] of Object.entries(d.index || {})) {
+        const localEntry = localIdx[k];
+        if (localEntry?.fecha && serverEntry?.fecha &&
+            new Date(localEntry.fecha) > new Date(serverEntry.fecha)) {
+          mergedIdx[k] = localEntry; // conservar local más nuevo
+        }
+      }
+      saveIndex(mergedIdx);
+      // Guardar filas: solo sobreescribir si servidor es más nuevo
+      await Promise.all(Object.entries(d.meses || {}).map(async ([k, v]) => {
+        const localData = await idbLoad(k);
+        const serverFecha  = new Date(v?.fecha || 0).getTime();
+        const localFecha   = new Date(localData?.fecha || 0).getTime();
+        if (!localData || serverFecha > localFecha) await idbSave(k, v);
+      }));
       if (d.directorio) localStorage.setItem("pibox_cv_directorio", JSON.stringify(d.directorio));
       if (d.horariosSd) localStorage.setItem(SK_HORARIOS_SD, JSON.stringify(d.horariosSd));
       if (d.sla) localStorage.setItem("pibox_cv_sla", JSON.stringify(d.sla));
       if (d.umbrales) localStorage.setItem("pibox_cv_umbrales", JSON.stringify(d.umbrales));
-      setIndex(d.index || {});
+      setIndex(mergedIdx);
       if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
       setLoadingServer(false);
     }).catch(() => setLoadingServer(false));
@@ -3315,6 +3479,87 @@ export default function InformeCruzVerde({ isAdmin }) {
   const allEnrichedRows = useMemo(() =>
     rows.map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) })),
   [rows, slaConfig, horariosMap]);
+
+  // ── Cargar desde ClickHouse ──
+  const loadFromClickHouse = async () => {
+    if (chStatus === "running") return;
+    if (chPollRef) { clearTimeout(chPollRef); setChPollRef(null); }
+    setChStatus("running");
+    setChError(null);
+    setChMsg("Iniciando consulta ClickHouse…");
+
+    const csrf = window.__RAILS_CSRF_TOKEN__ || document.querySelector('meta[name="csrf-token"]')?.content || "";
+    const params = `desde=${chDesde}&hasta=${chHasta}`;
+
+    const handleDone = async (data) => {
+      const rawRows = data.data || [];
+      if (!rawRows.length) {
+        setChStatus("done");
+        setChMsg(`⚠️ Sin datos para el rango ${chDesde} – ${chHasta}`);
+        return;
+      }
+      const processed = procesarRows(rawRows);
+      const d0 = new Date(chDesde + "T12:00:00");
+      const mesKey = `${MESES_LABEL[d0.getMonth()]} ${d0.getFullYear()}`;
+      const fmtD = (s) => s.split("-").reverse().join("/");
+      const chLabel = `${fmtD(chDesde)} – ${fmtD(chHasta)}`;
+      await idbSave(mesKey, { rows: processed, archivo: "ClickHouse", fecha: new Date().toISOString(), total: processed.length });
+      const newIdx = { ...loadIndex(), [mesKey]: { archivo: "ClickHouse", fecha: new Date().toISOString(), total: processed.length, label: chLabel } };
+      saveIndex(newIdx);
+      setIndex(newIdx);
+      setMesSel(mesKey);
+      setChStatus("done");
+      setChMsg(`✅ ${rawRows.length.toLocaleString()} registros cargados (${chDesde} → ${chHasta})`);
+    };
+
+    const poll = async (attempts = 0) => {
+      if (attempts > 120) {
+        setChStatus("error");
+        setChError("La consulta tardó demasiado. Intenta con un rango de fechas menor.");
+        return;
+      }
+      try {
+        const r = await fetch(`/api/cruz_verde/status?${params}`, { headers: { Accept: "application/json" } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        if (d.status === "done") {
+          await handleDone(d);
+        } else if (d.status === "error") {
+          setChStatus("error");
+          setChError(d.error || "Error en ClickHouse");
+        } else {
+          const elapsed = attempts * 5;
+          setChMsg(`⏳ Consultando ClickHouse… ${elapsed}s (puede tardar hasta 3 min)`);
+          const tid = setTimeout(() => poll(attempts + 1), 5000);
+          setChPollRef(tid);
+        }
+      } catch (e) {
+        setChStatus("error");
+        setChError(e.message);
+      }
+    };
+
+    try {
+      const r = await fetch(`/api/cruz_verde/consulta?${params}`, {
+        headers: { "X-CSRF-Token": csrf, Accept: "application/json" },
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      if (d.status === "done") {
+        await handleDone(d);
+      } else if (d.status === "error") {
+        setChStatus("error");
+        setChError(d.error || "Error en ClickHouse");
+      } else {
+        setChMsg("⏳ Consultando ClickHouse… (puede tardar hasta 3 min)");
+        const tid = setTimeout(() => poll(1), 5000);
+        setChPollRef(tid);
+      }
+    } catch (e) {
+      setChStatus("error");
+      setChError(e.message);
+    }
+  };
 
   // Upload handler — usa año/mes del selector, no del archivo
   const handleUpload = async (e) => {
@@ -3388,8 +3633,8 @@ export default function InformeCruzVerde({ isAdmin }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Informe Cruz Verde</p>
               <p className="text-xs text-gray-500">Mostrador · Integración Same Day · Integración Next Day · SLA en tiempo real</p>
             </div>
-            {!isAdmin && loadingServer && (
-              <span className="text-xs text-teal-600 font-medium animate-pulse shrink-0 ml-2">⏳ Cargando datos del equipo…</span>
+            {loadingServer && (
+              <span className="text-xs text-teal-600 font-medium animate-pulse shrink-0 ml-2">⏳ Sincronizando con el servidor…</span>
             )}
             {isAdmin && (
               <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -3446,53 +3691,55 @@ export default function InformeCruzVerde({ isAdmin }) {
 
           {/* Filtros de mes + línea + ciudad */}
           {meses.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="text-xs text-gray-500 font-medium">Mes:</span>
-              <div className="flex gap-1 flex-wrap">
-                {meses.map(m => (
-                  <button key={m} onClick={() => { setMesSel(m); setFiltFechaIni(""); setFiltFechaFin(""); }}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition border ${mesSel===m?"text-white border-transparent":"border-gray-200 text-gray-600 hover:bg-teal-50"}`}
-                    style={mesSel===m?{background:C_TEAL}:{}}>
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-1 ml-2">
-                <span className="text-xs text-gray-500">Línea:</span>
-                <select value={filtLinea} onChange={e => setFiltLinea(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white">
-                  <option value="todas">Todas</option>
-                  <option value="mostrador">Mostrador</option>
-                  <option value="integ_sd">Integ. Same Day</option>
-                  <option value="integ_nd">Integ. Next Day</option>
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
+                <select value={mesSel}
+                  onChange={e => { setMesSel(e.target.value); setFiltFechaIni(""); setFiltFechaFin(""); }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white">
+                  {meses.map(m => <option key={m} value={m}>{index[m]?.label || m}</option>)}
                 </select>
               </div>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">Ciudad:</span>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Línea</label>
+                <select value={filtLinea} onChange={e => setFiltLinea(e.target.value)}
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  <option value="todas">Todas</option>
+                  <option value="mostrador">Mostrador</option>
+                  <option value="integ_sd">Same Day</option>
+                  <option value="integ_nd">Next Day</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Ciudad</label>
                 <select value={filtCiudad} onChange={e => setFiltCiudad(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white">
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400">
                   <option value="todas">Todas</option>
                   {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">Desde:</span>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Desde</label>
                 <input type="date" value={filtFechaIni} onChange={e => setFiltFechaIni(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" />
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400" />
               </div>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">Hasta:</span>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Hasta</label>
                 <input type="date" value={filtFechaFin} onChange={e => setFiltFechaFin(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white" />
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400" />
               </div>
               {(filtFechaIni || filtFechaFin) && (
-                <button onClick={() => { setFiltFechaIni(""); setFiltFechaFin(""); }}
-                  className="text-xs text-gray-400 hover:text-red-500 transition px-1" title="Limpiar fechas">
-                  ✕ fechas
-                </button>
+                <div className="self-end pb-1">
+                  <button onClick={() => { setFiltFechaIni(""); setFiltFechaFin(""); }}
+                    className="text-xs text-gray-400 hover:text-red-500 transition" title="Limpiar fechas">
+                    ✕ fechas
+                  </button>
+                </div>
               )}
               {rows.length > 0 && (
-                <span className="text-xs text-gray-400 ml-1">{filteredRows.length.toLocaleString()} servicios</span>
+                <div className="self-end pb-2">
+                  <span className="text-xs text-gray-400">{filteredRows.length.toLocaleString()} servicios</span>
+                </div>
               )}
             </div>
           )}
@@ -3558,8 +3805,39 @@ export default function InformeCruzVerde({ isAdmin }) {
           />
         )}
 
-        {/* ── Panel: Subir nuevo mes ── */}
+        {/* ── Panel: ClickHouse ── */}
         {tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
+          <div className="bg-white rounded-2xl shadow-md border border-teal-100 p-5">
+            <h3 className="font-bold text-gray-700 text-sm mb-1">⚡ Cargar desde ClickHouse</h3>
+            <p className="text-xs text-gray-400 mb-4">Ejecuta el reporte en tiempo real. Puede tardar hasta 3 minutos.</p>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Desde</label>
+                <input type="date" value={chDesde} onChange={e => setChDesde(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Hasta</label>
+                <input type="date" value={chHasta} onChange={e => setChHasta(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+              </div>
+              <button
+                onClick={loadFromClickHouse}
+                disabled={chStatus === "running"}
+                className={`px-5 py-2 rounded-xl text-white text-sm font-bold shadow transition ${chStatus === "running" ? "opacity-60 cursor-not-allowed bg-teal-400" : "bg-teal-600 hover:bg-teal-700"}`}>
+                {chStatus === "running" ? "⏳ Consultando…" : "⚡ Consultar ClickHouse"}
+              </button>
+            </div>
+            {(chMsg || chError) && (
+              <p className={`mt-3 text-sm font-semibold ${chStatus === "error" ? "text-red-600" : chStatus === "done" ? "text-green-600" : "text-teal-600 animate-pulse"}`}>
+                {chStatus === "error" ? `❌ ${chError}` : chMsg}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Panel: Subir nuevo mes ── */}
+        {isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <h3 className="font-bold text-gray-700 text-sm mb-4">📂 Subir nuevo mes</h3>
             <div className="flex flex-wrap gap-3 items-end">
@@ -3611,6 +3889,24 @@ export default function InformeCruzVerde({ isAdmin }) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Lista de meses para no-admin (sin uploader ni botón eliminar) */}
+        {!isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && meses.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({meses.length})</p>
+            <div className="flex flex-wrap gap-2">
+              {meses.map(m => (
+                <button key={m} onClick={() => setMesSel(m)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${
+                    mesSel === m ? "text-white border-transparent" : "border-gray-200 text-gray-600 hover:bg-teal-50"
+                  }`}
+                  style={mesSel === m ? { background: C_TEAL } : {}}>
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

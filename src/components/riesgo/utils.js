@@ -173,7 +173,10 @@ export function procesarDatos(rows) {
     let semana = 0;
     let semanaLabel = "";
     try {
-      const d = new Date(row["date"]);
+      // Añadir T12:00:00 para evitar que strings ISO de fecha pura se parseen
+      // como UTC midnight (= día anterior en Colombia UTC-5).
+      const rawDate = String(row["date"] ?? "");
+      const d = new Date(rawDate.length === 10 ? rawDate + "T12:00:00" : rawDate);
       if (!isNaN(d.getTime())) {
         const dia = d.getDate();                     // 1-31
         semana = Math.ceil(dia / 7);                 // 1,2,3,4,5
@@ -416,16 +419,18 @@ export function procesarDatos(rows) {
     };
   });
 
-  // ── Agregados globales: tipo operación, status, vehículo, drivers ──
+  // ── Agregados globales: tipo operación, status, vehículo, drivers, línea ──
   const globalOps = {};
   const globalStatus = {};
   const globalVehicle = {};
+  const globalLinea = {};
   const driversPorOp = {}; // op → Set de driver IDs únicos
   const driversGlobal = new Set();
   for (const row of rows) {
     const op = toStr(row["operation_type"] || row["OPERATION TYPE"] || "Otro");
     const st = toStr(row["service_status"] || row["Service Status"] || "Sin estado");
     const vh = toStr(row["vehicle_type"] || row["vehicleType"] || row["Vehicle Type"] || row["tipo_vehiculo"] || "Sin vehículo");
+    const linea = toStr(row["service_type"] || row["SERVICE_TYPE"] || "Sin línea");
     const gmv = toNum(row["gmv"]);
     const driverId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
     const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
@@ -437,6 +442,8 @@ export function procesarDatos(rows) {
     globalStatus[st].total++; globalStatus[st].gmv += gmv;
     if (!globalVehicle[vh]) globalVehicle[vh] = { total: 0, gmv: 0 };
     globalVehicle[vh].total++; globalVehicle[vh].gmv += gmv;
+    if (!globalLinea[linea]) globalLinea[linea] = { total: 0, gmv: 0 };
+    globalLinea[linea].total++; globalLinea[linea].gmv += gmv;
 
     // Drivers únicos por tipo de operación
     if (driverKey) {
@@ -447,6 +454,7 @@ export function procesarDatos(rows) {
     }
   }
   const porTipoOp = Object.entries(globalOps).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+  const porLinea  = Object.entries(globalLinea).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const porStatus = Object.entries(globalStatus).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const porVehiculo = Object.entries(globalVehicle).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const driversPorTipoOp = Object.entries(driversPorOp)
@@ -541,7 +549,7 @@ export function procesarDatos(rows) {
     let hora = -1;
     const hmMatch = dtTime.match(/^(\d{1,2}):/);
     if (hmMatch) hora = parseInt(hmMatch[1]);
-    else { try { const d = new Date(row["date"]); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {} }
+    else { try { const rd = String(row["date"] ?? ""); const d = new Date(rd.length === 10 ? rd + "T12:00:00" : rd); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {} }
     if (!pilotoMap[dk]) pilotoMap[dk] = { id: dId, n: dNm, ci: city, s: 0, c: 0, x: 0, g: 0, hp: {} };
     const p = pilotoMap[dk];
     p.s++;
@@ -570,6 +578,7 @@ export function procesarDatos(rows) {
       weekly: weeklyGlobal,
       daily:  dailyArr,
       porTipoOp,
+      porLinea,
       porStatus,
       porVehiculo,
       driversPorTipoOp,

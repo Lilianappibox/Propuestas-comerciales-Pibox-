@@ -46,9 +46,9 @@ export const fmtM = (n, moneda = "COP", trm = 4200) => {
 export const pct = (n) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 
 export const colorCumplimiento = (p) => {
-  if (p >= 95) return "#22c55e";
-  if (p >= 80) return "#f59e0b";
-  return "#ef4444";
+  if (p >= 100) return "#22c55e"; // verde
+  if (p >= 80)  return "#f59e0b"; // amarillo
+  return "#ef4444";               // rojo
 };
 
 export const PIBOX_PURPLE = "#8B2FC9";

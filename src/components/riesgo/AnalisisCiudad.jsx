@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, LineChart, Line, Legend,
@@ -80,6 +80,10 @@ const DEPARTAMENTOS = {
 export default function AnalisisCiudad() {
   const meses = mesesDisponibles();
   const [mesKey, setMesKey] = useState(meses[meses.length-1]?.key || "");
+  useEffect(() => {
+    if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
+      setMesKey(meses[meses.length - 1].key);
+  }, [meses.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [ciudadesSeleccionadas, setCiudadesSeleccionadas] = useState([]);
   const [deptoSel, setDeptoSel] = useState("");
   const [clienteBuscar, setClienteBuscar] = useState("");

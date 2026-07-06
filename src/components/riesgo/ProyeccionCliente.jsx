@@ -68,6 +68,10 @@ function FestivosInput({ label, sublabel, value, onChange, color = PIBOX_PURPLE 
 export default function ProyeccionCliente() {
   const meses = mesesDisponibles();
   const [mesKey, setMesKey]       = useState(meses[meses.length - 1]?.key || "");
+  useEffect(() => {
+    if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
+      setMesKey(meses[meses.length - 1].key);
+  }, [meses.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [histPorEmpresa, setHistPorEmpresa] = useState({});
   const [cargandoHist, setCargandoHist]     = useState(false);
   const [busqueda, setBusqueda]             = useState("");

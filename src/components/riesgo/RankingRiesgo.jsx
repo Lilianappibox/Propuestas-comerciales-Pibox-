@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, CartesianGrid, Legend,
@@ -159,6 +159,10 @@ export default function RankingRiesgo() {
   const umb   = getUmbrales();
 
   const [mesKey, setMesKey]             = useState(meses[meses.length-1]?.key || "");
+  useEffect(() => {
+    if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
+      setMesKey(meses[meses.length - 1].key);
+  }, [meses.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [filtroSem, setFiltroSem]       = useState("Todos");
   const [filtroKam, setFiltroKam]       = useState("Todos");
   const [filtroFactor, setFiltroFactor] = useState("Todos");

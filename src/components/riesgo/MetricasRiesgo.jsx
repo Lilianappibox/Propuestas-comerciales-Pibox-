@@ -67,6 +67,10 @@ export default function MetricasRiesgo() {
 
   const [mesKey, setMesKey]           = useState(meses[meses.length-1]?.key || "");
   const [historialGlobal, setHistorialGlobal] = useState([]);
+  useEffect(() => {
+    if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
+      setMesKey(meses[meses.length - 1].key);
+  }, [meses.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -536,25 +540,25 @@ export default function MetricasRiesgo() {
 
       {/* Tipo de Operación, Estado del Servicio, Tipo de Vehículo */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Tipo de Operación */}
+        {/* Línea Operativa */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-          <h3 className="font-bold text-gray-700 text-sm mb-3">🔧 Tipo de Operación</h3>
-          {(tot?.porTipoOp?.length > 0) ? (
+          <h3 className="font-bold text-gray-700 text-sm mb-3">📦 Línea Operativa</h3>
+          {(tot?.porLinea?.length > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={tot.porTipoOp} dataKey="total" nameKey="name"
+                <Pie data={tot.porLinea} dataKey="total" nameKey="name"
                   cx="50%" cy="50%" innerRadius={45} outerRadius={75}
                   label={({name,percent})=>`${name.split(" ")[0]} ${(percent*100).toFixed(0)}%`}
                   labelLine={false}>
-                  {tot.porTipoOp.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                  {tot.porLinea.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
                 </Pie>
                 <Tooltip formatter={(v,n)=>[v.toLocaleString()+" servicios",n]}/>
               </PieChart>
             </ResponsiveContainer>
           ) : <p className="text-xs text-gray-400 text-center py-8">Sin datos</p>}
-          {tot?.porTipoOp?.length > 0 && (
+          {tot?.porLinea?.length > 0 && (
             <div className="mt-2 space-y-1">
-              {tot.porTipoOp.slice(0,5).map((d,i)=>(
+              {tot.porLinea.slice(0,6).map((d,i)=>(
                 <div key={d.name} className="flex justify-between text-xs">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full inline-block" style={{background:COLORS[i%COLORS.length]}}/>

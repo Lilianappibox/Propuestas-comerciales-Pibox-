@@ -3,52 +3,280 @@ import { fmtMoney } from "./utils";
 import { useMoneda } from "./MonedaContext";
 import deptData from "../../data/colombiaDepts.json";
 
-// ── City → Department mapping ─────────────────────────────────────────────
-const CITY_TO_DEPT = {
-  "Bogota":        "BogotáD.C.",
-  "Bogotá":        "BogotáD.C.",
-  "Medellin":      "Antioquia",
-  "Medellín":      "Antioquia",
-  "Cali":          "ValledelCauca",
-  "Barranquilla":  "Atlántico",
-  "Bucaramanga":   "Santander",
-  "Pereira":       "Risaralda",
-  "Cartagena":     "Bolívar",
-  "Cucuta":        "NortedeSantander",
-  "Cúcuta":        "NortedeSantander",
-  "Manizales":     "Caldas",
-  "Ibague":        "Tolima",
-  "Ibagué":        "Tolima",
-  "Villavicencio": "Meta",
-  "Santa Marta":   "Magdalena",
-  "Pasto":         "Nariño",
-  "Monteria":      "Córdoba",
-  "Montería":      "Córdoba",
-  "Valledupar":    "Cesar",
-  "Neiva":         "Huila",
-  "Armenia":       "Quindío",
-  "Sincelejo":     "Sucre",
-  "Popayan":       "Cauca",
-  "Popayán":       "Cauca",
-  "Tunja":         "Boyacá",
-  "Riohacha":      "LaGuajira",
-  "Florencia":     "Caquetá",
-  "Quibdo":        "Chocó",
-  "Quibdó":        "Chocó",
-  "Yopal":         "Casanare",
-  "Mocoa":         "Putumayo",
-  "Arauca":        "Arauca",
-  "Leticia":       "Amazonas",
-  "San Andres":    "SanAndrésyProvidencia",
-  "San Andrés":    "SanAndrésyProvidencia",
-  "Inirida":       "Guainía",
-  "Inírida":       "Guainía",
-  "San José del Guaviare": "Guaviare",
-  "Mitú":          "Vaupés",
-  "Mitu":          "Vaupés",
-  "Puerto Carreño": "Vichada",
-  "Puerto Carreno": "Vichada",
-};
+// ── Normalización para comparación insensible a acentos y mayúsculas ─────────
+function normCity(s) {
+  return String(s || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+// Tabla maestra: [nombre canónico, departamento]
+// Se expande automáticamente a variantes sin acento en el Map de abajo.
+const MASTER = [
+  // ── Bogotá D.C. ────────────────────────────────────────────────────────────
+  ["Bogotá","BogotáD.C."],["Bogotá D.C.","BogotáD.C."],
+  // ── Cundinamarca ───────────────────────────────────────────────────────────
+  ["Soacha","Cundinamarca"],["Funza","Cundinamarca"],["Mosquera","Cundinamarca"],
+  ["Sopó","Cundinamarca"],["Cajicá","Cundinamarca"],["Chía","Cundinamarca"],
+  ["Tocancipá","Cundinamarca"],["Zipaquirá","Cundinamarca"],["Facatativá","Cundinamarca"],
+  ["Madrid","Cundinamarca"],["Cota","Cundinamarca"],["Sibaté","Cundinamarca"],
+  ["La Calera","Cundinamarca"],["Gachancipá","Cundinamarca"],["Tenjo","Cundinamarca"],
+  ["Tabio","Cundinamarca"],["Bojacá","Cundinamarca"],["El Rosal","Cundinamarca"],
+  ["Subachoque","Cundinamarca"],["Fusagasugá","Cundinamarca"],["Girardot","Cundinamarca"],
+  ["Villeta","Cundinamarca"],["Guaduas","Cundinamarca"],["Ubaté","Cundinamarca"],
+  ["Cáqueza","Cundinamarca"],["Chocontá","Cundinamarca"],["Sesquilé","Cundinamarca"],
+  ["Cogua","Cundinamarca"],["Nemocón","Cundinamarca"],["Gachetá","Cundinamarca"],
+  ["Pacho","Cundinamarca"],["Arbeláez","Cundinamarca"],["Anapoima","Cundinamarca"],
+  ["Apulo","Cundinamarca"],["Agua de Dios","Cundinamarca"],["Guatavita","Cundinamarca"],
+  ["Suesca","Cundinamarca"],["Zipacón","Cundinamarca"],["La Mesa","Cundinamarca"],
+  ["Tocaima","Cundinamarca"],["Viotá","Cundinamarca"],["Ricaurte","Cundinamarca"],
+  ["San Antonio del Tequendama","Cundinamarca"],["Silvania","Cundinamarca"],
+  ["Grenada","Cundinamarca"],["Medina","Cundinamarca"],["Paratebueno","Cundinamarca"],
+  // ── Antioquia ──────────────────────────────────────────────────────────────
+  ["Medellín","Antioquia"],["Bello","Antioquia"],["Itagüí","Antioquia"],
+  ["Envigado","Antioquia"],["Sabaneta","Antioquia"],["La Estrella","Antioquia"],
+  ["Caldas","Antioquia"],["Copacabana","Antioquia"],["Girardota","Antioquia"],
+  ["Barbosa","Antioquia"],["Rionegro","Antioquia"],["Apartadó","Antioquia"],
+  ["Turbo","Antioquia"],["Caucasia","Antioquia"],["Puerto Berrío","Antioquia"],
+  ["Santa Rosa de Osos","Antioquia"],["Yarumal","Antioquia"],["Andes","Antioquia"],
+  ["Jericó","Antioquia"],["Santa Fe de Antioquia","Antioquia"],["Marinilla","Antioquia"],
+  ["El Retiro","Antioquia"],["Guarne","Antioquia"],["La Ceja","Antioquia"],
+  ["El Carmen de Viboral","Antioquia"],["Sonsón","Antioquia"],["Fredonia","Antioquia"],
+  ["Amagá","Antioquia"],["Yolombó","Antioquia"],["Don Matías","Antioquia"],
+  ["Segovia","Antioquia"],["Remedios","Antioquia"],["Tarazá","Antioquia"],
+  ["Apartado","Antioquia"],["San Pedro de los Milagros","Antioquia"],
+  ["El Bagre","Antioquia"],["Zaragoza","Antioquia"],["Cisneros","Antioquia"],
+  ["Carolina del Príncipe","Antioquia"],["Anorí","Antioquia"],
+  // ── Atlántico ──────────────────────────────────────────────────────────────
+  ["Barranquilla","Atlántico"],["Soledad","Atlántico"],["Malambo","Atlántico"],
+  ["Sabanalarga","Atlántico"],["Puerto Colombia","Atlántico"],["Galapa","Atlántico"],
+  ["Baranoa","Atlántico"],["Usiacurí","Atlántico"],["Santo Tomás","Atlántico"],
+  ["Palmar de Varela","Atlántico"],["Ponedera","Atlántico"],["Polonuevo","Atlántico"],
+  ["Repeló","Atlántico"],["Luruaco","Atlántico"],["Campo de la Cruz","Atlántico"],
+  ["Candelaria","Atlántico"],
+  // ── Bolívar ────────────────────────────────────────────────────────────────
+  ["Cartagena","Bolívar"],["Magangué","Bolívar"],["El Carmen de Bolívar","Bolívar"],
+  ["Mompox","Bolívar"],["Arjona","Bolívar"],["Turbaco","Bolívar"],
+  ["El Banco","Bolívar"],["Margarita","Bolívar"],["Mahates","Bolívar"],
+  ["Villanueva","Bolívar"],["San Jacinto","Bolívar"],["Achí","Bolívar"],
+  ["San Juan Nepomuceno","Bolívar"],["San Pablo","Bolívar"],
+  // ── Boyacá ─────────────────────────────────────────────────────────────────
+  ["Tunja","Boyacá"],["Duitama","Boyacá"],["Sogamoso","Boyacá"],
+  ["Chiquinquirá","Boyacá"],["Paipa","Boyacá"],["Monguí","Boyacá"],
+  ["Villa de Leyva","Boyacá"],["Samacá","Boyacá"],["Ramiriquí","Boyacá"],
+  ["Tibasosa","Boyacá"],["Nobsa","Boyacá"],["Tuta","Boyacá"],
+  ["Ventaquemada","Boyacá"],["Socha","Boyacá"],["Puerto Boyacá","Boyacá"],
+  ["Guateque","Boyacá"],["Miraflores","Boyacá"],["Garagoa","Boyacá"],
+  // ── Caldas ─────────────────────────────────────────────────────────────────
+  ["Manizales","Caldas"],["La Dorada","Caldas"],["Chinchiná","Caldas"],
+  ["Villamaría","Caldas"],["Riosucio","Caldas"],["Manzanares","Caldas"],
+  ["Salamina","Caldas"],["Supía","Caldas"],["Neira","Caldas"],
+  ["Anserma","Caldas"],["Pensilvania","Caldas"],["Aguadas","Caldas"],
+  ["Pácora","Caldas"],["Filadelfia","Caldas"],
+  // ── Caquetá ────────────────────────────────────────────────────────────────
+  ["Florencia","Caquetá"],["San Vicente del Caguán","Caquetá"],
+  ["Puerto Rico","Caquetá"],["El Doncello","Caquetá"],["La Montañita","Caquetá"],
+  ["Belén de los Andaquíes","Caquetá"],["Albania","Caquetá"],
+  ["Curillo","Caquetá"],["El Paujil","Caquetá"],
+  // ── Casanare ───────────────────────────────────────────────────────────────
+  ["Yopal","Casanare"],["Aguazul","Casanare"],["Tauramena","Casanare"],
+  ["Monterrey","Casanare"],["Paz de Ariporo","Casanare"],
+  ["Orocué","Casanare"],["Maní","Casanare"],["Trinidad","Casanare"],
+  ["San Luis de Palenque","Casanare"],["Nunchía","Casanare"],
+  // ── Cauca ──────────────────────────────────────────────────────────────────
+  ["Popayán","Cauca"],["Santander de Quilichao","Cauca"],["Puerto Tejada","Cauca"],
+  ["Padilla","Cauca"],["Miranda","Cauca"],["Corinto","Cauca"],
+  ["Piendamó","Cauca"],["El Bordo","Cauca"],["Patía","Cauca"],
+  ["Mercaderes","Cauca"],["Cajibío","Cauca"],["Timbío","Cauca"],
+  // ── Cesar ──────────────────────────────────────────────────────────────────
+  ["Valledupar","Cesar"],["Aguachica","Cesar"],["La Paz","Cesar"],
+  ["Bosconia","Cesar"],["Codazzi","Cesar"],["El Copey","Cesar"],
+  ["Curumaní","Cesar"],["Chiriguaná","Cesar"],["Pailitas","Cesar"],
+  ["Pelaya","Cesar"],["La Gloria","Cesar"],["Astrea","Cesar"],
+  ["El Paso","Cesar"],["Chimichagua","Cesar"],["San Diego","Cesar"],
+  ["Manaure Balcón del Cesar","Cesar"],
+  // ── Chocó ──────────────────────────────────────────────────────────────────
+  ["Quibdó","Chocó"],["Istmina","Chocó"],["Tadó","Chocó"],
+  ["Bahía Solano","Chocó"],["Condoto","Chocó"],["Acandí","Chocó"],
+  ["Riosucio","Chocó"],["Unguía","Chocó"],["Bojayá","Chocó"],
+  // ── Córdoba ────────────────────────────────────────────────────────────────
+  ["Montería","Córdoba"],["Cereté","Córdoba"],["Sahagún","Córdoba"],
+  ["Lorica","Córdoba"],["Montelíbano","Córdoba"],["Planeta Rica","Córdoba"],
+  ["Tierralta","Córdoba"],["Ciénaga de Oro","Córdoba"],["Ayapel","Córdoba"],
+  ["Cotorra","Córdoba"],["San Antero","Córdoba"],["San Bernardo del Viento","Córdoba"],
+  ["Moñitos","Córdoba"],["Los Córdobas","Córdoba"],["Puerto Escondido","Córdoba"],
+  ["Purísima","Córdoba"],["Chima","Córdoba"],["Chimá","Córdoba"],
+  // ── Guainía ────────────────────────────────────────────────────────────────
+  ["Inírida","Guainía"],
+  // ── Guaviare ───────────────────────────────────────────────────────────────
+  ["San José del Guaviare","Guaviare"],["Calamar","Guaviare"],
+  ["El Retorno","Guaviare"],["Miraflores","Guaviare"],
+  // ── Huila ──────────────────────────────────────────────────────────────────
+  ["Neiva","Huila"],["Pitalito","Huila"],["Garzón","Huila"],
+  ["La Plata","Huila"],["Campoalegre","Huila"],["Rivera","Huila"],
+  ["Palermo","Huila"],["Gigante","Huila"],["San Agustín","Huila"],
+  ["Hobo","Huila"],["Yaguará","Huila"],["Aipe","Huila"],
+  ["Algeciras","Huila"],["Timaná","Huila"],["Acevedo","Huila"],
+  ["Isnos","Huila"],
+  // ── La Guajira ─────────────────────────────────────────────────────────────
+  ["Riohacha","LaGuajira"],["Rioacha","LaGuajira"],["Río de Hacha","LaGuajira"],
+  ["Rio Hacha","LaGuajira"],["Riohacha D.C.","LaGuajira"],
+  ["Maicao","LaGuajira"],["Uribia","LaGuajira"],
+  ["Manaure","LaGuajira"],["San Juan del Cesar","LaGuajira"],
+  ["Barrancas","LaGuajira"],["Fonseca","LaGuajira"],["Albania","LaGuajira"],
+  ["Hatonuevo","LaGuajira"],["Distraccion","LaGuajira"],["Distracción","LaGuajira"],
+  ["El Molino","LaGuajira"],["Urumita","LaGuajira"],
+  ["La Jagua del Pilar","LaGuajira"],["Villanueva","LaGuajira"],
+  ["Dibulla","LaGuajira"],["Manaure Balcon del Cesar","LaGuajira"],
+  // ── Magdalena ──────────────────────────────────────────────────────────────
+  ["Santa Marta","Magdalena"],["Ciénaga","Magdalena"],["Fundación","Magdalena"],
+  ["Plato","Magdalena"],["Aracataca","Magdalena"],["Zona Bananera","Magdalena"],
+  ["Pivijay","Magdalena"],["El Difícil","Magdalena"],["Salamina","Magdalena"],
+  ["Tenerife","Magdalena"],["El Banco","Magdalena"],["Guamal","Magdalena"],
+  ["Remolino","Magdalena"],["Sitio Nuevo","Magdalena"],["San Sebastián de Buenavista","Magdalena"],
+  // ── Meta ───────────────────────────────────────────────────────────────────
+  ["Villavicencio","Meta"],["Acacías","Meta"],["Granada","Meta"],
+  ["Puerto Gaitán","Meta"],["Cumaral","Meta"],["Restrepo","Meta"],
+  ["San Martín","Meta"],["Puerto López","Meta"],["Castilla la Nueva","Meta"],
+  ["El Dorado","Meta"],["Guamal","Meta"],["Lejanías","Meta"],
+  ["Puerto Concordia","Meta"],["Vista Hermosa","Meta"],["Mesetas","Meta"],
+  // ── Nariño ─────────────────────────────────────────────────────────────────
+  ["Pasto","Nariño"],["Tumaco","Nariño"],["Ipiales","Nariño"],
+  ["Túquerres","Nariño"],["La Unión","Nariño"],["Samaniego","Nariño"],
+  ["El Charco","Nariño"],["Barbacoas","Nariño"],["Ricaurte","Nariño"],
+  ["Cumbal","Nariño"],["Buesaco","Nariño"],["Chachagüí","Nariño"],
+  ["Linares","Nariño"],["El Tablón de Gómez","Nariño"],["Sandoná","Nariño"],
+  ["La Florida","Nariño"],["Ancuyá","Nariño"],
+  // ── Norte de Santander ─────────────────────────────────────────────────────
+  ["Cúcuta","NortedeSantander"],["Ocaña","NortedeSantander"],
+  ["Pamplona","NortedeSantander"],["Villa del Rosario","NortedeSantander"],
+  ["Los Patios","NortedeSantander"],["El Zulia","NortedeSantander"],
+  ["Tibú","NortedeSantander"],["Sardinata","NortedeSantander"],
+  ["Convención","NortedeSantander"],["Cáchira","NortedeSantander"],
+  ["Chinácota","NortedeSantander"],["Abrego","NortedeSantander"],
+  ["La Playa","NortedeSantander"],["San Calixto","NortedeSantander"],
+  // ── Putumayo ───────────────────────────────────────────────────────────────
+  ["Mocoa","Putumayo"],["Puerto Asís","Putumayo"],["Orito","Putumayo"],
+  ["Sibundoy","Putumayo"],["Valle del Guamuez","Putumayo"],
+  ["San Miguel","Putumayo"],["Puerto Caicedo","Putumayo"],
+  ["Villagarzón","Putumayo"],["Puerto Leguízamo","Putumayo"],
+  // ── Quindío ────────────────────────────────────────────────────────────────
+  ["Armenia","Quindío"],["Calarcá","Quindío"],["Montenegro","Quindío"],
+  ["Quimbaya","Quindío"],["La Tebaida","Quindío"],["Circasia","Quindío"],
+  ["Filandia","Quindío"],["Salento","Quindío"],["Buenavista","Quindío"],
+  ["Génova","Quindío"],["Pijao","Quindío"],
+  // ── Risaralda ──────────────────────────────────────────────────────────────
+  ["Pereira","Risaralda"],["Dosquebradas","Risaralda"],
+  ["Santa Rosa de Cabal","Risaralda"],["La Virginia","Risaralda"],
+  ["Marsella","Risaralda"],["Quinchía","Risaralda"],["Pueblo Rico","Risaralda"],
+  ["Mistrató","Risaralda"],["Balboa","Risaralda"],["Santuario","Risaralda"],
+  ["Apía","Risaralda"],["Guática","Risaralda"],["Belén de Umbría","Risaralda"],
+  // ── San Andrés ─────────────────────────────────────────────────────────────
+  ["San Andrés","SanAndrésyProvidencia"],["Providencia","SanAndrésyProvidencia"],
+  // ── Santander ──────────────────────────────────────────────────────────────
+  ["Bucaramanga","Santander"],["Floridablanca","Santander"],["Girón","Santander"],
+  ["Piedecuesta","Santander"],["Barrancabermeja","Santander"],["San Gil","Santander"],
+  ["Socorro","Santander"],["Vélez","Santander"],["Málaga","Santander"],
+  ["Charalá","Santander"],["Lebrija","Santander"],["Rionegro","Santander"],
+  ["San Vicente de Chucurí","Santander"],["El Playón","Santander"],
+  ["Oiba","Santander"],["Barbosa","Santander"],["Concepción","Santander"],
+  ["Puerto Wilches","Santander"],["Cimitarra","Santander"],
+  // ── Sucre ──────────────────────────────────────────────────────────────────
+  ["Sincelejo","Sucre"],["Corozal","Sucre"],["Tolú","Sucre"],
+  ["Sampués","Sucre"],["Morroa","Sucre"],["Ovejas","Sucre"],
+  ["San Marcos","Sucre"],["San Onofre","Sucre"],["El Roble","Sucre"],
+  ["Palmito","Sucre"],["Majagual","Sucre"],["Guaranda","Sucre"],
+  ["San Pedro","Sucre"],["Buenavista","Sucre"],["Galeras","Sucre"],
+  // ── Tolima ─────────────────────────────────────────────────────────────────
+  ["Ibagué","Tolima"],["Espinal","Tolima"],["Melgar","Tolima"],
+  ["Honda","Tolima"],["Líbano","Tolima"],["Chaparral","Tolima"],
+  ["Purificación","Tolima"],["Lérida","Tolima"],["Mariquita","Tolima"],
+  ["Fresno","Tolima"],["Venadillo","Tolima"],["Armero","Tolima"],
+  ["Guayabal","Tolima"],["Flandes","Tolima"],["Saldaña","Tolima"],
+  ["Ambalema","Tolima"],["Alvarado","Tolima"],
+  // ── Valle del Cauca ────────────────────────────────────────────────────────
+  ["Cali","ValledelCauca"],["Buenaventura","ValledelCauca"],["Palmira","ValledelCauca"],
+  ["Tuluá","ValledelCauca"],["Buga","ValledelCauca"],["Cartago","ValledelCauca"],
+  ["Yumbo","ValledelCauca"],["Jamundí","ValledelCauca"],["Dagua","ValledelCauca"],
+  ["Candelaria","ValledelCauca"],["Pradera","ValledelCauca"],["Florida","ValledelCauca"],
+  ["Sevilla","ValledelCauca"],["Zarzal","ValledelCauca"],["La Victoria","ValledelCauca"],
+  ["Roldanillo","ValledelCauca"],["El Cerrito","ValledelCauca"],["Ginebra","ValledelCauca"],
+  ["Guacarí","ValledelCauca"],["Vijes","ValledelCauca"],["Bugalagrande","ValledelCauca"],
+  ["Trujillo","ValledelCauca"],["Riofrio","ValledelCauca"],["Riofrío","ValledelCauca"],
+  ["Obando","ValledelCauca"],["Versalles","ValledelCauca"],["El Águila","ValledelCauca"],
+  ["Ansermanuevo","ValledelCauca"],["El Cairo","ValledelCauca"],["Ulloa","ValledelCauca"],
+  ["Alcalá","ValledelCauca"],["Caicedonia","ValledelCauca"],["El Dovio","ValledelCauca"],
+  // ── Vaupés ─────────────────────────────────────────────────────────────────
+  ["Mitú","Vaupés"],
+  // ── Vichada ────────────────────────────────────────────────────────────────
+  ["Puerto Carreño","Vichada"],["Cumaribo","Vichada"],
+  ["La Primavera","Vichada"],["Santa Rosalía","Vichada"],
+  // ── Arauca ─────────────────────────────────────────────────────────────────
+  ["Arauca","Arauca"],["Saravena","Arauca"],["Arauquita","Arauca"],
+  ["Tame","Arauca"],["Fortul","Arauca"],["Puerto Rondón","Arauca"],
+  ["Cravo Norte","Arauca"],
+  // ── Amazonas ───────────────────────────────────────────────────────────────
+  ["Leticia","Amazonas"],["Puerto Nariño","Amazonas"],
+];
+
+// Alias adicionales para nombres truncados/corruptos del flat file
+// (el exportador elimina vocales acentuadas en lugar de reemplazarlas)
+const ALIASES = [
+  // Antioquia
+  ["Itagi",        "Antioquia"],   // Itagüí
+  ["Envigad",      "Antioquia"],   // Envigado (truncado)
+  ["Sabanet",      "Antioquia"],   // Sabaneta
+  // Cundinamarca
+  ["Facatativ",    "Cundinamarca"],// Facatativá
+  ["Cajic",        "Cundinamarca"],// Cajicá
+  ["Zipaquir",     "Cundinamarca"],// Zipaquirá
+  ["Sopo",         "Cundinamarca"],// Sopó (ya en MASTER sin tilde)
+  ["Tocancip",     "Cundinamarca"],// Tocancipá
+  ["Sibate",       "Cundinamarca"],// Sibaté
+  ["Fusagasug",    "Cundinamarca"],// Fusagasugá
+  ["Gachancip",    "Cundinamarca"],// Gachancipá
+  ["Nemoc",        "Cundinamarca"],// Nemocón
+  ["Bojac",        "Cundinamarca"],// Bojacá
+  // La Guajira
+  ["Rioacha",      "LaGuajira"],   // Riohacha (variante común)
+  // Valle del Cauca
+  ["Jamundi",      "ValledelCauca"],// Jamundí
+  ["Tulua",        "ValledelCauca"],// Tuluá
+  ["Guacari",      "ValledelCauca"],// Guacarí
+  // Otros
+  ["Quibdo",       "Chocó"],       // Quibdó
+  ["Mitu",         "Vaupés"],      // Mitú
+  ["Inirida",      "Guainía"],     // Inírida
+  ["Popayan",      "Cauca"],       // Popayán
+  ["Monteria",     "Córdoba"],     // Montería
+  ["Ibague",       "Tolima"],      // Ibagué
+  ["Cucuta",       "NortedeSantander"], // Cúcuta
+  ["Medellin",     "Antioquia"],   // Medellín
+  ["Bogota",       "BogotáD.C."],  // Bogotá
+  ["Tuquer",       "Nariño"],      // Túquerres
+  ["Curuman",      "Cesar"],       // Curumaní
+  ["Valledupar",   "Cesar"],       // ya correcto
+];
+
+// Construir lookup normalizado: variante sin acento → departamento
+const CITY_TO_DEPT_NORM = new Map();
+for (const [city, dept] of MASTER) {
+  CITY_TO_DEPT_NORM.set(normCity(city), dept);
+}
+// Aliases con menor prioridad (no sobreescriben el MASTER)
+for (const [city, dept] of ALIASES) {
+  const key = normCity(city);
+  if (!CITY_TO_DEPT_NORM.has(key)) CITY_TO_DEPT_NORM.set(key, dept);
+}
+
+// Lookup principal: primero exacto, luego normalizado
+function cityToDept(cityName) {
+  if (!cityName) return null;
+  const norm = normCity(cityName);
+  return CITY_TO_DEPT_NORM.get(norm) || null;
+}
+
+// Alias CITY_TO_DEPT mantenido por compatibilidad con el resto del código
+const CITY_TO_DEPT = Object.fromEntries(MASTER);
 
 // ── Display names for departments ─────────────────────────────────────────
 const DEPT_DISPLAY = {
@@ -71,13 +299,16 @@ const DEPT_DISPLAY = {
 
 const displayName = (key) => DEPT_DISPLAY[key] || key;
 
-// ── Purple color scale ────────────────────────────────────────────────────
-const PURPLE_SCALE = ["#f5f0ff", "#ede9fe", "#ddd6fe", "#c4b5fd", "#a78bfa", "#8b5cf6", "#7C22D4"];
-const NO_DATA_COLOR = "#f3f4f6";
+// ── Purple color scale (empieza saturado para distinguir de sin-datos) ────
+const PURPLE_SCALE = ["#c4b5fd", "#a78bfa", "#8b5cf6", "#7c3aed", "#6d28d9", "#5b21b6", "#3b0764"];
+const NO_DATA_COLOR = "#e5e7eb";  // gris neutro claramente distinto del morado
 
+// Escala logarítmica: evita que Bogotá aplaste todos los demás departamentos
 function getColor(gmv, maxGmv) {
   if (!gmv || gmv === 0) return NO_DATA_COLOR;
-  const ratio = gmv / maxGmv;
+  const logVal = Math.log1p(gmv);
+  const logMax = Math.log1p(maxGmv);
+  const ratio   = logMax > 0 ? logVal / logMax : 0;
   const idx = Math.min(Math.floor(ratio * PURPLE_SCALE.length), PURPLE_SCALE.length - 1);
   return PURPLE_SCALE[idx];
 }
@@ -91,9 +322,10 @@ export default function MapaCiudades({ data }) {
   // Aggregate city data into departments
   const deptGmv = {};
   const deptCities = {};
+  const sinMapear = []; // ciudades del flat file sin departamento conocido
   data.facturacionCiudad.forEach((c) => {
-    const deptKey = CITY_TO_DEPT[c.ciudad];
-    if (!deptKey) return;
+    const deptKey = cityToDept(c.ciudad);
+    if (!deptKey) { sinMapear.push(c); return; }
     deptGmv[deptKey] = (deptGmv[deptKey] || 0) + c.gmv;
     if (!deptCities[deptKey]) deptCities[deptKey] = [];
     deptCities[deptKey].push(c);
@@ -234,6 +466,25 @@ export default function MapaCiudades({ data }) {
           </div>
         </div>
       </div>
+
+      {/* ── Ciudades sin departamento mapeado ── */}
+      {sinMapear.length > 0 && (
+        <details className="mt-3 border border-amber-200 rounded-xl bg-amber-50 px-4 py-2">
+          <summary className="text-xs font-semibold text-amber-700 cursor-pointer select-none">
+            ⚠️ {sinMapear.length} ciudad{sinMapear.length !== 1 ? "es" : ""} sin departamento mapeado
+            <span className="text-amber-500 font-normal ml-1">(clic para ver — avisa para agregarlas)</span>
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {sinMapear
+              .sort((a, b) => b.gmv - a.gmv)
+              .map((c, i) => (
+                <span key={i} className="bg-white border border-amber-200 rounded-full px-2.5 py-0.5 text-[11px] text-amber-800 font-medium">
+                  {c.ciudad} · {M(c.gmv)}
+                </span>
+              ))}
+          </div>
+        </details>
+      )}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   loadMesData, mesesDisponibles, fmtM, fmtFull, fmtPct,
   PIBOX_PURPLE, PIBOX_PINK, SEM_VERDE, SEM_ROJO, SEM_AMARILLO, MESES_ES,
@@ -24,6 +24,10 @@ function downloadCSV(rows, filename) {
 export default function ClientesNuevos() {
   const meses = mesesDisponibles();
   const [mesKey, setMesKey] = useState(meses[meses.length - 1]?.key || "");
+  useEffect(() => {
+    if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
+      setMesKey(meses[meses.length - 1].key);
+  }, [meses.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [filtBuscar, setFiltBuscar] = useState("");
   const [filtCiudad, setFiltCiudad] = useState("");
   const [filtEjecutivo, setFiltEjecutivo] = useState("");
@@ -111,6 +115,8 @@ export default function ClientesNuevos() {
     const [y, m] = key.split("-").map(Number);
     return `${MESES_ES[m] || m} ${y}`;
   };
+  // Usa el label del índice si existe (rango ClickHouse), si no el nombre del mes
+  const getMesLabel = (key) => meses.find(m => m.key === key)?.label || mesLabel(key);
 
   const handleCSV = () => {
     const rows = newClients.map(c => ({
@@ -139,13 +145,13 @@ export default function ClientesNuevos() {
         <label style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>Mes:</label>
         <select value={mesKey} onChange={e => setMesKey(e.target.value)}
           style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 12px", fontSize: 13, outline: "none" }}>
-          {meses.map(m => <option key={m.key} value={m.key}>{mesLabel(m.key)}</option>)}
+          {meses.map(m => <option key={m.key} value={m.key}>{m.label || mesLabel(m.key)}</option>)}
         </select>
       </div>
 
       {/* KPI Banner */}
       <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "20px 24px", marginBottom: 20 }}>
-        <h3 style={{ color: "#fff", fontSize: 15, fontWeight: 800, margin: "0 0 12px" }}>Clientes Nuevos - {mesLabel(mesKey)}</h3>
+        <h3 style={{ color: "#fff", fontSize: 15, fontWeight: 800, margin: "0 0 12px" }}>Clientes Nuevos - {getMesLabel(mesKey)}</h3>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
           {[
             { label: "Total clientes nuevos", value: newClients.length },

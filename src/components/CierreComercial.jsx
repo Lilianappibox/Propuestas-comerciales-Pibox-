@@ -191,10 +191,7 @@ export default function CierreComercial({ currentUser }) {
             <>
               <CumplimientoEquipo data={data} />
               <CumplimientoKAM    data={data} />
-              <Top10Clientes      data={data} />
               <FacturacionLinea   data={data} />
-              <ClientesNuevos     data={data} />
-              <ClientesPerdidos   data={data} />
               <MapaCiudades       data={data} />
               <Tendencias         data={data} />
               <ProyeccionCierre   data={data} />

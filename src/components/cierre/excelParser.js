@@ -306,6 +306,228 @@ export function parseTendencias(rows, formActual) {
   return { ...JSON.parse(JSON.stringify(formActual)), tendencias };
 }
 
+/**
+ * Mapeo account_manager (en data plana) → nombre KAM (en el sistema).
+ * La comparación se hace en minúsculas sin tildes para ser tolerante a variantes.
+ */
+export const KAM_MAP = {
+  "cuentas farmer":    "Johana Navarrete",
+  "pipe pibox":        "Bavaria",
+  "nathy olivera":     "Natalia Olivera",
+  "pibox":             "Keeping Deal",
+  "juliana rojas corp":"Juliana Rojas",
+};
+
+function homologarKAM(rawKam) {
+  const key = String(rawKam ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  return KAM_MAP[key] || rawKam;
+}
+
+/**
+ * Agrega un archivo plano (rows de parseExcelFile) en un resumen por empresa,
+ * línea y ciudad — solo servicios Completed.
+ * Devuelve { companies, lineas, ciudades }
+ */
+export function aggregateBase(rows) {
+  const companies = {}; // { nombre → { kam, gmv, servicios, paquetes } }
+  const lineas    = {}; // { op_type → { gmv, servicios, paquetes } }
+  const ciudades  = {}; // { city → gmv }
+
+  for (const r of rows) {
+    const status = String(r["service_status"] ?? "").trim();
+    if (status !== "Completed") continue;
+
+    const company = String(r["company"]         ?? "").trim();
+    const kam     = homologarKAM(r["account_manager"]);
+    const opType  = String(r["operation_type"]  ?? "").trim();
+    const city    = String(r["city"]            ?? "").trim();
+    const gmvVal  = Number(String(r["gmv"]      ?? "0").replace(/[^0-9.-]/g, "")) || 0;
+    const pkgs    = Number(String(r["packages"] ?? "0").replace(/[^0-9.-]/g, "")) || 0;
+
+    if (company) {
+      if (!companies[company]) companies[company] = { kam, gmv: 0, servicios: 0, paquetes: 0 };
+      companies[company].gmv       += gmvVal;
+      companies[company].servicios += 1;
+      companies[company].paquetes  += pkgs;
+      if (kam) companies[company].kam = kam;
+    }
+    if (opType) {
+      if (!lineas[opType]) lineas[opType] = { gmv: 0, servicios: 0, paquetes: 0 };
+      lineas[opType].gmv       += gmvVal;
+      lineas[opType].servicios += 1;
+      lineas[opType].paquetes  += pkgs;
+    }
+    if (city) ciudades[city] = (ciudades[city] || 0) + gmvVal;
+  }
+  return { companies, lineas, ciudades };
+}
+
+/**
+ * parseBasePlana — combina mes actual y mes anterior (opcional) para producir:
+ * top10Clientes, clientesNuevos, clientesPerdidos, facturacionLinea, facturacionCiudad.
+ *
+ * @param {object} actual    - resultado de aggregateBase(rowsActual)
+ * @param {object|null} anterior - resultado de aggregateBase(rowsAnterior), o null
+ * @param {object} formActual
+ */
+export function parseBasePlana(actual, anterior, formActual) {
+  const next = JSON.parse(JSON.stringify(formActual));
+  const { companies, lineas, ciudades } = actual;
+  const prevCompanies = anterior?.companies || {};
+  const prevLineas    = anterior?.lineas    || {};
+
+  // ── Resolvedor de nombre KAM ──────────────────────────────────────────
+  // KAM_MAP ya homologó los valores crudos (ej: "Cuentas Farmer" → "Johana Navarrete").
+  // Pero si el kams[] del formulario tiene "Cuentas Farmer" en vez de "Johana Navarrete",
+  // revertimos al nombre original para que el match funcione en ambos casos.
+  const validKamNames = new Set((next.kams || []).map(k => k.nombre));
+  const reverseKamMap = {}; // "Johana Navarrete" → "Cuentas Farmer", etc.
+  for (const [raw, mapped] of Object.entries(KAM_MAP)) {
+    // raw está en minúsculas normalizadas; reconstruimos el display del valor original
+    // comparando contra las entradas del propio KAM_MAP
+    reverseKamMap[mapped] = raw;
+  }
+  const normStr = (s) => String(s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  function resolveKam(kamField) {
+    if (!kamField) return kamField;
+    if (validKamNames.has(kamField)) return kamField; // match directo
+    // Busca el valor original (antes del homologar) entre los nombres válidos
+    const rawKey = reverseKamMap[kamField];
+    if (rawKey) {
+      const match = [...validKamNames].find(k => normStr(k) === rawKey);
+      if (match) return match;
+    }
+    return kamField;
+  }
+
+  // Re-aplica resolveKam a cada empresa (companies ya tiene el nombre homologado)
+  for (const d of Object.values(companies))     d.kam = resolveKam(d.kam);
+  for (const d of Object.values(prevCompanies)) d.kam = resolveKam(d.kam);
+
+  // ── Top 10 ─────────────────────────────────────────────────────────────
+  const totalGmv = Object.values(companies).reduce((a, c) => a + c.gmv, 0);
+  next.top10Clientes = Object.entries(companies)
+    .sort((a, b) => b[1].gmv - a[1].gmv)
+    .slice(0, 10)
+    .map(([nombre, d]) => {
+      const ant = prevCompanies[nombre]?.gmv || 0;
+      return {
+        cliente:       nombre,
+        kam:           d.kam,
+        gmvActual:     Math.round(d.gmv),
+        gmvAnterior:   Math.round(ant),
+        crecimiento:   ant > 0 ? parseFloat((((d.gmv - ant) / ant) * 100).toFixed(2)) : 0,
+        participacion: totalGmv > 0 ? parseFloat(((d.gmv / totalGmv) * 100).toFixed(2)) : 0,
+      };
+    });
+
+  // ── Clientes Nuevos (en actual, no en anterior) ────────────────────────
+  next.clientesNuevos = anterior
+    ? Object.entries(companies)
+        .filter(([nombre]) => !prevCompanies[nombre])
+        .sort((a, b) => b[1].gmv - a[1].gmv)
+        .map(([nombre, d]) => ({ kam: d.kam, cliente: nombre, gmv: Math.round(d.gmv), servicios: d.servicios }))
+    : [];
+
+  // ── Clientes Perdidos (en anterior, no en actual) ─────────────────────
+  next.clientesPerdidos = anterior
+    ? Object.entries(prevCompanies)
+        .filter(([nombre]) => !companies[nombre])
+        .sort((a, b) => b[1].gmv - a[1].gmv)
+        .map(([nombre, d]) => ({ kam: d.kam, cliente: nombre, gmvMesAnterior: Math.round(d.gmv) }))
+    : [];
+
+  // ── Líneas ─────────────────────────────────────────────────────────────
+  next.facturacionLinea = Object.entries(lineas)
+    .sort((a, b) => b[1].gmv - a[1].gmv)
+    .map(([opType, d]) => {
+      const ant = prevLineas[opType] || { gmv: 0, servicios: 0, paquetes: 0 };
+      return {
+        linea:        opType,
+        gmv:          Math.round(d.gmv),
+        servicios:    d.servicios,
+        paquetes:     d.paquetes,
+        gmvAnt:       Math.round(ant.gmv),
+        serviciosAnt: ant.servicios,
+        paquetesAnt:  ant.paquetes,
+      };
+    });
+
+  // ── Ciudades ───────────────────────────────────────────────────────────
+  const totalCiudad = Object.values(ciudades).reduce((a, v) => a + v, 0);
+  next.facturacionCiudad = Object.entries(ciudades)
+    .sort((a, b) => b[1] - a[1])
+    .map(([ciudad, gmv]) => ({
+      ciudad,
+      gmv:           Math.round(gmv),
+      participacion: totalCiudad > 0 ? parseFloat(((gmv / totalCiudad) * 100).toFixed(2)) : 0,
+      lat: 0,
+      lng: 0,
+    }));
+
+  // ── KAM Detalle — top 10 por KAM, activos, crecimiento ────────────────
+  const kamGroups = {}; // { kamNombre → { gmv, gmvAnt, companies: { nombre → {gmv, gmvAnt} } } }
+  for (const [nombre, d] of Object.entries(companies)) {
+    const k = d.kam || "Sin KAM";
+    if (!kamGroups[k]) kamGroups[k] = { gmv: 0, gmvAnt: 0, companies: {} };
+    kamGroups[k].gmv += d.gmv;
+    kamGroups[k].companies[nombre] = { gmv: d.gmv, gmvAnt: prevCompanies[nombre]?.gmv || 0 };
+  }
+  for (const [nombre, d] of Object.entries(prevCompanies)) {
+    const k = d.kam || "Sin KAM";
+    if (!kamGroups[k]) kamGroups[k] = { gmv: 0, gmvAnt: 0, companies: {} };
+    kamGroups[k].gmvAnt += d.gmv;
+  }
+  next.kamDetalle = {};
+  for (const [kamNombre, kd] of Object.entries(kamGroups)) {
+    const totalKamGmv = kd.gmv;
+    const top10 = Object.entries(kd.companies)
+      .sort((a, b) => b[1].gmv - a[1].gmv)
+      .slice(0, 10)
+      .map(([nombre, cd]) => ({
+        cliente:       nombre,
+        gmvActual:     Math.round(cd.gmv),
+        gmvAnterior:   Math.round(cd.gmvAnt),
+        crecimiento:   cd.gmvAnt > 0 ? parseFloat((((cd.gmv - cd.gmvAnt) / cd.gmvAnt) * 100).toFixed(2)) : 0,
+        participacion: totalKamGmv > 0 ? parseFloat(((cd.gmv / totalKamGmv) * 100).toFixed(2)) : 0,
+      }));
+    next.kamDetalle[kamNombre] = {
+      gmv:            Math.round(kd.gmv),
+      gmvAnt:         Math.round(kd.gmvAnt),
+      clientesActivos: Object.keys(kd.companies).length,
+      top10,
+    };
+  }
+
+  // ── Actualizar kams[].gmv y gmvAnt con valores reales de la data plana ──
+  if (next.kams?.length) {
+    // Lookup normalizado para tolerar diferencias de capitalización entre
+    // el nombre en el formulario y la clave generada por homologarKAM
+    const normK = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const detByNorm = {};
+    for (const [key, val] of Object.entries(next.kamDetalle)) {
+      detByNorm[normK(key)] = val;
+    }
+    next.kams = next.kams.map(k => {
+      const kd = next.kamDetalle[k.nombre] || detByNorm[normK(k.nombre)];
+      if (!kd) return k;
+      const gmv = kd.gmv;
+      return {
+        ...k,
+        gmv,
+        gmvAnt: kd.gmvAnt,
+        cumplimiento: k.meta > 0 ? parseFloat(((gmv / k.meta) * 100).toFixed(2)) : 0,
+      };
+    });
+  }
+
+  return next;
+}
+
 // Mapa tab → función parser
 export const PARSERS = {
   general:           parseGeneral,

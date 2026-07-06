@@ -6,15 +6,8 @@ import { fmtMoney, fmtM, PIBOX_PURPLE, PIBOX_PINK } from "./utils";
 import { useMoneda } from "./MonedaContext";
 import { TooltipComparativo, TooltipCrecimiento } from "./TooltipCustom";
 
-// Normaliza texto para comparar sin importar espacios, tildes ni mayúsculas
-const norm = (s) =>
-  String(s ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^\x00-\x7F]/g, "")
-    .replace(/\s+/g, " ");
+const norm  = (s) => String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x00-\x7F]/g, "").replace(/\s+/g, " ");
+const normK = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 export default function Top10Clientes({ data }) {
   const { moneda, trm } = useMoneda();
@@ -28,14 +21,26 @@ export default function Top10Clientes({ data }) {
   // Genera lista dinámica de KAMs desde data.kams
   const kamsDisponibles = ["Todos", ...(data.kams ?? []).map((k) => k.nombre)];
 
-  // Filtra usando comparación normalizada para tolerar espacios y tildes
-  const clientes =
-    filtroKAM === "Todos"
-      ? data.top10Clientes
-      : data.top10Clientes.filter(
-          (c) => norm(c.kam).includes(norm(filtroKAM.split(" ")[0])) ||
-                 norm(filtroKAM).includes(norm(c.kam.split(" ")[0]))
-        );
+  // Resuelve los clientes según la selección activa:
+  // • Todos  → top10Clientes global (ya tiene KAM en cada fila)
+  // • KAM X  → kamDetalle[X].top10 (hasta 10 clientes propios del KAM)
+  const clientes = (() => {
+    if (filtroKAM === "Todos") return data.top10Clientes || [];
+
+    // Lookup normalizado para tolerar diferencias de capitalización
+    const kd = data.kamDetalle?.[filtroKAM]
+      ?? Object.entries(data.kamDetalle || {}).find(([k]) => normK(k) === normK(filtroKAM))?.[1];
+
+    if (kd?.top10?.length) {
+      return kd.top10.map(c => ({ ...c, kam: filtroKAM }));
+    }
+
+    // Fallback: filtrar global (por si kamDetalle aún no existe)
+    return (data.top10Clientes || []).filter(
+      (c) => norm(c.kam).includes(norm(filtroKAM.split(" ")[0])) ||
+             norm(filtroKAM).includes(norm((c.kam || "").split(" ")[0]))
+    );
+  })();
 
   const top10 = clientes.slice(0, 10);
 
@@ -111,9 +116,17 @@ export default function Top10Clientes({ data }) {
                   <td className="p-2">{c.cliente}</td>
                   <td className="p-2 text-gray-500 hidden md:table-cell">{c.kam}</td>
                   <td className="p-2 text-right text-purple-700 whitespace-nowrap">{M(c.gmvActual)}</td>
-                  <td className="p-2 text-right text-gray-400 hidden sm:table-cell whitespace-nowrap">{M(c.gmvAnterior)}</td>
-                  <td className={`p-2 text-right font-semibold whitespace-nowrap ${c.crecimiento >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {c.crecimiento >= 0 ? "▲" : "▼"} {Math.abs(c.crecimiento).toFixed(2)}%
+                  <td className="p-2 text-right text-gray-400 hidden sm:table-cell whitespace-nowrap">
+                    {c.gmvAnterior > 0 ? M(c.gmvAnterior) : "—"}
+                  </td>
+                  <td className={`p-2 text-right font-semibold whitespace-nowrap ${
+                    c.gmvAnterior > 0
+                      ? c.crecimiento >= 0 ? "text-green-500" : "text-red-500"
+                      : "text-gray-400"
+                  }`}>
+                    {c.gmvAnterior > 0
+                      ? `${c.crecimiento >= 0 ? "▲" : "▼"} ${Math.abs(c.crecimiento).toFixed(2)}%`
+                      : "Nuevo"}
                   </td>
                   <td className="p-2 text-right text-gray-500 hidden sm:table-cell">{c.participacion.toFixed(2)}%</td>
                 </tr>

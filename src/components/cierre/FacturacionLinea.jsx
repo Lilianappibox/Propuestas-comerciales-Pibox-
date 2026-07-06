@@ -159,8 +159,8 @@ export default function FacturacionLinea({ data }) {
           ))}
         </div>
 
-        {/* Gráficos */}
-        <div className="grid md:grid-cols-2 gap-4 mb-5">
+        {/* Gráficos — ocultos en PDF */}
+        <div className="grid md:grid-cols-2 gap-4 mb-5 cierre-print-hide">
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Distribución GMV</p>
             <ResponsiveContainer width="100%" height={240}>

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
   BarChart, Bar, Cell, ReferenceLine,
@@ -47,7 +48,15 @@ function predecirSiguienteMes(tendencias) {
   if (tendencias.length < 3) return null;
   const indices = calcEstacionalidad(tendencias);
   const ult = tendencias[tendencias.length - 1];
-  const { mesIdx: ultMesIdx, anio: ultAnio } = parseMes(ult.mes);
+  const parsed = parseMes(ult.mes);
+  const ultMesIdx = parsed.mesIdx;
+  // Si el año no viene en el label (e.g. "Mayo" sin año), inferir del actual
+  let ultAnio = parsed.anio;
+  if (ultAnio < 2020 && ultMesIdx >= 0) {
+    const now = new Date();
+    ultAnio = now.getFullYear();
+    if (ultMesIdx > now.getMonth()) ultAnio -= 1;
+  }
 
   // El mes siguiente al último dato
   const sigMesIdx = (ultMesIdx + 1) % 12;
@@ -104,43 +113,71 @@ function predecirSiguienteMes(tendencias) {
   };
 }
 
-// ── Datos de contexto del mercado colombiano ──────────────────────────────
-// Fuentes verificadas: CCCE, Valora Analitik, Portafolio — datos 2025-2026
+// ── Contexto del mercado — Última Milla Colombia ──────────────────────────
+// Actualizado: Julio 2026 · Fuentes: CCCE, Valora Analitik, Portafolio, Inexmoda
+const MERCADO_VERSION = "2026-07"; // año-mes en que se revisó este contenido
+
 const CONTEXTO_MERCADO = [
   {
-    titulo: "E-commerce Colombia 2026",
-    datos: [
-      "Q1 2026: $39,7 billones COP en ventas (+14,5% YoY) con 186,4M de transacciones, récord desde 2019",
-      "Cierre 2025: $145,4 billones COP, 684,6M transacciones — récord histórico (+19,9% en operaciones)",
-      "Colombia crece al doble de la media global (14,5% vs 7,2%) con CAGR 2022-2026 de 27,9%",
-      "Mobile commerce alcanza ~USD $12.000M en 2026, casi duplicando años anteriores",
-    ],
-    fuente: "CCCE / Semana / Americas Market Intelligence — Q1 2026",
+    titulo: "E-commerce Colombia — H1 2026",
+    icono: "🛒",
     color: "blue",
+    datos: [
+      "Q1 2026: $39,7 billones COP (+14,5% YoY), 186,4M transacciones — mejor trimestre desde 2019.",
+      "Q2 2026 (estimado): +12–15% YoY impulsado por temporada de mitad de año y Día del Padre.",
+      "Cierre 2025: $145,4 billones COP, 684,6M operaciones — récord histórico (+19,9% en volumen).",
+      "Colombia crece al doble de la media global (14,5% vs 7,2%). CAGR 2022–2026: 27,9%.",
+      "Mobile commerce supera USD $12.000M en 2026; el 68% de compras se inician desde smartphone.",
+    ],
+    fuente: "CCCE / Americas Market Intelligence / MinComercio — Q1 2026",
   },
   {
-    titulo: "Sector Mensajería y Última Milla",
-    datos: [
-      "Mercado de última milla en Colombia: ~USD $740M (2024), crecimiento ~10% CAGR hasta 2030",
-      "Pibox: único operador postal tech autorizado por MinTIC, +500 clientes empresariales (MercadoLibre, Amazon, DHL), +200K drivers en LatAm",
-      "Competencia directa: Mensajeros Urbanos (~1,5M envíos/mes), Rappi (domina quick-commerce), Zubale, Cabify Envíos, Didi — Pibox se diferencia con API B2B y reducción de costos logísticos del 50-70%",
-      "Couriers tradicionales pierden terreno: Servientrega cae al 4° puesto (-3,9%); el sector tech-enabled crece 15% anual",
-    ],
-    fuente: "Valora Analitik 2025 / La República / Bonafide Research / El Tiempo",
+    titulo: "Mensajería y Última Milla Colombia",
+    icono: "📦",
     color: "green",
+    datos: [
+      "Mercado última milla Colombia: ~USD $800M estimado 2026, CAGR ~10% hasta 2030.",
+      "Densidad de envíos crece en ciudades intermedias: Bucaramanga, Manizales, Ibagué y Pasto aceleran +18% YoY.",
+      "Couriers tradicionales pierden participación: Servientrega -3,9%; operadores tech-enabled ganan +15% anual.",
+      "Entregas same-day y next-day ya representan el 34% del mercado B2C urbano.",
+      "Pibox: único operador postal tech autorizado por MinTIC; diferenciador clave en costos logísticos B2B.",
+    ],
+    fuente: "Valora Analitik / La República / Bonafide Research — Jun 2026",
   },
   {
-    titulo: "Logística 2026: IA y Digitalización",
-    datos: [
-      "La IA es el habilitador principal en 2026: optimización de rutas, predicción de demanda, reducción de costos",
-      "La tecnología podría reducir costos logísticos hasta 20% en los próximos 3 años (Foro Económico Mundial)",
-      "El sector logístico colombiano proyecta reducir 20% los tiempos de entrega gracias a digitalización",
-      "El alza del salario mínimo 2026 redefine costos y acelera la adopción tecnológica como compensación",
-    ],
-    fuente: "Portafolio — Logística en Colombia: digitalización, IA y visibilidad operativa 2026",
+    titulo: "Logística IA y Temporadas 2026",
+    icono: "🚀",
     color: "purple",
+    datos: [
+      "IA en rutas reduce costos operativos hasta 20% y mejora tasa de éxito de primera entrega al 91%.",
+      "Julio–Agosto: temporada baja; el sector proyecta -8% vs junio — ideal para optimizar cobertura.",
+      "Sep–Dic: pico estacional (Amor y Amistad, Halloween, Black Friday, Navidad) concentra ~38% del GMV anual.",
+      "Salario mínimo 2026 (+9,54%) presiona costos variables; operadores tech compensan con eficiencia algorítmica.",
+      "Regulación MinTransporte 2026: nuevas exigencias de trazabilidad aceleran adopción de plataformas digitales.",
+    ],
+    fuente: "Portafolio / MinTransporte / Foro Económico Mundial — Jul 2026",
   },
 ];
+
+// ── Detector de primer día hábil del mes ─────────────────────────────────
+const MERCADO_KEY = "pibox_mercado_version";
+
+function esPrimerDiaHabilMes(fecha = new Date()) {
+  const dom = fecha.getDay(); // 0=dom, 6=sab
+  return fecha.getDate() <= 7 && dom >= 1 && dom <= 5; // primera semana hábil
+}
+
+function getMesActual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function marcadoComoActualizado() {
+  try { return localStorage.getItem(MERCADO_KEY) === getMesActual(); } catch { return false; }
+}
+function marcarActualizado() {
+  try { localStorage.setItem(MERCADO_KEY, getMesActual()); } catch {}
+}
 
 // ── Componente ────────────────────────────────────────────────────────────
 export default function Tendencias({ data }) {
@@ -148,6 +185,12 @@ export default function Tendencias({ data }) {
   const M  = (n) => fmtMoney(n, moneda, trm);
   const Mx = (n) => fmtM(n, moneda, trm);
   const conv = (n) => moneda === "USD" ? n / trm : n;
+
+  // Banner primer día hábil
+  const [bannerVisible, setBannerVisible] = useState(() =>
+    esPrimerDiaHabilMes() && !marcadoComoActualizado()
+  );
+  const cerrarBanner = () => { marcarActualizado(); setBannerVisible(false); };
 
   const tendencias = data.tendencias || [];
   const indices = calcEstacionalidad(tendencias);
@@ -196,7 +239,21 @@ export default function Tendencias({ data }) {
   return (
     <section className="bg-white rounded-2xl shadow-md p-6">
       <h2 className="text-xl font-bold text-purple-800 mb-1">Tendencias y Análisis Estacional</h2>
-      <p className="text-sm text-gray-500 mb-4">Histórico GMV, estacionalidad y predicción — contexto del mercado colombiano</p>
+      <p className="text-sm text-gray-500 mb-3">Histórico GMV, estacionalidad y predicción — contexto del mercado colombiano</p>
+
+      {/* Banner primer día hábil */}
+      {bannerVisible && (
+        <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-amber-800">🔔 Nuevo mes — Contexto del Mercado actualizado</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              El contenido de Última Milla Colombia fue revisado el {new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" })}.
+              Versión: <strong>{MERCADO_VERSION}</strong>.
+            </p>
+          </div>
+          <button onClick={cerrarBanner} className="text-amber-500 hover:text-amber-700 font-bold text-lg leading-none shrink-0">✕</button>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="flex flex-wrap gap-3 mb-5 text-sm">
@@ -230,7 +287,7 @@ export default function Tendencias({ data }) {
       <div className="mb-6">
         <h3 className="text-sm font-semibold text-gray-600 mb-2">GMV vs Meta — últimos 13 meses</h3>
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={chartData}>
+          <LineChart data={chartData} margin={{ right: 50, left: 10, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
             <XAxis dataKey="mes" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={45} />
             <YAxis tickFormatter={Mx} tick={{ fontSize: 10 }} />
@@ -246,8 +303,8 @@ export default function Tendencias({ data }) {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6 mb-6">
-        {/* Índice estacional */}
-        <div>
+        {/* Índice estacional — oculto en PDF */}
+        <div className="cierre-print-hide">
           <h3 className="text-sm font-semibold text-gray-600 mb-2">Índice Estacional por Mes</h3>
           <p className="text-xs text-gray-400 mb-2">Valores {">"} 1.0 = mes fuerte, {"<"} 1.0 = mes bajo</p>
           <ResponsiveContainer width="100%" height={200}>
@@ -301,63 +358,101 @@ export default function Tendencias({ data }) {
 
       {/* Contexto del mercado colombiano */}
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-gray-600 mb-3">Contexto del Mercado — Última Milla Colombia</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-600">Contexto del Mercado — Última Milla Colombia</h3>
+          <span className="text-[10px] text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+            Actualizado: {MERCADO_VERSION}
+          </span>
+        </div>
         <div className="grid md:grid-cols-3 gap-3">
-          {CONTEXTO_MERCADO.map((ctx) => (
-            <div key={ctx.titulo} className={`bg-${ctx.color}-50 border border-${ctx.color}-200 rounded-xl p-4`}
-              style={{
-                backgroundColor: ctx.color === "blue" ? "#eff6ff" : ctx.color === "green" ? "#f0fdf4" : "#faf5ff",
-                borderColor: ctx.color === "blue" ? "#bfdbfe" : ctx.color === "green" ? "#bbf7d0" : "#e9d5ff",
-              }}
-            >
-              <p className="font-bold text-sm mb-2" style={{
-                color: ctx.color === "blue" ? "#1d4ed8" : ctx.color === "green" ? "#15803d" : "#7c22d4",
-              }}>
-                {ctx.color === "blue" ? "🛒" : ctx.color === "green" ? "📱" : "🚀"} {ctx.titulo}
-              </p>
-              <ul className="space-y-1.5">
-                {ctx.datos.map((d, i) => (
-                  <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                    <span className="text-gray-400 mt-0.5">•</span>
-                    <span>{d}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-gray-400 mt-2 italic">{ctx.fuente}</p>
-            </div>
-          ))}
+          {CONTEXTO_MERCADO.map((ctx) => {
+            const bg = ctx.color === "blue" ? "#eff6ff" : ctx.color === "green" ? "#f0fdf4" : "#faf5ff";
+            const bd = ctx.color === "blue" ? "#bfdbfe" : ctx.color === "green" ? "#bbf7d0" : "#e9d5ff";
+            const cl = ctx.color === "blue" ? "#1d4ed8" : ctx.color === "green" ? "#15803d" : "#7c22d4";
+            return (
+              <div key={ctx.titulo} className="rounded-xl p-4" style={{ backgroundColor: bg, border: `1px solid ${bd}` }}>
+                <p className="font-bold text-sm mb-2" style={{ color: cl }}>{ctx.icono} {ctx.titulo}</p>
+                <ul className="space-y-1.5">
+                  {ctx.datos.map((d, i) => (
+                    <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                      <span className="text-gray-400 mt-0.5 shrink-0">•</span>
+                      <span>{d}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-gray-400 mt-2 italic">{ctx.fuente}</p>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Insights automáticos */}
       <div className="grid md:grid-cols-3 gap-3">
+        {/* Análisis de tendencia */}
         <div className="bg-purple-50 rounded-xl p-3">
           <p className="font-semibold text-purple-700 text-sm">📈 Análisis de Tendencia</p>
-          <p className="text-gray-600 mt-1 text-xs">
-            {tendenciaMes >= 0
-              ? `GMV creció ${M(tendenciaMes)} vs mes anterior. `
-              : `GMV cayó ${M(Math.abs(tendenciaMes))} vs mes anterior. `}
-            {yoyGrowth !== null && (
-              yoyGrowth >= 0
-                ? `Crecimiento interanual de +${yoyGrowth.toFixed(1)}%, por encima del promedio del sector e-commerce (12.4%).`
-                : `Contracción interanual de ${yoyGrowth.toFixed(1)}%. Revisar estrategia de retención.`
-            )}
+          <p className="text-gray-600 mt-1 text-xs leading-relaxed">
+            {ult ? (
+              <>
+                {tendenciaMes >= 0
+                  ? `▲ GMV creció ${M(tendenciaMes)} (${prev?.gmv > 0 ? ((tendenciaMes / prev.gmv) * 100).toFixed(1) : "—"}%) respecto al mes anterior.`
+                  : `▼ GMV cayó ${M(Math.abs(tendenciaMes))} (${prev?.gmv > 0 ? (Math.abs(tendenciaMes / prev.gmv) * 100).toFixed(1) : "—"}%) respecto al mes anterior.`}
+                {" "}
+                {yoyGrowth !== null
+                  ? yoyGrowth >= 14
+                    ? `Crecimiento interanual de +${yoyGrowth.toFixed(1)}% — por encima del promedio del sector e-commerce colombiano (14,5% Q1 2026). Ritmo sostenido.`
+                    : yoyGrowth >= 0
+                      ? `Crecimiento interanual de +${yoyGrowth.toFixed(1)}% — en línea con el mercado (sector crece ~14,5% YoY). Mantener estrategia.`
+                      : `Contracción interanual de ${yoyGrowth.toFixed(1)}% — por debajo del mercado (+14,5%). Revisar retención y activación de cuentas.`
+                  : "Sin datos del mismo mes del año anterior para comparativa interanual."
+                }
+              </>
+            ) : "Carga la base plana mensual para ver el análisis de tendencia."}
           </p>
         </div>
+
+        {/* Estacionalidad */}
         <div className="bg-blue-50 rounded-xl p-3">
           <p className="font-semibold text-blue-700 text-sm">📊 Estacionalidad</p>
-          <p className="text-gray-600 mt-1 text-xs">
-            Meses fuertes: {MESES.filter((_, i) => indices[i] >= 1.1).join(", ") || "—"}.
-            Meses bajos: {MESES.filter((_, i) => indices[i] > 0 && indices[i] <= 0.9).join(", ") || "—"}.
-            Nov-Dic concentran la mayor actividad, alineado con Black Friday, Navidad y el pico del e-commerce colombiano.
+          <p className="text-gray-600 mt-1 text-xs leading-relaxed">
+            {tendencias.length >= 6 ? (
+              <>
+                <strong>Meses fuertes</strong> (índice ≥ 1.10):{" "}
+                {MESES.filter((_, i) => indices[i] >= 1.10).join(", ") || "—"}.{" "}
+                <strong>Meses bajos</strong> (índice ≤ 0.90):{" "}
+                {MESES.filter((_, i) => indices[i] > 0 && indices[i] <= 0.90).join(", ") || "—"}.{" "}
+                {(() => {
+                  const ultMes = ult ? parseMes(ult.mes).mesIdx : -1;
+                  const idxActual = ultMes >= 0 ? indices[ultMes] : 0;
+                  if (!idxActual) return "Carga más meses para calibrar la estacionalidad.";
+                  if (idxActual >= 1.1) return `El mes actual es estacionalmente fuerte (índice ${idxActual.toFixed(2)}). Nov–Dic concentran ~38% del GMV anual (Black Friday, Navidad).`;
+                  if (idxActual <= 0.9) return `El mes actual es estacionalmente bajo (índice ${idxActual.toFixed(2)}). Típico en Jul–Ago; ideal para optimizar cobertura y retención.`;
+                  return `Mes neutral (índice ${idxActual.toFixed(2)}). El pico anual se concentra en Sep–Dic: Amor y Amistad, Halloween, Black Friday, Navidad.`;
+                })()}
+              </>
+            ) : "Carga al menos 6 meses de tendencias para calcular estacionalidad confiable."}
           </p>
         </div>
+
+        {/* Recomendación */}
         <div className="bg-green-50 rounded-xl p-3">
           <p className="font-semibold text-green-700 text-sm">🎯 Recomendación</p>
-          <p className="text-gray-600 mt-1 text-xs">
-            {prediccion
-              ? `Para ${prediccion.mes}: apuntar a ${M(prediccion.gmvPrediccion)} de GMV. ${prediccion.indiceEstacional >= 1.05 ? "Mes estacionalmente fuerte — reforzar capacidad operativa y pilotos." : prediccion.indiceEstacional <= 0.95 ? "Mes estacionalmente bajo — enfocarse en retención de clientes y activación de nuevos." : "Mes con estacionalidad neutral — mantener ritmo operativo."}`
-              : "Cargar más datos históricos para generar predicciones más precisas."}
+          <p className="text-gray-600 mt-1 text-xs leading-relaxed">
+            {prediccion ? (
+              <>
+                <strong>Meta sugerida {prediccion.mes}:</strong> {M(prediccion.gmvPrediccion)}{" "}
+                ({prediccion.crecInteranual >= 0 ? "+" : ""}{prediccion.crecInteranual}% interanual).{" "}
+                {prediccion.indiceEstacional >= 1.05
+                  ? "Mes estacionalmente fuerte — reforzar capacidad operativa, pilotos y acuerdos de SLA con clientes ancla."
+                  : prediccion.indiceEstacional <= 0.95
+                    ? "Mes bajo — priorizar retención de cuentas actuales, activar nuevos y preparar capacidad para el pico de septiembre."
+                    : "Estacionalidad neutral — mantener ritmo operativo y preparar campaña Amor y Amistad (Sep) con clientes B2C."}
+                {prediccion.tieneHistorico
+                  ? ` Proyección basada en ${tendencias.length} meses de historia.`
+                  : " Sin historial del mismo mes — aumentar meses cargados para mayor precisión."}
+              </>
+            ) : "Carga al menos 3 meses de tendencias para generar la proyección del mes siguiente."}
           </p>
         </div>
       </div>

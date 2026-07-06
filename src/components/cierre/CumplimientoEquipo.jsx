@@ -130,7 +130,8 @@ export default function CumplimientoEquipo({ data }) {
           </div>
         </div>
 
-        {/* Gráfico */}
+        {/* Gráfico — oculto en PDF */}
+        <div className="cierre-print-hide">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Comparativo histórico</p>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
@@ -165,6 +166,7 @@ export default function CumplimientoEquipo({ data }) {
             <Bar dataKey="GMV"  fill={PIBOX_PINK}   radius={[0, 6, 6, 0]} />
           </BarChart>
         </ResponsiveContainer>
+        </div>{/* fin cierre-print-hide */}
       </div>
     </section>
   );

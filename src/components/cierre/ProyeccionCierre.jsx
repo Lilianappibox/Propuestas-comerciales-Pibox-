@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, LineChart, Line,
+  ComposedChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend, Line, Area, ReferenceLine,
 } from "recharts";
 import { fmtMoney, fmtM, PIBOX_PURPLE, PIBOX_PINK } from "./utils";
 import { useMoneda } from "./MonedaContext";
@@ -541,79 +541,125 @@ export default function ProyeccionCierre({ data }) {
               </div>
             </div>
           );
-          const evData = evDiaria.map(d => ({
-            ...d,
-            dia: d.fecha ? d.fecha.slice(5) : d.dia || "",
-            meta80: proy.metaMes * 0.8,
-          }));
+
+          // Preparar datos con media móvil 7d y label dd/MM
+          const promedio = evDiaria.reduce((s, d) => s + d.gmv, 0) / evDiaria.length;
+          const maxD = evDiaria.reduce((m, d) => d.gmv > m.gmv ? d : m, evDiaria[0]);
+          const minD = evDiaria.reduce((m, d) => d.gmv < m.gmv ? d : m, evDiaria[0]);
+          const acumulado = evDiaria[evDiaria.length - 1]?.gmvAcumulado || 0;
+          const totalServ = evDiaria.reduce((s, d) => s + (d.servicios || 0), 0);
+          const totalPaq  = evDiaria.reduce((s, d) => s + (d.paquetes  || 0), 0);
+
+          const fmtDia = (fecha) => {
+            if (!fecha) return "";
+            const p = fecha.slice(0, 10).split("-");
+            return `${p[2]}/${p[1]}`;
+          };
+
+          const evData = evDiaria.map((d, i) => {
+            // Media móvil 7 días
+            const start = Math.max(0, i - 6);
+            const slice = evDiaria.slice(start, i + 1);
+            const mm7 = slice.reduce((s, x) => s + x.gmv, 0) / slice.length;
+            return {
+              ...d,
+              dia:  fmtDia(d.fecha || d.dia),
+              rawFecha: d.fecha || d.dia || "",
+              mm7:  Math.round(mm7),
+              promedio: Math.round(promedio),
+            };
+          });
+
+          // Escala derecha para acumulado (max ≈ acumulado)
+          const maxAcum = acumulado * 1.1 || 1;
+          const maxGmv  = Math.max(...evData.map(d => d.gmv)) * 1.2 || 1;
+
           return (
             <div className="space-y-4">
-              {/* GMV diario + acumulado */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="bg-white rounded-xl border border-gray-100 p-4">
-                  <p className="text-xs font-semibold text-gray-500 mb-2">GMV Diario</p>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={evData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                      <XAxis dataKey="dia" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={50} />
-                      <YAxis tickFormatter={fmtAbr} tick={{ fontSize: 9 }} />
-                      <Tooltip formatter={(v) => fmtFull(v)} />
-                      <Bar dataKey="gmv" name="GMV Diario" fill={PIBOX_PURPLE} radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+              {/* ── Gráfica 1: GMV Diario ── */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4 print-no-break">
+                {/* Header */}
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">📅 GMV Diario</p>
+                    <p className="text-xs text-gray-400">Barras: GMV del día · Línea: media móvil 7 días · {evData.length} días con datos</p>
+                  </div>
+                  {/* KPI chips */}
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="bg-purple-50 text-purple-700 rounded-full px-3 py-1 font-medium">
+                      Prom/día <strong>{fmtAbr(promedio)}</strong>
+                    </span>
+                    <span className="bg-green-50 text-green-700 rounded-full px-3 py-1 font-medium">
+                      Mejor día {fmtDia(maxD.fecha || maxD.dia)} · <strong>{fmtAbr(maxD.gmv)}</strong>
+                    </span>
+                    <span className="bg-red-50 text-red-600 rounded-full px-3 py-1 font-medium">
+                      Menor día {fmtDia(minD.fecha || minD.dia)} · <strong>{fmtAbr(minD.gmv)}</strong>
+                    </span>
+                    <span className="bg-blue-50 text-blue-700 rounded-full px-3 py-1 font-medium">
+                      Acumulado <strong>{fmtAbr(acumulado)}</strong>
+                    </span>
+                  </div>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-100 p-4">
-                  <p className="text-xs font-semibold text-gray-500 mb-2">GMV Acumulado vs Meta</p>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={evData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                      <XAxis dataKey="dia" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={50} />
-                      <YAxis tickFormatter={fmtAbr} tick={{ fontSize: 9 }} />
-                      <Tooltip formatter={(v) => fmtFull(v)} />
-                      <Legend />
-                      <Line type="monotone" dataKey="gmvAcumulado" stroke={PIBOX_PURPLE} strokeWidth={2.5} dot={{ r: 2 }} name="GMV Acumulado" />
-                      <Line type="monotone" dataKey="meta80" stroke={YELLOW} strokeWidth={1.5} strokeDasharray="5 3" dot={false} name="Umbral 80%" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
 
-              {/* Servicios y paquetes diarios */}
-              <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xs font-semibold text-gray-500 mb-2">Servicios y Paquetes Diarios</p>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={evData}>
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={evData} margin={{ top: 8, right: 60, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
-                    <XAxis dataKey="dia" tick={{ fontSize: 8 }} angle={-45} textAnchor="end" height={50} />
-                    <YAxis tick={{ fontSize: 9 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="servicios" name="Servicios" fill={PIBOX_PURPLE} radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="paquetes" name="Paquetes" fill={PIBOX_PINK} radius={[3, 3, 0, 0]} />
-                  </BarChart>
+                    <XAxis dataKey="dia" tick={{ fontSize: 9 }} />
+                    {/* Eje izquierdo: GMV diario */}
+                    <YAxis yAxisId="left" tickFormatter={fmtAbr} tick={{ fontSize: 9 }} domain={[0, maxGmv]} />
+                    {/* Eje derecho: acumulado */}
+                    <YAxis yAxisId="right" orientation="right" tickFormatter={fmtAbr} tick={{ fontSize: 9 }} domain={[0, maxAcum]} />
+                    <Tooltip formatter={(v, name) => [fmtFull(v), name]} />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                    {/* Promedio diario */}
+                    <ReferenceLine yAxisId="left" y={promedio} stroke="#9ca3af" strokeDasharray="4 3"
+                      label={{ value: "Prom.", position: "insideRight", fontSize: 9, fill: "#9ca3af" }} />
+                    {/* Area acumulado — eje derecho */}
+                    <Area yAxisId="right" type="monotone" dataKey="gmvAcumulado"
+                      name="GMV acumulado (eje der.)"
+                      fill="#bfdbfe" stroke="#93c5fd" strokeWidth={1.5} fillOpacity={0.5} dot={false} />
+                    {/* Barras GMV diario */}
+                    <Bar yAxisId="left" dataKey="gmv" name="GMV diario" fill={PIBOX_PURPLE} radius={[3, 3, 0, 0]} maxBarSize={40} />
+                    {/* Media móvil 7d */}
+                    <Line yAxisId="left" type="monotone" dataKey="mm7"
+                      name="Media móvil 7 días"
+                      stroke={PIBOX_PINK} strokeWidth={2} strokeDasharray="6 3" dot={false} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Resumen */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="bg-purple-50 rounded-lg p-3">
-                  <p className="text-gray-500">Día más alto</p>
-                  <p className="font-bold text-purple-700">{fmtAbr(Math.max(...evData.map(d => d.gmv)))}</p>
-                  <p className="text-gray-400">{evData.reduce((best, d) => d.gmv > best.gmv ? d : best, evData[0]).dia}</p>
+              {/* ── Gráfica 2: Servicios y Paquetes ── */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4 print-no-break">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">📦 Servicios y Paquetes Diarios</p>
+                    <p className="text-xs text-gray-400">{totalServ.toLocaleString("es-CO")} servicios · {totalPaq.toLocaleString("es-CO")} paquetes en el período</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="bg-purple-50 text-purple-700 rounded-full px-3 py-1 font-medium">
+                      Total servicios <strong>{totalServ.toLocaleString("es-CO")}</strong>
+                    </span>
+                    {totalPaq > 0 && (
+                      <span className="bg-pink-50 text-pink-700 rounded-full px-3 py-1 font-medium">
+                        Total paquetes <strong>{totalPaq.toLocaleString("es-CO")}</strong>
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="bg-red-50 rounded-lg p-3">
-                  <p className="text-gray-500">Día más bajo</p>
-                  <p className="font-bold text-red-600">{fmtAbr(Math.min(...evData.map(d => d.gmv)))}</p>
-                  <p className="text-gray-400">{evData.reduce((worst, d) => d.gmv < worst.gmv ? d : worst, evData[0]).dia}</p>
-                </div>
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <p className="text-gray-500">Promedio diario</p>
-                  <p className="font-bold text-blue-700">{fmtAbr(evData.reduce((s, d) => s + d.gmv, 0) / evData.length)}</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-3">
-                  <p className="text-gray-500">Total acumulado</p>
-                  <p className="font-bold text-green-700">{fmtAbr(evData[evData.length - 1]?.gmvAcumulado || 0)}</p>
-                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <ComposedChart data={evData} margin={{ top: 4, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                    <XAxis dataKey="dia" tick={{ fontSize: 9 }} />
+                    <YAxis yAxisId="serv" tick={{ fontSize: 9 }} />
+                    {totalPaq > 0 && <YAxis yAxisId="paq" orientation="right" tick={{ fontSize: 9 }} />}
+                    <Tooltip />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                    <Bar yAxisId="serv" dataKey="servicios" name="Servicios" fill={PIBOX_PURPLE} radius={[3, 3, 0, 0]} maxBarSize={40} />
+                    {totalPaq > 0 && (
+                      <Bar yAxisId={totalPaq > 0 ? "paq" : "serv"} dataKey="paquetes" name="Paquetes" fill={PIBOX_PINK} radius={[3, 3, 0, 0]} maxBarSize={40} />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
               </div>
             </div>
           );

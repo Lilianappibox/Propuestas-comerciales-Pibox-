@@ -22,13 +22,21 @@ function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
   const progress = (pctNum / 100) * circumference;
   const r        = expanded ? 52 : 34;
 
-  const nuevos   = (data.clientesNuevos   || []).filter((c) => c.kam === k.nombre).length;
-  const perdidos = (data.clientesPerdidos || []).filter((c) => c.kam === k.nombre).length;
-  const clientesKam    = (data.top10Clientes || []).filter((c) => c.kam === k.nombre);
-  const activos        = clientesKam.length;
-  const gmvActualTop   = clientesKam.reduce((a, c) => a + (c.gmvActual   || 0), 0);
-  const gmvAnteriorTop = clientesKam.reduce((a, c) => a + (c.gmvAnterior || 0), 0);
-  const crecPct = gmvAnteriorTop > 0 ? ((gmvActualTop - gmvAnteriorTop) / gmvAnteriorTop) * 100 : 0;
+  // Comparaciones normalizadas: toleran diferencias de capitalización y tildes
+  const kamNorm = normK(k.nombre);
+  const nuevos   = (data.clientesNuevos   || []).filter((c) => normK(c.kam) === kamNorm).length;
+  const perdidos = (data.clientesPerdidos || []).filter((c) => normK(c.kam) === kamNorm).length;
+
+  // Lookup tolerante a capitalización para kamDetalle
+  const kdet = data.kamDetalle?.[k.nombre]
+    ?? Object.entries(data.kamDetalle || {}).find(([key]) => normK(key) === kamNorm)?.[1];
+
+  const activos = kdet?.clientesActivos
+    ?? (data.top10Clientes || []).filter((c) => normK(c.kam) === kamNorm).length;
+  const gmvActualKam   = kdet?.gmv    ?? k.gmv;
+  // gmvAnt ya viene copiado en k.gmvAnt desde parseBasePlana; kdet.gmvAnt como respaldo
+  const gmvAnteriorKam = k.gmvAnt ?? kdet?.gmvAnt ?? 0;
+  const crecPct = gmvAnteriorKam > 0 ? ((gmvActualKam - gmvAnteriorKam) / gmvAnteriorKam) * 100 : 0;
 
   const metaProgress = Math.min((k.gmv / k.meta) * 100, 100);
   const svgSize = expanded ? 120 : 80;
@@ -151,6 +159,8 @@ function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
   );
 }
 
+const normK = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
 export default function CumplimientoKAM({ data }) {
   const { moneda, trm } = useMoneda();
   const M  = (n) => fmtMoney(n, moneda, trm);
@@ -165,6 +175,20 @@ export default function CumplimientoKAM({ data }) {
     GMV:  moneda === "USD" ? k.gmv  / trm : k.gmv,
     cumplimiento: k.cumplimiento,
   }));
+
+  // Top 10 según selección activa
+  const { top10Rows, top10Label, showKamCol } = (() => {
+    if (!selectedKAM) {
+      // Todos: top10Clientes global (ya viene ordenado por GMV)
+      const rows = (data.top10Clientes || []).slice(0, 10);
+      return { top10Rows: rows, top10Label: "Todos los KAMs", showKamCol: true };
+    }
+    // KAM específico: buscar en kamDetalle con lookup normalizado
+    const kd = data.kamDetalle?.[selectedKAM]
+      ?? Object.entries(data.kamDetalle || {}).find(([k]) => normK(k) === normK(selectedKAM))?.[1];
+    const rows = (kd?.top10 || []).slice(0, 10);
+    return { top10Rows: rows, top10Label: selectedKAM, showKamCol: false };
+  })();
 
   return (
     <section className="bg-white rounded-2xl shadow-md overflow-hidden">
@@ -211,7 +235,8 @@ export default function CumplimientoKAM({ data }) {
           })}
         </div>
 
-        {/* Gráfico comparativo */}
+        {/* Gráfico comparativo — oculto en PDF */}
+        <div className="cierre-print-hide">
         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Meta vs GMV por KAM</p>
         <div className="bg-gray-50 rounded-xl p-4">
           <ResponsiveContainer width="100%" height={Math.max(kamsFiltrados.length * 40, 160)}>
@@ -224,6 +249,62 @@ export default function CumplimientoKAM({ data }) {
               <Bar dataKey="GMV"  fill={PIBOX_PINK}   radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+        </div>{/* fin cierre-print-hide */}
+
+        {/* Top 10 — siempre visible, cambia según selección */}
+        <div className="mt-6">
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">
+            Top 10 cuentas por GMV — {top10Label}
+          </p>
+          {top10Rows.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              Carga la base plana para ver el top 10 de facturación
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                  <tr>
+                    <th className="px-4 py-2 text-left">#</th>
+                    <th className="px-4 py-2 text-left">Cliente</th>
+                    {showKamCol && <th className="px-4 py-2 text-left">KAM</th>}
+                    <th className="px-4 py-2 text-right">GMV Actual</th>
+                    <th className="px-4 py-2 text-right">GMV Anterior</th>
+                    <th className="px-4 py-2 text-right">Var.</th>
+                    <th className="px-4 py-2 text-right">Part.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {top10Rows.map((c, i) => (
+                    <tr key={`${c.cliente}-${i}`} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <td className="px-4 py-2 text-gray-400 font-bold">{i + 1}</td>
+                      <td className="px-4 py-2 font-medium text-gray-800">{c.cliente}</td>
+                      {showKamCol && (
+                        <td className="px-4 py-2 text-xs text-gray-500">{c.kam || "—"}</td>
+                      )}
+                      <td className="px-4 py-2 text-right font-semibold text-purple-700">{M(c.gmvActual)}</td>
+                      <td className="px-4 py-2 text-right text-gray-500">
+                        {c.gmvAnterior > 0 ? M(c.gmvAnterior) : "—"}
+                      </td>
+                      <td className={`px-4 py-2 text-right font-semibold text-xs ${
+                        c.gmvAnterior > 0
+                          ? c.crecimiento >= 0 ? "text-emerald-600" : "text-red-500"
+                          : "text-gray-400"
+                      }`}>
+                        {c.gmvAnterior > 0
+                          ? `${c.crecimiento >= 0 ? "▲" : "▼"} ${Math.abs(c.crecimiento).toFixed(1)}%`
+                          : "Nuevo"}
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-500 text-xs">
+                        {c.participacion.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </section>

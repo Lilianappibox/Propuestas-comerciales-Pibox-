@@ -81,13 +81,35 @@ body {
   }
 
   .cierre-printing section {
-    break-inside: avoid;
+    /* No break-inside:avoid aquí — las secciones grandes necesitan poder partir */
     margin-bottom: 8mm !important;
     box-shadow: none !important;
     border: 1px solid #e5e7eb !important;
   }
 
-  .cierre-printing .recharts-wrapper {
+  /* Ocultar elementos específicos en impresión */
+  .cierre-printing .cierre-print-hide {
+    display: none !important;
+  }
+
+  /* Evitar corte dentro de tarjetas pequeñas */
+  .cierre-printing .print-no-break {
     break-inside: avoid;
+  }
+
+  /* Separar cada sección con salto de página */
+  .cierre-printing section + section {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /* Fix recharts en print: forzar ancho para que SVG paths se calculen bien */
+  .cierre-printing .recharts-responsive-container {
+    min-width: 700px !important;
+    width: 700px !important;
+  }
+  .cierre-printing .recharts-wrapper,
+  .cierre-printing .recharts-surface {
+    overflow: visible !important;
   }
 }

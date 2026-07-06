@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
-import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, idbSaveDrivers, idbSaveHorasRows, UMBRALES_DEFAULT } from "./riesgo/utils";
+import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, idbSaveDrivers, idbSaveHorasRows, UMBRALES_DEFAULT, procesarDatos, mesKey, labelMes } from "./riesgo/utils";
 import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
@@ -38,8 +38,101 @@ export default function RiesgoComercial({ currentUser }) {
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState(null);
   const [loadingServer, setLoadingServer] = useState(false);
+  const [chDesde, setChDesde] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+  });
+  const [chHasta, setChHasta] = useState(() => new Date().toISOString().slice(0,10));
+  const [chStatus, setChStatus] = useState("idle");
+  const [chMsg, setChMsg]     = useState(null);
+  const chPollRef = useRef(null);
   const importRef = useRef();
   const isAdmin = currentUser?.rol === "Administrativo";
+
+  const saveChData = async (rawRows) => {
+    const d0   = new Date(chDesde + "T12:00:00");
+    const anio = d0.getFullYear();
+    const mes  = d0.getMonth() + 1;
+    const key  = mesKey(anio, mes);
+    // Label muestra el rango exacto consultado en vez del nombre del mes
+    const fmtD = (s) => s.split("-").reverse().join("/");
+    const lbl  = `${fmtD(chDesde)} – ${fmtD(chHasta)}`;
+    const processed = procesarDatos(rawRows);
+    const entry = {
+      key, anio, mes,
+      label:   lbl,
+      archivo: `ClickHouse (${chDesde} → ${chHasta})`,
+      savedAt: new Date().toISOString(),
+      totales: processed.totales,
+    };
+    await saveMesData(key, { ...entry, empresas: processed.empresas, ciudades: processed.ciudades, drivers: processed.drivers || [] });
+    const idx = loadIndex();
+    idx[key] = entry;
+    saveIndex(idx);
+    if (processed.drivers?.length) await idbSaveDrivers(key, processed.drivers);
+    // Solo columnas que usa EmpresasHoras — evita payload gigante al publicar
+    const HORAS_COLS = ["company","city","date","booking_id","operation_type",
+                        "service_status","estado_booking","driver_name","passenger_name",
+                        "gmv","packages","cant_stops","route_time","cancelacion","cancelation"];
+    const horasOdRows = rawRows
+      .filter(r => {
+        const op = String(r["operation_type"] || "").trim().toLowerCase();
+        return op === "horas" || op === "on demand" || op === "bavaria paquetes tada";
+      })
+      .map(r => {
+        const slim = {};
+        for (const c of HORAS_COLS) slim[c] = r[c];
+        slim.cancelacion = r.cancelacion || r.cancelation || "";
+        return slim;
+      });
+    if (horasOdRows.length > 0) await idbSaveHorasRows(key, horasOdRows);
+    setChStatus("idle");
+    setChMsg({ ok: true, txt: `✅ ${lbl} cargado desde ClickHouse — ${rawRows.length.toLocaleString()} servicios, ${processed.empresas.length} empresas` });
+    forceRender(n => n + 1);
+  };
+
+  const loadFromClickHouse = async () => {
+    if (chStatus === "loading" || chStatus === "polling") return;
+    setChStatus("loading");
+    setChMsg(null);
+    try {
+      const res  = await fetch(`/api/riesgo_comercial/consulta?desde=${chDesde}&hasta=${chHasta}`);
+      const json = await res.json();
+      if (json.status === "done")  { await saveChData(json.data); return; }
+      if (json.status === "error") {
+        setChStatus("idle");
+        setChMsg({ ok: false, txt: `❌ ${json.error}` });
+        return;
+      }
+      setChStatus("polling");
+      let attempts = 0;
+      chPollRef.current = setInterval(async () => {
+        attempts++;
+        if (attempts > 120) {
+          clearInterval(chPollRef.current);
+          setChStatus("idle");
+          setChMsg({ ok: false, txt: "❌ Tiempo de espera agotado. Intenta de nuevo." });
+          return;
+        }
+        try {
+          const r2 = await fetch(`/api/riesgo_comercial/status?desde=${chDesde}&hasta=${chHasta}`);
+          const j2 = await r2.json();
+          if (j2.status === "done")  { clearInterval(chPollRef.current); await saveChData(j2.data); }
+          else if (j2.status === "error") {
+            clearInterval(chPollRef.current);
+            setChStatus("idle");
+            setChMsg({ ok: false, txt: `❌ ${j2.error}` });
+          }
+        } catch {}
+      }, 5000);
+    } catch (err) {
+      setChStatus("idle");
+      setChMsg({ ok: false, txt: `❌ Error de red: ${err.message}` });
+    }
+  };
+
+  // Limpiar intervalo al desmontar
+  useEffect(() => () => { if (chPollRef.current) clearInterval(chPollRef.current); }, []);
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
@@ -113,8 +206,11 @@ export default function RiesgoComercial({ currentUser }) {
       saveIndex({ ...loadIndex(), ...d.index });
       await Promise.all([
         ...Object.entries(d.meses || {}).map(([k, v]) => saveMesData(k, v)),
-        ...Object.entries(d.horasRows || {}).map(([k, v]) => idbSaveHorasRows(k, v)),
-        ...Object.entries(d.drivers  || {}).map(([k, v]) => idbSaveDrivers(k, v)),
+        // horasRows no se publica (demasiado pesado); drivers van en meses[k].drivers
+        ...Object.entries(d.meses || {}).map(([k, v]) => {
+          const drs = d.drivers?.[k] || v.drivers;
+          if (drs?.length) return idbSaveDrivers(k, drs);
+        }).filter(Boolean),
       ]);
       if (d.umbrales) localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(d.umbrales));
       setLoadingServer(false);
@@ -136,8 +232,8 @@ export default function RiesgoComercial({ currentUser }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Riesgo Comercial 360°</p>
               <p className="text-xs text-gray-500">Monitoreo automático de clientes · Detección de fuga y deterioro</p>
             </div>
-            {!isAdmin && loadingServer && (
-              <span className="text-xs text-purple-600 font-medium animate-pulse shrink-0">⏳ Cargando datos del equipo…</span>
+            {loadingServer && (
+              <span className="text-xs text-purple-600 font-medium animate-pulse shrink-0">⏳ Sincronizando con el servidor…</span>
             )}
             {isAdmin && (
               <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -166,23 +262,22 @@ export default function RiesgoComercial({ currentUser }) {
                   try {
                     const idx = loadIndex();
                     const keys = Object.keys(idx);
-                    const allData = { index: idx, meses: {}, horasRows: {}, drivers: {} };
+                    // horasRows y drivers se excluyen del snapshot: pueden ser
+                    // muy grandes (decenas de miles de filas brutas) y causan 502.
+                    // Los drivers ya van embebidos en meses[key].drivers.
+                    const allData = { index: idx, meses: {} };
                     await Promise.all(keys.map(async (key) => {
                       const d = await loadMesDataAsync(key);
                       if (d) allData.meses[key] = d;
-                      const hr = await idbLoadHorasRows(key);
-                      if (hr) allData.horasRows[key] = hr;
-                      const dr = await idbLoadDrivers(key);
-                      if (dr) allData.drivers[key] = dr;
                     }));
                     try { allData.umbrales = JSON.parse(localStorage.getItem("pibox_riesgo_umbrales") || "{}"); } catch {}
                     const result = await publishToServer("riesgo", allData);
                     setPublishMsg({ ok: true, txt: `✅ Publicado – ${new Date(result.published_at).toLocaleString("es-CO")}` });
+                    setTimeout(() => setPublishMsg(null), 8000);
                   } catch (err) {
-                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                    setPublishMsg({ ok: false, txt: `❌ Error al publicar: ${err.message}` });
                   } finally {
                     setPublishing(false);
-                    setTimeout(() => setPublishMsg(null), 6000);
                   }
                 }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-purple-400" : "bg-purple-600 hover:bg-purple-700"}`}>
                   {publishing ? "⏳ Publicando…" : "🌐 Publicar para el equipo"}
@@ -222,6 +317,44 @@ export default function RiesgoComercial({ currentUser }) {
           {tab === "proyeccion"     && <ProyeccionCliente />}
           {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
         </Suspense>
+
+        {/* Panel ClickHouse — al final, disponible para todos, no en config */}
+        {tab !== "config" && (
+          <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5 mt-6">
+            <h3 className="font-bold text-gray-700 text-sm mb-3">⚡ Cargar desde ClickHouse</h3>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Desde</label>
+                <input type="date" value={chDesde} onChange={e => setChDesde(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Hasta</label>
+                <input type="date" value={chHasta} onChange={e => setChHasta(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+              </div>
+              <button onClick={loadFromClickHouse}
+                disabled={chStatus === "loading" || chStatus === "polling"}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition ${
+                  chStatus === "loading" || chStatus === "polling"
+                    ? "bg-purple-300 cursor-not-allowed"
+                    : "bg-purple-600 hover:bg-purple-700"
+                }`}>
+                {chStatus === "loading" || chStatus === "polling" ? "⏳ Consultando…" : "⚡ Consultar ClickHouse"}
+              </button>
+            </div>
+            {chMsg && (
+              <p className={`mt-2 text-xs font-semibold ${chMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {chMsg.txt}
+              </p>
+            )}
+            {(chStatus === "loading" || chStatus === "polling") && (
+              <p className="mt-2 text-xs text-purple-500 animate-pulse">
+                Consultando ClickHouse… esto puede tardar hasta 2 minutos.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

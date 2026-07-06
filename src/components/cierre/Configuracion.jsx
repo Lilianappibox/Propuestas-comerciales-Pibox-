@@ -1,13 +1,105 @@
 import { useState, useRef } from "react";
 import { fmtM } from "./utils";
-import { parseExcelFile, parseExcelRaw, PARSERS } from "./excelParser";
+import { parseExcelFile, parseExcelRaw, PARSERS, parseBasePlana, aggregateBase, KAM_MAP } from "./excelParser";
+import ProyeccionClickhouse from "./ProyeccionClickhouse";
+
+const HIST_KEY = "pibox_cierre_historial_cargas";
+const MAX_HIST = 20;
+
+function loadHistorial() {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch { return []; }
+}
+function saveHistorial(h) {
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, MAX_HIST))); } catch {}
+}
+function addHistorialEntry(tipo, nombre, total, agg) {
+  const prev = loadHistorial();
+  const entry = {
+    id:        Date.now(),
+    tipo,
+    nombre,
+    total,
+    empresas:  Object.keys(agg.companies || {}).length,
+    ciudades:  Object.keys(agg.ciudades  || {}).length,
+    fecha:     new Date().toISOString(),
+  };
+  saveHistorial([entry, ...prev]);
+  return entry;
+}
+
+function fmtFechaHist(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// ── Auto-actualización de tendencias desde flat file ──────────────────────
+const MC = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+function parseM(label) {
+  const parts = String(label || "").trim().split(/\s+/);
+  const n3 = parts[0].slice(0, 3).toLowerCase();
+  const mesIdx = MC.findIndex(m => m.toLowerCase() === n3);
+  const raw = parseInt(parts[1] || "0");
+  const anio = raw < 100 ? 2000 + raw : raw;
+  return { mesIdx, anio };
+}
+function autoUpdateTendencias(formData, actualAgg, anteriorAgg) {
+  if (!formData.tendencias?.length) return formData;
+  const tendencias = formData.tendencias.map(t => ({ ...t }));
+
+  const totalGmv  = v => Object.values(v?.companies || {}).reduce((a, c) => a + c.gmv, 0);
+  const totalServ = v => Object.values(v?.companies || {}).reduce((a, c) => a + (c.servicios || 0), 0);
+
+  const upsert = (agg, mesIdx, anio) => {
+    const gmv = Math.round(totalGmv(agg));
+    if (!gmv || mesIdx < 0 || anio < 2020) return;
+    const label = `${MC[mesIdx]} ${String(anio).slice(-2)}`;
+    const idx = tendencias.findIndex(t => { const p = parseM(t.mes); return p.mesIdx === mesIdx && p.anio === anio; });
+    const serv = totalServ(agg);
+    if (idx >= 0) {
+      tendencias[idx] = { ...tendencias[idx], gmv, ...(serv > 0 && { servicios: serv }) };
+    } else {
+      tendencias.push({ mes: label, gmv, meta: 0, ...(serv > 0 && { servicios: serv }) });
+    }
+  };
+
+  // Periodo actual del formulario → mes del flat file actual
+  // Si no viene año (periodo = "Junio"), inferir del año corriente
+  let { mesIdx, anio } = parseM(formData.periodo || formData.mes || "");
+  if (anio < 2020 && mesIdx >= 0) {
+    const now = new Date();
+    anio = now.getFullYear();
+    if (mesIdx > now.getMonth()) anio -= 1; // mes indicado ya pasó el año anterior
+  }
+  upsert(actualAgg, mesIdx, anio);
+
+  // Mes anterior
+  if (anteriorAgg && mesIdx >= 0 && anio > 2020) {
+    const prevMesIdx = (mesIdx - 1 + 12) % 12;
+    const prevAnio   = mesIdx === 0 ? anio - 1 : anio;
+    upsert(anteriorAgg, prevMesIdx, prevAnio);
+  }
+
+  tendencias.sort((a, b) => {
+    const pa = parseM(a.mes), pb = parseM(b.mes);
+    return pa.anio !== pb.anio ? pa.anio - pb.anio : pa.mesIdx - pb.mesIdx;
+  });
+  return { ...formData, tendencias };
+}
 
 export default function Configuracion({ data, onSave }) {
   const [form, setForm] = useState({ ...data });
   const [tab, setTab] = useState("general");
   const [msg, setMsg] = useState("");
   const [cargandoOps, setCargandoOps] = useState(false);
-  const fileRef = useRef();
+  const [cargandoBase, setCargandoBase] = useState({ anterior: false, actual: false });
+  const [msgBase, setMsgBase] = useState("");
+  const [baseAnterior, setBaseAnterior] = useState(null); // { nombre, agg }
+  const [baseActual,   setBaseActual]   = useState(null); // { nombre, agg }
+  const [historial, setHistorial] = useState(() => loadHistorial());
+  const [mostrarHist, setMostrarHist] = useState(false);
+  const fileRef         = useRef();
+  const fileAnteriorRef = useRef();
+  const fileActualRef   = useRef();
 
   const handleChange = (path, value) => {
     const keys = path.split(".");
@@ -42,6 +134,67 @@ export default function Configuracion({ data, onSave }) {
 
   const removeKAM = (idx) => {
     setForm((prev) => ({ ...prev, kams: prev.kams.filter((_, i) => i !== idx) }));
+  };
+
+  const leerBase = async (file, tipo) => {
+    setCargandoBase(prev => ({ ...prev, [tipo]: true }));
+    setMsgBase(`⏳ Leyendo "${file.name}"…`);
+    try {
+      const rows = await parseExcelFile(file);
+      if (!rows.length) { setMsgBase("⚠️ El archivo está vacío."); setCargandoBase(prev => ({ ...prev, [tipo]: false })); return null; }
+      const agg = aggregateBase(rows);
+      addHistorialEntry(tipo, file.name, rows.length, agg);
+      setHistorial(loadHistorial());
+      return { nombre: file.name, agg, total: rows.length };
+    } catch (err) {
+      setMsgBase(`❌ Error al leer el archivo: ${err.message}`);
+      return null;
+    } finally {
+      setCargandoBase(prev => ({ ...prev, [tipo]: false }));
+    }
+  };
+
+  const aplicarComparativo = (actual, anterior) => {
+    let nuevo = parseBasePlana(actual.agg, anterior?.agg || null, form);
+    nuevo = autoUpdateTendencias(nuevo, actual.agg, anterior?.agg || null);
+    setForm(nuevo);
+    const antInfo = anterior
+      ? ` comparado con "${anterior.nombre}"`
+      : " (sin mes anterior — clientes nuevos/perdidos requieren ambos archivos)";
+    setMsgBase(`✅ ${actual.total.toLocaleString("es-CO")} filas procesadas${antInfo}. Haz clic en 📢 Publicar para el equipo cuando estés lista.`);
+  };
+
+  const handleAnterior = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    const result = await leerBase(file, "anterior");
+    if (!result) return;
+    setBaseAnterior(result);
+    if (baseActual) aplicarComparativo(baseActual, result);
+    else setMsgBase("✅ Mes anterior cargado. Ahora carga el archivo del mes actual.");
+  };
+
+  const handleActual = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    const result = await leerBase(file, "actual");
+    if (!result) return;
+    setBaseActual(result);
+    aplicarComparativo(result, baseAnterior);
+  };
+
+  const eliminarAnterior = () => {
+    setBaseAnterior(null);
+    if (baseActual) aplicarComparativo(baseActual, null);
+    else setMsgBase("");
+  };
+
+  const eliminarActual = () => {
+    setBaseActual(null);
+    setForm(prev => ({ ...prev, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [] }));
+    setMsgBase("");
   };
 
   const handleSave = () => {
@@ -137,6 +290,118 @@ export default function Configuracion({ data, onSave }) {
       </div>
 
       {msg && <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-700 font-medium">{msg}</div>}
+
+      {/* ── Carga de base plana ── */}
+      <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-2xl p-5">
+        <p className="font-bold text-indigo-800 text-sm mb-1">📊 Cargar base plana mensual</p>
+        <p className="text-xs text-indigo-500 mb-4">
+          Alimenta: <span className="font-semibold">Top 10 · Clientes Nuevos · Clientes Perdidos · Líneas · Ciudades</span>
+        </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {/* Mes anterior */}
+          <div className="bg-white border border-indigo-100 rounded-xl p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Mes anterior</p>
+            {baseAnterior ? (
+              <div className="flex items-center gap-2 bg-indigo-50 rounded-lg px-3 py-2">
+                <span className="text-indigo-700 text-xs font-medium flex-1 truncate">📄 {baseAnterior.nombre}</span>
+                <button onClick={eliminarAnterior} className="text-red-400 hover:text-red-600 font-bold text-sm shrink-0" title="Eliminar">✕</button>
+              </div>
+            ) : (
+              <label className={`cursor-pointer flex items-center justify-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold transition ${cargandoBase.anterior ? "border-indigo-200 text-indigo-300 cursor-not-allowed" : "border-indigo-300 text-indigo-500 hover:border-indigo-500 hover:bg-indigo-50"}`}>
+                {cargandoBase.anterior ? "⏳ Leyendo…" : "📥 Cargar mes anterior"}
+                <input ref={fileAnteriorRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleAnterior} disabled={cargandoBase.anterior} />
+              </label>
+            )}
+            <p className="text-xs text-gray-400 mt-2">Opcional — necesario para crecimiento y clientes nuevos/perdidos</p>
+          </div>
+          {/* Mes actual */}
+          <div className="bg-white border border-indigo-100 rounded-xl p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Mes actual (cierre)</p>
+            {baseActual ? (
+              <div className="flex items-center gap-2 bg-indigo-50 rounded-lg px-3 py-2">
+                <span className="text-indigo-700 text-xs font-medium flex-1 truncate">📄 {baseActual.nombre}</span>
+                <button onClick={eliminarActual} className="text-red-400 hover:text-red-600 font-bold text-sm shrink-0" title="Eliminar">✕</button>
+              </div>
+            ) : (
+              <label className={`cursor-pointer flex items-center justify-center gap-2 w-full px-3 py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold transition ${cargandoBase.actual ? "border-purple-200 text-purple-300 cursor-not-allowed" : "border-purple-400 text-purple-600 hover:border-purple-600 hover:bg-purple-50"}`}>
+                {cargandoBase.actual ? "⏳ Leyendo…" : "📥 Cargar mes actual"}
+                <input ref={fileActualRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleActual} disabled={cargandoBase.actual} />
+              </label>
+            )}
+            <p className="text-xs text-gray-400 mt-2">Requerido — genera Top 10, Líneas y Ciudades</p>
+          </div>
+        </div>
+        {msgBase && (
+          <p className={`mt-3 text-xs font-semibold rounded-lg px-3 py-2 ${msgBase.startsWith("✅") ? "bg-green-50 text-green-700" : msgBase.startsWith("❌") ? "bg-red-50 text-red-600" : "bg-indigo-100 text-indigo-700"}`}>
+            {msgBase}
+          </p>
+        )}
+
+        {/* ── Historial de cargas ── */}
+        <div className="mt-4">
+          <button
+            onClick={() => setMostrarHist(v => !v)}
+            className="flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition"
+          >
+            <span>{mostrarHist ? "▾" : "▸"}</span>
+            Historial de cargas
+            {historial.length > 0 && (
+              <span className="bg-indigo-100 text-indigo-700 rounded-full px-2 py-0.5 text-[10px] font-bold">
+                {historial.length}
+              </span>
+            )}
+          </button>
+
+          {mostrarHist && (
+            <div className="mt-2">
+              {historial.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2">Sin cargas registradas aún.</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto rounded-xl border border-indigo-100">
+                    <table className="w-full text-xs">
+                      <thead className="bg-indigo-50 text-[10px] text-indigo-500 uppercase">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Fecha y hora</th>
+                          <th className="px-3 py-2 text-left">Tipo</th>
+                          <th className="px-3 py-2 text-left">Archivo</th>
+                          <th className="px-3 py-2 text-right">Filas</th>
+                          <th className="px-3 py-2 text-right">Empresas</th>
+                          <th className="px-3 py-2 text-right">Ciudades</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historial.map((h, i) => (
+                          <tr key={h.id} className={i % 2 === 0 ? "bg-white" : "bg-indigo-50/40"}>
+                            <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">{fmtFechaHist(h.fecha)}</td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${h.tipo === "actual" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                                {h.tipo === "actual" ? "Mes actual" : "Mes anterior"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-gray-700 max-w-[220px] truncate" title={h.nombre}>
+                              📄 {h.nombre}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-semibold text-gray-700">{(h.total || 0).toLocaleString("es-CO")}</td>
+                            <td className="px-3 py-1.5 text-right text-gray-600">{(h.empresas || 0).toLocaleString("es-CO")}</td>
+                            <td className="px-3 py-1.5 text-right text-gray-600">{(h.ciudades || 0).toLocaleString("es-CO")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button
+                    onClick={() => { saveHistorial([]); setHistorial([]); }}
+                    className="mt-2 text-[10px] text-red-400 hover:text-red-600 transition"
+                  >
+                    🗑 Limpiar historial
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* ── Tabs ── */}
       <div className="flex flex-wrap gap-1 mb-3 border-b border-purple-100 pb-2">
@@ -467,9 +732,59 @@ export default function Configuracion({ data, onSave }) {
           const parsed = (typeof val === "string" && val.trim() !== "" && !isNaN(Number(val))) ? Number(val) : val;
           setForm((p) => ({ ...p, proyeccion: { ...(p.proyeccion || {}), [key]: parsed } }));
         };
+
+        // Callback cuando ClickHouse devuelve datos: actualiza GMV, evolución y KAMs
+        const handleClickHouseData = ({ gmvActual, evolucion, kamGmv }) => {
+          const normK = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+          // Construye el conjunto de variantes aceptables para un nombre del formulario.
+          // Ejemplo: "Cuentas Farmer" → {"cuentas farmer", "johana navarrete"}
+          //          "Johana Navarrete" → {"johana navarrete", "cuentas farmer"}
+          const buildMatchSet = (formName) => {
+            const fn = normK(formName);
+            const s  = new Set([fn]);
+            // Forward: formName es clave en KAM_MAP → añadir su valor homologado
+            if (KAM_MAP[fn]) s.add(normK(KAM_MAP[fn]));
+            // Reverse: formName coincide con un valor de KAM_MAP → añadir su clave
+            for (const [k, v] of Object.entries(KAM_MAP)) {
+              if (normK(v) === fn) s.add(k);
+            }
+            return s;
+          };
+
+          setForm((prev) => {
+            const p = { ...(prev.proyeccion || {}) };
+            // 1. GMV Actual en Sistema
+            p.gmvActual = gmvActual;
+            // 2. Evolución diaria (cuenta de días)
+            p.diasEvolucion = evolucion.length;
+            p.archivoOps = `ClickHouse ${new Date().toLocaleDateString("es-CO")}`;
+            // 3. GMV por KAM — matching bidireccional con KAM_MAP
+            const baseKams = p.kams || prev.kams || [];
+            if (baseKams.length && kamGmv.length) {
+              p.kams = baseKams.map(k => {
+                const ms = buildMatchSet(k.nombre);
+                const match = kamGmv.find(ch =>
+                  ms.has(normK(ch.nombre)) || ms.has(normK(ch.rawNombre))
+                );
+                if (!match) return k;
+                const gmv = match.gmv;
+                const cumplimiento = k.meta > 0 ? parseFloat(((gmv / k.meta) * 100).toFixed(2)) : 0;
+                return { ...k, gmv, cumplimiento };
+              });
+            }
+            return { ...prev, proyeccion: p };
+          });
+          setMsg("✅ Datos de ClickHouse aplicados. Haz clic en 📢 Publicar para el equipo.");
+          setTimeout(() => setMsg(""), 8000);
+        };
+
         return (
           <div className="space-y-4">
             <p className="text-xs text-gray-500 mb-2">Configura los datos de proyección del mes actual.</p>
+
+            {/* ClickHouse sync */}
+            <ProyeccionClickhouse onDataLoaded={handleClickHouseData} />
 
             {/* Upload evolución diaria */}
             <UploadEvolucion proy={proy} setForm={setForm} setMsg={setMsg} cargandoOps={cargandoOps} setCargandoOps={setCargandoOps} />
