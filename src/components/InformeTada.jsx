@@ -316,7 +316,7 @@ function processRows(rows) {
 
   const cancelaciones = Object.entries(estadoMap).reduce((sum, [k, v]) => {
     const kl = k.toLowerCase();
-    return (kl === "piloto cancela" || kl === "adicional cancela") ? sum + v : sum;
+    return kl === "piloto cancela" ? sum + v : sum;
   }, 0);
 
   // Pilotos impuntuales (todos, sin limitar)
@@ -1490,7 +1490,7 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
       const estadoLower = estado.toLowerCase();
       const esClienteCancela = estadoLower.includes("cliente cancela");
       const esExcluidoPunt = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estadoLower === e);
-      const esCancela = estadoLower === "piloto cancela" || estadoLower === "adicional cancelado";
+      const esCancela = estadoLower === "piloto cancela";
       const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
       const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
       const key = id || nombre;
@@ -2631,7 +2631,7 @@ export default function InformeTada({ isAdmin }) {
       {tab === "ciudad" && <CiudadTab trafIndex={trafIndex} isAdmin={isAdmin} importedData={importedData} loadTrafMes={_loadTrafMes} />}
 
       {/* ── TAB: NOTAS Y TAREAS ──────────────────────────────────────── */}
-      {tab === "notas" && <NotasTareas />}
+      {tab === "notas" && <NotasTareas isAdmin={isAdmin} />}
 
       {/* ── TAB: TRÁFICO ─────────────────────────────────────────────── */}
       {tab === "trafico" && (

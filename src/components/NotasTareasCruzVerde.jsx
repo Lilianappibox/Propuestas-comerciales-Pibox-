@@ -191,7 +191,7 @@ function parseGeminiNotes(text) {
   return { titulo, fecha, contenido, tareas, rawPasosLines };
 }
 
-export default function NotasTareasCruzVerde() {
+export default function NotasTareasCruzVerde({ isAdmin = false }) {
   /* ── Reuniones Cruz Verde ───────────────────────────────────────────── */
   const [meetings, setMeetings] = useState(loadMeetings);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -440,7 +440,7 @@ export default function NotasTareasCruzVerde() {
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
 
       {/* ── Reuniones Cruz Verde / Pibox ─────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+      {isAdmin && <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm flex items-center justify-between" style={{ background: BRAND_GRADIENT }}>
           <span>📅 WEEKLY CRUZ VERDE/PIBOX — Notas de Gemini</span>
           <button
@@ -586,10 +586,10 @@ export default function NotasTareasCruzVerde() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* ── Agregar Nota ─────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+      {isAdmin && <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm" style={{ background: BRAND_GRADIENT }}>
           📝 Agregar Nota
         </div>
@@ -636,7 +636,7 @@ export default function NotasTareasCruzVerde() {
             {pdfMsg && <span className={`text-xs font-medium ${pdfMsg.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>{pdfMsg}</span>}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── Tablero de Tareas ────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">

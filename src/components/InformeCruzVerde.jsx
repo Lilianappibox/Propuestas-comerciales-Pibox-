@@ -3873,7 +3873,7 @@ export default function InformeCruzVerde({ isAdmin }) {
         )}
 
         {/* Panel Notas y Tareas — siempre visible, sin necesitar datos */}
-        {tab === "notas" && <NotasTareasCruzVerde />}
+        {tab === "notas" && <NotasTareasCruzVerde isAdmin={isAdmin} />}
 
         {/* Panel Administrativo */}
         {tab === "admin" && isAdmin && (

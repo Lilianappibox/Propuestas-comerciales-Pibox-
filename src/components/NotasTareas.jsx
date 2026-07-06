@@ -202,7 +202,7 @@ function parseGeminiNotes(text) {
   return { titulo, fecha, contenido, tareas, rawPasosLines };
 }
 
-export default function NotasTareas() {
+export default function NotasTareas({ isAdmin = false }) {
   /* ── Reuniones TaDa/Pibox ───────────────────────────────────────────── */
   const [meetings, setMeetings] = useState(loadMeetings);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -455,7 +455,7 @@ export default function NotasTareas() {
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
 
       {/* ── Reuniones TaDa / Pibox ───────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+      {isAdmin && <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm flex items-center justify-between" style={{ background: BRAND_GRADIENT }}>
           <span>📅 Tráfico TaDa / Pibox — Notas de Gemini</span>
           <button
@@ -605,10 +605,10 @@ export default function NotasTareas() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* ── Agregar Nota (otras reuniones / fuentes) ─────────────────── */}
-      <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+      {isAdmin && <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 text-white font-bold text-sm" style={{ background: BRAND_GRADIENT }}>
           📝 Agregar Nota
         </div>
@@ -655,7 +655,7 @@ export default function NotasTareas() {
             {pdfMsg && <span className={`text-xs font-medium ${pdfMsg.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>{pdfMsg}</span>}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── Tablero de Tareas ────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
