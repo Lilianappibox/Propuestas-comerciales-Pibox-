@@ -237,8 +237,16 @@ const FESTIVOS_CO = new Set([
   "2026-10-12","2026-11-02","2026-11-16","2026-12-08","2026-12-25",
 ]);
 
-// Estados excluidos de todos los indicadores
-const ESTADOS_EXCLUIDOS = new Set(["Status [202] - Sin clasificar"]);
+// Estados excluidos de todos los indicadores (comparación case-insensitive)
+const ESTADOS_EXCLUIDOS_NORM = new Set([
+  "status [202] - sin clasificar",
+  "status [201] - sin clasificar",
+  "other",
+  "optimizando",
+]);
+function isEstadoExcluido(estado) {
+  return ESTADOS_EXCLUIDOS_NORM.has((estado || "").toLowerCase().trim());
+}
 
 // ── computeRowSla ──────────────────────────────────────────────────────────
 function computeRowSla(row, slaConfig, horariosMap) {
@@ -3512,7 +3520,7 @@ export default function InformeCruzVerde({ isAdmin }) {
   useEffect(() => {
     if (!mesSel) { setRows([]); return; }
     idbLoad(mesSel).then(data =>
-      setRows((data?.rows || []).filter(r => !ESTADOS_EXCLUIDOS.has(r.estado)))
+      setRows((data?.rows || []).filter(r => !isEstadoExcluido(r.estado)))
     );
   }, [mesSel]);
 
@@ -3528,7 +3536,7 @@ export default function InformeCruzVerde({ isAdmin }) {
     if (!prevMesSel) { setPrevRows([]); return; }
     idbLoad(prevMesSel).then(data => {
       const enriched = (data?.rows || [])
-        .filter(r => !ESTADOS_EXCLUIDOS.has(r.estado))
+        .filter(r => !isEstadoExcluido(r.estado))
         .map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
       setPrevRows(enriched);
     });
