@@ -1842,6 +1842,14 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
     return unique.filter(d => d && !horariosKeys.has(normalizeDireccion(d))).sort();
   }, [rows, horariosKeys]);
 
+  const rowsSinHorario = useMemo(() => {
+    if (!direccionesFaltantes.length || !rows?.length) return [];
+    const faltantesSet = new Set(direccionesFaltantes.map(d => normalizeDireccion(d)));
+    return rows.filter(r =>
+      r.linea === "integ_sd" && r.direccionOrigen && faltantesSet.has(normalizeDireccion(r.direccionOrigen))
+    );
+  }, [rows, direccionesFaltantes]);
+
   // Filtro de búsqueda en tabla de horarios
   const filteredHorarios = sdSearch.trim()
     ? horarios.filter(h => {
@@ -2067,9 +2075,36 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
         {/* Panel de alertas: direcciones faltantes */}
         {direccionesFaltantes.length > 0 && (
           <div className="mb-4 border border-amber-200 bg-amber-50 rounded-xl p-4">
-            <p className="text-xs font-bold text-amber-700 mb-2">
-              ⚠️ {direccionesFaltantes.length} direccion{direccionesFaltantes.length !== 1 ? "es" : ""} en datos Same Day sin horario registrado
-            </p>
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <p className="text-xs font-bold text-amber-700">
+                ⚠️ {direccionesFaltantes.length} direccion{direccionesFaltantes.length !== 1 ? "es" : ""} en datos Same Day sin horario registrado
+              </p>
+              <button
+                onClick={() => {
+                  const headers = ["Booking", "Ciudad", "Dirección", "Fecha", "Estado"];
+                  const csvRows = rowsSinHorario.map(r => [
+                    r.idServicio || r.uuid || "",
+                    r.ciudad || "",
+                    r.direccionOrigen || "",
+                    r.fecha || "",
+                    r.estado || "",
+                  ]);
+                  const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+                  const csv = [headers, ...csvRows].map(row => row.map(escape).join(",")).join("\n");
+                  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "tiendas-sin-horario.csv";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
+                style={{ background: C_AMB }}
+              >
+                ⬇ Descargar servicios ({rowsSinHorario.length})
+              </button>
+            </div>
             <p className="text-xs text-amber-600 mb-2">
               Estas tiendas aparecen en los servicios pero no están en el directorio de horarios. Actualiza el archivo para incluirlas y que el tiempo perfecto se calcule correctamente.
             </p>
