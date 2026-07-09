@@ -8,6 +8,7 @@ import {
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT,
 } from "./utils";
+import { useRiesgoFilter, empresaMatchesOpType } from "./RiesgoContext";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const COLORS = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7","#6366F1","#EC4899","#8B5CF6"];
@@ -157,6 +158,7 @@ function DrillDown({ empresa, mesLabel }) {
 export default function RankingRiesgo() {
   const meses = mesesDisponibles();
   const umb   = getUmbrales();
+  const { filterOpType } = useRiesgoFilter();
 
   const [mesKey, setMesKey]             = useState(meses[meses.length-1]?.key || "");
   useEffect(() => {
@@ -170,24 +172,47 @@ export default function RankingRiesgo() {
   const [empresaSel, setEmpresaSel]     = useState(null);
 
   // Mes anterior automatico
-  const idxActual   = meses.findIndex(m=>m.key===mesKey);
-  const mesPrevMeta = idxActual > 0 ? meses[idxActual-1] : null;
+  const idxActual    = meses.findIndex(m=>m.key===mesKey);
+  const mesActualMeta = meses[idxActual] || null;
+  const mesPrevMeta  = idxActual > 0 ? meses[idxActual-1] : null;
 
   const dataMes  = useMemo(()=> mesKey ? loadMesData(mesKey)   : null, [mesKey]);
   const dataPrev = useMemo(()=> mesPrevMeta ? loadMesData(mesPrevMeta.key) : null, [mesPrevMeta]);
 
+  // Factor de escala: rango ClickHouse actual vs mes completo anterior
+  const { scaleFactor, rangoActualDias } = useMemo(() => {
+    if (!mesActualMeta || !mesPrevMeta) return { scaleFactor: 1, rangoActualDias: null };
+    const archivoAct = mesActualMeta.archivo || "";
+    const matchAct = archivoAct.match(/ClickHouse \((\d{4}-\d{2}-\d{2}) → (\d{4}-\d{2}-\d{2})\)/);
+    if (!matchAct) return { scaleFactor: 1, rangoActualDias: null };
+    // Si el anterior también es rango ClickHouse, comparar directo sin escalar
+    if ((mesPrevMeta.archivo || "").startsWith("ClickHouse")) return { scaleFactor: 1, rangoActualDias: null };
+    const d1 = new Date(matchAct[1] + "T12:00:00");
+    const d2 = new Date(matchAct[2] + "T12:00:00");
+    const dias = Math.round((d2 - d1) / 86400000) + 1;
+    const diasMesPrev = new Date(mesPrevMeta.anio, mesPrevMeta.mes, 0).getDate();
+    return { scaleFactor: dias / diasMesPrev, rangoActualDias: dias };
+  }, [mesActualMeta, mesPrevMeta]);
+
   const empresasConScore = useMemo(()=>{
     if (!dataMes) return [];
     const ORDER = { rojo: 0, amarillo: 1, verde: 2 };
-    return dataMes.empresas.map(e => {
-      const prev = dataPrev?.empresas?.find(p=>p.empresa===e.empresa);
-      return { ...e, ...calcularScore(e, prev||null, umb) };
-    }).sort((a,b) => {
-      const riskDiff = ORDER[a.color] - ORDER[b.color];
-      if (riskDiff !== 0) return riskDiff;
-      return b.gmv - a.gmv;
-    });
-  }, [dataMes, dataPrev, umb]);
+    return dataMes.empresas
+      .filter(e => empresaMatchesOpType(e, filterOpType))
+      .map(e => {
+        const prev = dataPrev?.empresas?.find(p=>p.empresa===e.empresa);
+        const prevAjustado = (prev && scaleFactor !== 1) ? {
+          ...prev,
+          gmv:   prev.gmv   * scaleFactor,
+          total: Math.round(prev.total * scaleFactor),
+        } : prev;
+        return { ...e, ...calcularScore(e, prevAjustado || null, umb) };
+      }).sort((a,b) => {
+        const riskDiff = ORDER[a.color] - ORDER[b.color];
+        if (riskDiff !== 0) return riskDiff;
+        return b.gmv - a.gmv;
+      });
+  }, [dataMes, dataPrev, scaleFactor, umb, filterOpType]);
 
   // Lista dinamica de ejecutivos
   const kamsDisponibles = useMemo(()=>{
@@ -251,6 +276,9 @@ export default function RankingRiesgo() {
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold"
                  style={{background:BRAND_GRADIENT}}>
               📊 Comparando vs <b className="ml-1">{mesPrevMeta.label}</b>
+              {rangoActualDias && (
+                <span className="ml-1 text-xs font-normal opacity-80">(proporcional {rangoActualDias} días)</span>
+              )}
             </div>
           )}
         </div>

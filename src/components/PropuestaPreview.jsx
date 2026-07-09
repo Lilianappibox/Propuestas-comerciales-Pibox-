@@ -206,9 +206,9 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
             <div className="mb-3"><ML text={T.onDemandNotas} /></div>
             <p className="text-xs font-semibold text-gray-700 mb-2">Tarifas Adicionales:</p>
             <DataTable
-              headers={["Ciudad", "Vehículo", "Tiempo de Espera", "Tarifa Minuto Adicional", "Bonificación", "Recargo Periferia"]}
+              headers={["Ciudad", "Vehículo", "Tiempo de Espera", "Tarifa Minuto Adicional", "Bonificación", "Recargo Periferia", "Aledaño", "Lejanía"]}
               rows={tarifas.onDemand.adicionales.map((a) => [
-                a.ciudad, a.vehiculo, a.tiempoEspera, fmt(a.tarifaMinuto), fmt(a.bonificacion), fmt(a.recargo),
+                a.ciudad, a.vehiculo, a.tiempoEspera, fmt(a.tarifaMinuto), fmt(a.bonificacion), fmt(a.recargo), fmt(a.aledanos ?? "N.A"), fmt(a.lejania ?? "N.A"),
               ])}
             />
             <PolicyTable rows={[
@@ -239,12 +239,14 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
             />
             <p className="text-xs text-gray-600 mb-3">* Hora adicional: con el mismo costo.</p>
             <DataTable
-              headers={["Tipo de Recaudo", "% Recaudo Ida/Vuelta", "Parada en Falso", "Recargo Periferia"]}
+              headers={["Tipo de Recaudo", "% Recaudo Ida/Vuelta", "Parada en Falso", "Recargo Periferia", "Aledaño", "Lejanía"]}
               rows={[[
                 "Ida y vuelta",
                 `${tarifas.programadoBloqueHoras.adicionales.recaudoIdaVuelta}%`,
                 fmtU(tarifas.programadoBloqueHoras.adicionales.paradaEnFalso, tarifas.programadoBloqueHoras.adicionales.paradaEnFalsoUnidad || "$"),
                 fmt(tarifas.programadoBloqueHoras.adicionales.recargo),
+                fmt(tarifas.programadoBloqueHoras.adicionales.aledanos ?? "N.A"),
+                fmt(tarifas.programadoBloqueHoras.adicionales.lejania ?? "N.A"),
               ]]}
             />
             <PolicyTable rows={[
@@ -270,13 +272,16 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
               ])}
             />
             <DataTable
-              headers={["Tipo de Recaudo", "Medio de Recaudo", "% Ida/Vuelta", "Intentos de Entrega", "Tarifa Devoluciones"]}
+              headers={["Tipo de Recaudo", "Medio de Recaudo", "% Ida/Vuelta", "Intentos de Entrega", "Tarifa Devoluciones", "Recargo Periferia", "Aledaño", "Lejanía"]}
               rows={[[
                 "Ida y vuelta",
                 tarifas.programadoRutas.adicionales.medioRecaudo,
                 `${tarifas.programadoRutas.adicionales.recaudoIdaVuelta}%`,
                 tarifas.programadoRutas.adicionales.intentosEntrega,
                 fmt(tarifas.programadoRutas.adicionales.tarifaDevoluciones),
+                fmt(tarifas.programadoRutas.adicionales.recargoPeriferia ?? 0),
+                fmt(tarifas.programadoRutas.adicionales.aledanos ?? "N.A"),
+                fmt(tarifas.programadoRutas.adicionales.lejania ?? "N.A"),
               ]]}
             />
             <div className="text-xs text-gray-600 space-y-1 bg-blue-50 p-3 rounded">
@@ -297,13 +302,16 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
               ])}
             />
             <DataTable
-              headers={["Tipo de Recaudo", "Medio de Recaudo", "% Ida/Vuelta", "Intentos de Entrega", "Tarifa Devoluciones"]}
+              headers={["Tipo de Recaudo", "Medio de Recaudo", "% Ida/Vuelta", "Intentos de Entrega", "Tarifa Devoluciones", "Recargo Periferia", "Aledaño", "Lejanía"]}
               rows={[[
                 "Ida y vuelta",
                 tarifas.entregasOptimizadas.adicionales?.medioRecaudo || "Datáfono / Efectivo",
                 `${tarifas.entregasOptimizadas.adicionales?.recaudoIdaVuelta || 5}%`,
                 tarifas.entregasOptimizadas.adicionales?.intentosEntrega || 1,
                 fmt(tarifas.entregasOptimizadas.adicionales?.tarifaDevoluciones || 0),
+                fmt(tarifas.entregasOptimizadas.adicionales?.recargoPeriferia ?? 0),
+                fmt(tarifas.entregasOptimizadas.adicionales?.aledanos ?? "N.A"),
+                fmt(tarifas.entregasOptimizadas.adicionales?.lejania ?? "N.A"),
               ]]}
             />
             <div className="text-xs text-gray-600 space-y-1 bg-blue-50 p-3 rounded">

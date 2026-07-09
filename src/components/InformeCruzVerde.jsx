@@ -187,6 +187,7 @@ function procesarRows(rawRows) {
     return {
       uuid:              r.uuid_booking || idServicio,
       idServicio,
+      idPaquete:         String(r.id_paquete || "").trim(),
       numeroPaquete,
       fecha:             toDateStr(r.asignado || r.iniciado || r.salio_de_origen),
       mes:               toMesLabel(r.asignado || r.iniciado || r.salio_de_origen),
@@ -200,6 +201,8 @@ function procesarRows(rawRows) {
       horaAsignado:      horaMin(r.asignado),
       esDevolucion:      /^si$/i.test(String(r["finalizado fallido"] ?? r.finalizado_fallido ?? "").trim()),
       esPerfecto:        estado === "Finalizado",
+      esNoCompletado:    isNoCompletado(estado),
+      esCancelado:       isCancelado(estado),
       tsalida,
       dayOfWeek,
       direccionOrigen:   (r.direccion_origen || "").trim(),
@@ -245,6 +248,13 @@ function isEstadoExcluido(estado) {
   // Excluye cualquier variante de "Status [N] - Sin clasificar"
   if (/^status\s*\[.*\]\s*-\s*sin clasificar$/i.test(s)) return true;
   return false;
+}
+// "No completado" y "Cancelado" se excluyen del indicador de No Perfectos pero permanecen en el total
+function isNoCompletado(estado) {
+  return /^no[\s-]?complet/i.test((estado || "").trim());
+}
+function isCancelado(estado) {
+  return /cancel/i.test((estado || "").trim());
 }
 
 // ── computeRowSla ──────────────────────────────────────────────────────────
@@ -492,7 +502,7 @@ function calcMetricas(rows) {
   const slaDefined = rows.filter(r => r.slaCumplido !== null);
   const slaMet   = slaDefined.filter(r => r.slaCumplido).length;
   const devol    = rows.filter(r => r.esDevolucion).length;
-  const noPerfectos = rows.filter(r => !r.esPerfecto).length;
+  const noPerfectos = rows.filter(r => r.slaCumplido === false).length;
   const tiempos  = rows.filter(r => r.minutos != null).map(r => r.minutos);
   const avgMin   = tiempos.length ? tiempos.reduce((a,b)=>a+b,0)/tiempos.length : null;
   const ciudades = new Set(rows.map(r => r.ciudad)).size;
@@ -807,7 +817,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
   const isNextDay  = linea === "integ_nd";
 
   function descargarNoPerfectos() {
-    const noPerfectos = rows.filter(r => !r.esPerfecto);
+    const noPerfectos = rows.filter(r => r.slaCumplido === false);
     const data = noPerfectos.map(r => ({
       "Booking ID":          r.idServicio || r.uuid || "—",
       "Estado":              r.estado || "—",
@@ -831,7 +841,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard icon="📦" label="Total servicios" value={fmtNum(m.total)} color={C_TEAL} />
         <KpiCard icon="✅" label="Entregados" value={fmtNum(m.entregados)} sub={fmtPct(pct(m.entregados, m.total))} color={C_GRN} />
-        <KpiCard icon="⚠️" label="No perfectos" value={fmtNum(m.noPerfectos)} sub={fmtPct(pct(m.noPerfectos, m.total))} color={C_RED} />
+        <KpiCard icon="⚠️" label="No perfectos" value={fmtNum(m.noPerfectos)} sub={m.slaDef > 0 ? `${fmtPct(pct(m.noPerfectos, m.slaDef))} de medidos` : "—"} color={C_RED} />
         {!isNextDay
           ? <KpiCard icon="⏱️" label="Tiempo prom." value={fmtMin(m.avgMin)} sub={m.slaDef > 0 ? `SLA ${fmtPct(pct(m.slaMet, m.slaDef))}` : "Sin SLA"} color={C_CYAN} />
           : <KpiCard icon="🕕" label="SLA ≤ 18:00" value={m.slaDef > 0 ? fmtPct(pct(m.slaMet, m.slaDef)) : "—"} sub={`${fmtNum(m.slaMet)} de ${fmtNum(m.slaDef)}`} color={C_CYAN} />
@@ -1577,7 +1587,7 @@ function HeatmapDiaHora({ rows }) {
   );
 }
 
-function ResumenPanel({ rows }) {
+function ResumenPanel({ rows, allRows }) {
   const lineas = [
     { key:"mostrador",  label:"Cruz Verde Mostrador", color:C_TEAL  },
     { key:"integ_sd",   label:"Integración Same Day", color:C_CYAN  },
@@ -1595,7 +1605,7 @@ function ResumenPanel({ rows }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard icon="📦" label="Total servicios" value={fmtNum(mTotal.total)} color={C_TEAL} />
         <KpiCard icon="✅" label="Entregados" value={fmtNum(mTotal.entregados)} sub={fmtPct(pct(mTotal.entregados, mTotal.total))} color={C_GRN} />
-        <KpiCard icon="⚠️" label="No perfectos" value={fmtNum(mTotal.noPerfectos)} sub={fmtPct(pct(mTotal.noPerfectos, mTotal.total))} color={C_RED} />
+        <KpiCard icon="⚠️" label="No perfectos" value={fmtNum(mTotal.noPerfectos)} sub={mTotal.slaDef > 0 ? `${fmtPct(pct(mTotal.noPerfectos, mTotal.slaDef))} de medidos` : "—"} color={C_RED} />
         <KpiCard icon="⏱️" label="SLA global" value={mTotal.slaDef>0?fmtPct(pct(mTotal.slaMet,mTotal.slaDef)):"—"} sub={`${fmtNum(mTotal.slaMet)} de ${fmtNum(mTotal.slaDef)}`} color={C_CYAN} />
         <KpiCard icon="🏙️" label="Ciudades" value={mTotal.ciudades} color="#6366F1" />
         <KpiCard icon="🏪" label="Sucursales" value={mTotal.sucursales} color="#A855F7" />
@@ -1704,7 +1714,7 @@ function ResumenPanel({ rows }) {
         </div>
       </div>
       <HeatmapDiaHora rows={rows} />
-      <BuscadorServicio rows={rows} />
+      <BuscadorServicio rows={allRows || rows} />
     </div>
   );
 }
@@ -2704,6 +2714,419 @@ function PilotosPanel({ rows, prevRows, prevMesLabel }) {
   );
 }
 
+// ── Productividad Pilotos Integración ──────────────────────────────────────
+function ProductividadPilotosPanel({ rows }) {
+  const integRows = useMemo(
+    () => rows.filter(r => r.linea === "integ_sd" || r.linea === "integ_nd"),
+    [rows]
+  );
+
+  const ciudades = useMemo(
+    () => [...new Set(integRows.map(r => r.ciudad).filter(Boolean))].sort(),
+    [integRows]
+  );
+
+  const [filtPiloto,    setFiltPiloto]    = useState("");
+  const [filtCiudad,    setFiltCiudad]    = useState("todas");
+  const [filtDireccion, setFiltDireccion] = useState("");
+
+  const filteredBase = useMemo(() => {
+    let r = integRows;
+    if (filtPiloto.trim())    r = r.filter(row => (row.nombrePiloto  || "").toLowerCase().includes(filtPiloto.trim().toLowerCase()));
+    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad === filtCiudad);
+    if (filtDireccion.trim()) r = r.filter(row => (row.direccionOrigen || "").toLowerCase().includes(filtDireccion.trim().toLowerCase()));
+    return r;
+  }, [integRows, filtPiloto, filtCiudad, filtDireccion]);
+
+  const dailyData = useMemo(() => {
+    const map = {};
+    for (const r of filteredBase) {
+      if (!r.nombrePiloto || !r.fecha) continue;
+      const key = `${r.nombrePiloto}||${r.fecha}||${r.ciudad || ""}`;
+      if (!map[key]) map[key] = {
+        piloto: r.nombrePiloto, fecha: r.fecha, ciudad: r.ciudad || "—",
+        serviciosSet: new Set(), paquetes: 0,
+        slaMet: 0, slaDef: 0, entregados: 0, total: 0,
+        kmSum: 0, kmCount: 0,
+        minHora: Infinity, maxHora: -Infinity,
+      };
+      const d = map[key];
+      const bid = r.uuid || r.idServicio;
+      if (bid) d.serviciosSet.add(bid);
+      d.paquetes++;
+      d.total++;
+      if (r.esPerfecto && !r.fueraHorario) d.entregados++;
+      if (r.slaCumplido === true)  d.slaMet++;
+      if (r.slaCumplido !== null)  d.slaDef++;
+      if (r.km > 0) { d.kmSum += r.km; d.kmCount++; }
+      if (r.horaAsignado != null) { d.minHora = Math.min(d.minHora, r.horaAsignado); d.maxHora = Math.max(d.maxHora, r.horaAsignado); }
+      if (r.horaEntrega  != null) d.maxHora = Math.max(d.maxHora, r.horaEntrega);
+    }
+    return Object.values(map).map(d => {
+      const svs = d.serviciosSet.size;
+      const horasOp = (d.minHora < Infinity && d.maxHora > -Infinity && d.maxHora > d.minHora)
+        ? (d.maxHora - d.minHora) / 60 : null;
+      return {
+        piloto:        d.piloto,
+        fecha:         d.fecha,
+        ciudad:        d.ciudad,
+        servicios:     svs,
+        paquetes:      d.paquetes,
+        slaMet:        d.slaMet,  slaDef:    d.slaDef,
+        entregados:    d.entregados, total:   d.total,
+        slaPct:        d.slaDef  > 0 ? d.slaMet    / d.slaDef  : null,
+        entregaPct:    d.total   > 0 ? d.entregados / d.total  : null,
+        kmPromedio:    d.kmCount > 0 ? d.kmSum      / d.kmCount : null,
+        horasOp,
+        svPorHora:     horasOp != null && horasOp > 0 ? svs / horasOp : null,
+      };
+    }).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.piloto.localeCompare(b.piloto));
+  }, [filteredBase]);
+
+  const weeklyData = useMemo(() => {
+    const getMondayStr = (dateStr) => {
+      const d = new Date(dateStr + "T12:00:00");
+      const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+      d.setDate(d.getDate() + diff);
+      return d.toISOString().slice(0, 10);
+    };
+    const map = {};
+    for (const d of dailyData) {
+      const monday = getMondayStr(d.fecha);
+      const key = `${d.piloto}||${monday}`;
+      if (!map[key]) map[key] = {
+        piloto: d.piloto, semana: monday, dias: 0,
+        servicios: 0, paquetes: 0,
+        slaMet: 0, slaDef: 0, entregados: 0, total: 0,
+        kmWSum: 0, kmWCount: 0,
+        horasOpSum: 0, horasOpCount: 0,
+      };
+      const w = map[key];
+      w.dias++;
+      w.servicios  += d.servicios;
+      w.paquetes   += d.paquetes;
+      w.slaMet     += d.slaMet;
+      w.slaDef     += d.slaDef;
+      w.entregados += d.entregados;
+      w.total      += d.total;
+      if (d.kmPromedio != null && d.servicios > 0) {
+        w.kmWSum   += d.kmPromedio * d.servicios;
+        w.kmWCount += d.servicios;
+      }
+      if (d.horasOp != null) { w.horasOpSum += d.horasOp; w.horasOpCount++; }
+    }
+    return Object.values(map).map(w => ({
+      piloto:      w.piloto,
+      semana:      w.semana,
+      dias:        w.dias,
+      servicios:   w.servicios,
+      paquetes:    w.paquetes,
+      slaPct:      w.slaDef      > 0 ? w.slaMet    / w.slaDef      : null,
+      entregaPct:  w.total       > 0 ? w.entregados / w.total       : null,
+      kmPromedio:  w.kmWCount    > 0 ? w.kmWSum     / w.kmWCount    : null,
+      svPorHora:   w.horasOpCount > 0 ? w.servicios / w.horasOpSum  : null,
+    })).sort((a, b) => a.semana.localeCompare(b.semana) || a.piloto.localeCompare(b.piloto));
+  }, [dailyData]);
+
+  const DAY_LABELS = { 1:"Lunes", 2:"Martes", 3:"Miércoles", 4:"Jueves", 5:"Viernes", 6:"Sábado", 0:"Domingo" };
+  const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  // Bucket 0 = "00:00" agrupa madrugada (horas 0-5); luego 06:00–23:00 individualmente
+  const HOUR_BUCKETS = [
+    { label: "00:00", hours: [0,1,2,3,4,5] },
+    ...Array.from({ length: 18 }, (_, i) => ({ label: `${String(i+6).padStart(2,"0")}:00`, hours: [i+6] })),
+  ];
+  const hourToBucket = (h) => h <= 5 ? 0 : h - 5;
+
+  const heatmapData = useMemo(() => {
+    const countMap = {}; // { day: { bucketIdx: count } }
+    for (const r of filteredBase) {
+      if (r.horaAsignado == null) continue;
+      const day = r.dayOfWeek ?? new Date((r.fecha || "") + "T12:00:00").getDay();
+      const bi  = hourToBucket(Math.floor(r.horaAsignado / 60));
+      if (!countMap[day]) countMap[day] = {};
+      countMap[day][bi] = (countMap[day][bi] || 0) + 1;
+    }
+    const days   = DAYS_ORDER.filter(d => countMap[d]);
+    const maxVal = Math.max(1, ...days.flatMap(d => HOUR_BUCKETS.map((_, i) => countMap[d]?.[i] ?? 0)));
+    return { countMap, days, maxVal };
+  }, [filteredBase]);
+
+  const purpleHeat = (val, max) => {
+    if (!val) return null;
+    const t = Math.min(val / max, 1);
+    const r = Math.round(237 + (76  - 237) * t);
+    const g = Math.round(233 + (29  - 233) * t);
+    const b = Math.round(254 + (149 - 254) * t);
+    return `rgb(${r},${g},${b})`;
+  };
+  const heatTextColor = (val, max) =>
+    (val && val / max > 0.45) ? "#fff" : "#4c1d95";
+
+  const descargarHeatmap = () => {
+    const { countMap, days } = heatmapData;
+    const headers = ["Día", ...HOUR_BUCKETS.map(b => b.label)];
+    const csvRows = days.map(d => [
+      DAY_LABELS[d],
+      ...HOUR_BUCKETS.map((_, i) => countMap[d]?.[i] ?? 0),
+    ]);
+    const esc = v => `"${String(v).replace(/"/g,'""')}"`;
+    const csv = [headers, ...csvRows].map(row => row.map(esc).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = "heatmap-pilotos-dia-hora.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const fmtSemana = (mondayStr) => {
+    const d = new Date(mondayStr + "T12:00:00");
+    const sun = new Date(d); sun.setDate(d.getDate() + 6);
+    const fmt = (dt) => `${String(dt.getDate()).padStart(2,"0")}/${String(dt.getMonth()+1).padStart(2,"0")}`;
+    return `${fmt(d)} – ${fmt(sun)}`;
+  };
+
+  const colorPct = (v) => v == null ? "#9ca3af" : v >= 0.95 ? C_GRN : v >= 0.85 ? C_AMB : C_RED;
+  const fmtPctVal = (v) => v != null ? (v * 100).toFixed(1) + "%" : "—";
+  const fmtKmVal  = (v) => v != null ? v.toFixed(1) + " km" : "—";
+
+  const descargarDiario = () => {
+    const headers = ["Piloto","Fecha","Ciudad","Servicios","Paquetes","% SLA","% Efectividad","Km Prom."];
+    const csvRows = dailyData.map(d => [
+      d.piloto, d.fecha, d.ciudad,
+      d.servicios, d.paquetes,
+      d.slaPct     != null ? (d.slaPct     * 100).toFixed(1) + "%" : "N/A",
+      d.entregaPct != null ? (d.entregaPct * 100).toFixed(1) + "%" : "N/A",
+      d.kmPromedio != null ? d.kmPromedio.toFixed(2) : "N/A",
+    ]);
+    const esc = v => `"${String(v).replace(/"/g,'""')}"`;
+    const csv = [headers, ...csvRows].map(row => row.map(esc).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = "productividad-pilotos-integracion.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const thCls = "p-2 text-left font-semibold text-xs whitespace-nowrap";
+  const tdCls = "p-2 text-xs";
+  const anyFilter = filtPiloto || filtCiudad !== "todas" || filtDireccion;
+
+  return (
+    <div className="space-y-6">
+
+      {/* Filtros */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+        <p className="text-sm font-bold text-gray-700 mb-4">🔍 Filtros</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Nombre de piloto</label>
+            <input
+              type="text" value={filtPiloto}
+              onChange={e => setFiltPiloto(e.target.value)}
+              placeholder="Buscar piloto..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Ciudad</label>
+            <select
+              value={filtCiudad}
+              onChange={e => setFiltCiudad(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+            >
+              <option value="todas">Todas</option>
+              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Dirección origen</label>
+            <input
+              type="text" value={filtDireccion}
+              onChange={e => setFiltDireccion(e.target.value)}
+              placeholder="Buscar dirección..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+        </div>
+        {anyFilter && (
+          <div className="mt-3 flex items-center gap-3">
+            <span className="text-xs text-teal-700 font-semibold">
+              {filteredBase.length.toLocaleString()} servicios filtrados
+            </span>
+            <button
+              onClick={() => { setFiltPiloto(""); setFiltCiudad("todas"); setFiltDireccion(""); }}
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >Limpiar filtros</button>
+          </div>
+        )}
+      </div>
+
+      {/* Heatmap día/hora */}
+      {heatmapData.days.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <p className="text-sm font-bold text-gray-700">📊 Servicios asignados por día y hora</p>
+            <button
+              onClick={descargarHeatmap}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90"
+              style={{ background: "#7c3aed" }}
+            >
+              ↓ Descargar detalle
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="border-collapse text-xs" style={{ minWidth: "700px", width: "100%" }}>
+              <thead>
+                <tr>
+                  <th className="p-2 text-left font-semibold text-gray-500 whitespace-nowrap w-[110px]">Día / Hora</th>
+                  {HOUR_BUCKETS.map((b, i) => (
+                    <th key={i} className="p-1 text-center font-semibold text-gray-400 whitespace-nowrap">
+                      {b.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {heatmapData.days.map(day => (
+                  <tr key={day}>
+                    <td className="p-2 font-semibold text-gray-700 whitespace-nowrap">{DAY_LABELS[day]}</td>
+                    {HOUR_BUCKETS.map((_, i) => {
+                      const val = heatmapData.countMap[day]?.[i] ?? 0;
+                      const bg  = purpleHeat(val, heatmapData.maxVal);
+                      return (
+                        <td key={i} className="p-1 text-center">
+                          {val > 0 ? (
+                            <span
+                              className="inline-flex items-center justify-center rounded-lg font-semibold"
+                              style={{
+                                background: bg,
+                                color: heatTextColor(val, heatmapData.maxVal),
+                                minWidth: "36px", height: "28px", fontSize: "11px", padding: "0 4px",
+                              }}
+                            >
+                              {val}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tabla diaria */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <p className="text-sm font-bold text-gray-700">📅 Productividad diaria por piloto</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {dailyData.length} registros · Same Day + Next Day integración
+            </p>
+          </div>
+          <button
+            onClick={descargarDiario}
+            disabled={!dailyData.length}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: C_TEAL }}
+          >
+            ⬇ Descargar CSV
+          </button>
+        </div>
+        {dailyData.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">Sin datos para los filtros seleccionados.</p>
+        ) : (
+          <div className="overflow-x-auto max-h-[520px] overflow-y-auto rounded-lg border border-gray-100">
+            <table className="border-collapse" style={{ minWidth: "860px", width: "100%" }}>
+              <thead className="sticky top-0 z-10 bg-teal-50 text-teal-700">
+                <tr>
+                  <th className={thCls}>Piloto</th>
+                  <th className={thCls}>Fecha</th>
+                  <th className={thCls}>Ciudad</th>
+                  <th className={`${thCls} text-right`}>Servicios</th>
+                  <th className={`${thCls} text-right`}>Paquetes</th>
+                  <th className={`${thCls} text-right`}>% SLA</th>
+                  <th className={`${thCls} text-right`}>% Efectividad</th>
+                  <th className={`${thCls} text-right`}>Km prom.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyData.map((d, i) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className={`${tdCls} font-medium text-gray-800 max-w-[200px] truncate`} title={d.piloto}>{d.piloto || "—"}</td>
+                    <td className={`${tdCls} whitespace-nowrap text-gray-600`}>{d.fecha}</td>
+                    <td className={`${tdCls} text-gray-600`}>{d.ciudad}</td>
+                    <td className={`${tdCls} text-right font-bold`}>{d.servicios}</td>
+                    <td className={`${tdCls} text-right text-gray-700`}>{d.paquetes}</td>
+                    <td className={`${tdCls} text-right font-semibold`} style={{ color: colorPct(d.slaPct) }}>
+                      {fmtPctVal(d.slaPct)}
+                    </td>
+                    <td className={`${tdCls} text-right font-semibold`} style={{ color: colorPct(d.entregaPct) }}>
+                      {fmtPctVal(d.entregaPct)}
+                    </td>
+                    <td className={`${tdCls} text-right text-gray-600`}>{fmtKmVal(d.kmPromedio)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Tabla semanal */}
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+        <div className="mb-4">
+          <p className="text-sm font-bold text-gray-700">📆 Resumen semanal por piloto</p>
+          <p className="text-xs text-gray-400 mt-0.5">Sumatoria de los registros diarios agrupados por semana</p>
+        </div>
+        {weeklyData.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">Sin datos para los filtros seleccionados.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-100">
+            <table className="border-collapse w-full">
+              <thead className="bg-teal-50 text-teal-700">
+                <tr>
+                  <th className={thCls}>Piloto</th>
+                  <th className={thCls}>Semana</th>
+                  <th className={`${thCls} text-center`}>Días op.</th>
+                  <th className={`${thCls} text-right`}>Servicios</th>
+                  <th className={`${thCls} text-right`}>Paquetes</th>
+                  <th className={`${thCls} text-right`}>% SLA</th>
+                  <th className={`${thCls} text-right`}>% Efectividad</th>
+                  <th className={`${thCls} text-right`}>Km prom.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {weeklyData.map((w, i) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className={`${tdCls} font-medium text-gray-800 max-w-[200px] truncate`} title={w.piloto}>{w.piloto || "—"}</td>
+                    <td className={`${tdCls} whitespace-nowrap font-semibold`} style={{ color: C_TEAL }}>{fmtSemana(w.semana)}</td>
+                    <td className={`${tdCls} text-center text-gray-600`}>{w.dias}</td>
+                    <td className={`${tdCls} text-right font-bold`}>{w.servicios}</td>
+                    <td className={`${tdCls} text-right text-gray-700`}>{w.paquetes}</td>
+                    <td className={`${tdCls} text-right font-semibold`} style={{ color: colorPct(w.slaPct) }}>
+                      {fmtPctVal(w.slaPct)}
+                    </td>
+                    <td className={`${tdCls} text-right font-semibold`} style={{ color: colorPct(w.entregaPct) }}>
+                      {fmtPctVal(w.entregaPct)}
+                    </td>
+                    <td className={`${tdCls} text-right text-gray-600`}>{fmtKmVal(w.kmPromedio)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Buscador por ID de servicio o número de paquete ───────────────────────
 function BuscadorServicio({ rows }) {
   const [query,    setQuery]    = useState("");
@@ -2711,13 +3134,21 @@ function BuscadorServicio({ rows }) {
 
   const lineaLabel = { mostrador: "Mostrador", integ_sd: "Integ. Same Day", integ_nd: "Integ. Next Day" };
 
+  // Rango de fechas de los datos cargados
+  const fechasInfo = useMemo(() => {
+    const fechas = rows.map(r => r.fecha).filter(Boolean).sort();
+    if (!fechas.length) return null;
+    return { desde: fechas[0], hasta: fechas[fechas.length - 1], total: rows.length };
+  }, [rows]);
+
   function buscar(q) {
     const term = q.trim().toLowerCase();
     if (!term) { setResults(null); return; }
     const found = rows.filter(r =>
-      (r.idServicio     && r.idServicio.toLowerCase().includes(term)) ||
-      (r.numeroPaquete  && r.numeroPaquete.toLowerCase().includes(term)) ||
-      (r.uuid           && r.uuid.toLowerCase().includes(term))
+      (r.idServicio    && r.idServicio.toLowerCase().includes(term)) ||
+      (r.idPaquete     && r.idPaquete.toLowerCase().includes(term))  ||
+      (r.numeroPaquete && r.numeroPaquete.toLowerCase().includes(term)) ||
+      (r.uuid          && r.uuid.toLowerCase().includes(term))
     ).slice(0, 15);
     setResults(found);
   }
@@ -2739,7 +3170,14 @@ function BuscadorServicio({ rows }) {
 
   return (
     <div className="bg-white rounded-2xl shadow-md border border-teal-100 p-5">
-      <p className="text-sm font-bold text-gray-700 mb-3">🔎 Buscar servicio por ID o número de paquete</p>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <p className="text-sm font-bold text-gray-700">🔎 Buscar servicio por ID o número de paquete</p>
+        {fechasInfo && (
+          <span className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-3 py-0.5">
+            {fechasInfo.total.toLocaleString()} servicios · {fechasInfo.desde} → {fechasInfo.hasta}
+          </span>
+        )}
+      </div>
 
       <div className="flex gap-2">
         <input
@@ -2766,9 +3204,18 @@ function BuscadorServicio({ rows }) {
 
       {/* Sin resultados */}
       {results !== null && results.length === 0 && (
-        <p className="text-sm text-gray-400 mt-4 text-center py-4">
-          No se encontraron servicios con ese ID o número de paquete.
-        </p>
+        <div className="mt-4 text-center py-4 space-y-1">
+          <p className="text-sm text-gray-400">No se encontraron servicios con ese ID o número de paquete.</p>
+          {fechasInfo && (
+            <p className="text-xs text-gray-400">
+              Los datos cargados cubren del <strong>{fechasInfo.desde}</strong> al <strong>{fechasInfo.hasta}</strong> ({fechasInfo.total.toLocaleString()} servicios).
+              Si el servicio es de otra fecha, vuelve a consultar ClickHouse con el rango correcto.
+            </p>
+          )}
+          {!fechasInfo && (
+            <p className="text-xs text-gray-400">No hay datos cargados. Consulta ClickHouse primero.</p>
+          )}
+        </div>
       )}
 
       {/* Resultados */}
@@ -3453,7 +3900,8 @@ const TABS = [
   { id:"mostrador",  label:"Cruz Verde Mostrador",  icon:"🏪",  adminOnly: false },
   { id:"integ_sd",   label:"Integración Same Day",  icon:"⚡",  adminOnly: false },
   { id:"integ_nd",   label:"Integración Next Day",  icon:"📅",  adminOnly: false },
-  { id:"pilotos",    label:"Pilotos Cruz Verde",    icon:"🚴",  adminOnly: false },
+  { id:"pilotos",       label:"Pilotos Cruz Verde",              icon:"🚴",  adminOnly: false, hiddenForEmails: new Set(["jhon.potier@cruzverde.com.co"]) },
+  { id:"prod_pilotos", label:"Productividad Pilotos Integración", icon:"📈", adminOnly: false, hiddenForEmails: new Set(["jhon.potier@cruzverde.com.co"]) },
   { id:"entregas",   label:"Análisis Entregas",     icon:"📦",  adminOnly: false },
   { id:"admin",      label:"Administrativo",        icon:"🔧",  adminOnly: true  },
   { id:"insight",    label:"Insight",               icon:"💡",  adminOnly: false },
@@ -3731,7 +4179,12 @@ export default function InformeCruzVerde({ isAdmin }) {
   }, [tab, filteredRows]);
 
   // Visible tabs
-  const visibleTabs = TABS.filter(t => !t.adminOnly || isAdmin);
+  const currentEmail = (window.__RAILS_USER__?.email || "").toLowerCase().trim();
+  const visibleTabs = TABS.filter(t => {
+    if (t.adminOnly && !isAdmin) return false;
+    if (t.hiddenForEmails?.has(currentEmail)) return false;
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -3888,7 +4341,7 @@ export default function InformeCruzVerde({ isAdmin }) {
         {/* Paneles de análisis */}
         {rows.length > 0 && (
           <>
-            {tab === "resumen"    && <ResumenPanel rows={filteredRows} />}
+            {tab === "resumen"    && <ResumenPanel rows={filteredRows} allRows={allEnrichedRows} />}
             {tab === "mostrador"  && <LineaPanel rows={tabRows} linea="mostrador"
               prevRows={prevRows.filter(r => r.linea === "mostrador")} prevMesLabel={prevMesSel} />}
             {tab === "integ_sd"   && <LineaPanel rows={tabRows} linea="integ_sd"
@@ -3897,6 +4350,9 @@ export default function InformeCruzVerde({ isAdmin }) {
               prevRows={prevRows.filter(r => r.linea === "integ_nd")}  prevMesLabel={prevMesSel} />}
             {tab === "pilotos" && (
               <PilotosPanel rows={filteredRows} prevRows={prevRows} prevMesLabel={prevMesSel} />
+            )}
+            {tab === "prod_pilotos" && (
+              <ProductividadPilotosPanel rows={filteredRows} />
             )}
             {tab === "entregas" && (
               <EntregasPanel rows={filteredRows} />

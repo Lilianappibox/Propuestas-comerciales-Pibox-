@@ -143,9 +143,9 @@ export async function exportToWord(propuesta, tarifas, modulos) {
       note("* Km base: tarifa mínima. * Km extra: conteo después del km base. * No se tiene recaudo contra entrega."),
       h3("Tarifas Adicionales"),
       makeTable(
-        ["Ciudad", "Vehículo", "Tiempo Espera", "Tarifa Minuto", "Bonificación", "Recargo Periferia"],
-        tarifas.onDemand.adicionales.map((a) => [a.ciudad, a.vehiculo, a.tiempoEspera, fmt(a.tarifaMinuto), fmt(a.bonificacion), fmt(a.recargo)]),
-        [1200, 1200, 1500, 1500, 1400, 1560]
+        ["Ciudad", "Vehículo", "Tiempo Espera", "Tarifa Minuto", "Bonificación", "Recargo Periferia", "Aledaño", "Lejanía"],
+        tarifas.onDemand.adicionales.map((a) => [a.ciudad, a.vehiculo, a.tiempoEspera, fmt(a.tarifaMinuto), fmt(a.bonificacion), fmt(a.recargo), fmt(a.aledanos ?? "N.A"), fmt(a.lejania ?? "N.A")]),
+        [1000, 1000, 1200, 1200, 1100, 1100, 860, 900]
       ),
       h3("Políticas Comerciales y Operativas"),
       policyTable([
@@ -171,9 +171,9 @@ export async function exportToWord(propuesta, tarifas, modulos) {
         [1200, 800, 900, 1200, 1000, 1300, 1360]
       ),
       makeTable(
-        ["% Recaudo Ida/Vuelta", "Parada en Falso", "Recargo Periferia"],
-        [[`${tarifas.programadoBloqueHoras.adicionales.recaudoIdaVuelta}%`, fmt(tarifas.programadoBloqueHoras.adicionales.paradaEnFalso), fmt(tarifas.programadoBloqueHoras.adicionales.recargo)]],
-        [3120, 3120, 3120]
+        ["% Recaudo Ida/Vuelta", "Parada en Falso", "Recargo Periferia", "Aledaño", "Lejanía"],
+        [[`${tarifas.programadoBloqueHoras.adicionales.recaudoIdaVuelta}%`, fmt(tarifas.programadoBloqueHoras.adicionales.paradaEnFalso), fmt(tarifas.programadoBloqueHoras.adicionales.recargo), fmt(tarifas.programadoBloqueHoras.adicionales.aledanos ?? "N.A"), fmt(tarifas.programadoBloqueHoras.adicionales.lejania ?? "N.A")]],
+        [1872, 1872, 1872, 1872, 1872]
       ),
       h3("Políticas Comerciales"),
       policyTable([
@@ -196,9 +196,9 @@ export async function exportToWord(propuesta, tarifas, modulos) {
         [1200, 1300, 1300, 1500, 1400, 1660]
       ),
       makeTable(
-        ["Medio Recaudo", "% Ida/Vuelta", "Intentos Entrega", "Tarifa Devoluciones"],
-        [[tarifas.programadoRutas.adicionales.medioRecaudo, `${tarifas.programadoRutas.adicionales.recaudoIdaVuelta}%`, tarifas.programadoRutas.adicionales.intentosEntrega, fmt(tarifas.programadoRutas.adicionales.tarifaDevoluciones)]],
-        [2340, 2340, 2340, 2340]
+        ["Medio Recaudo", "% Ida/Vuelta", "Intentos Entrega", "Tarifa Devoluciones", "Recargo Periferia", "Aledaño", "Lejanía"],
+        [[tarifas.programadoRutas.adicionales.medioRecaudo, `${tarifas.programadoRutas.adicionales.recaudoIdaVuelta}%`, tarifas.programadoRutas.adicionales.intentosEntrega, fmt(tarifas.programadoRutas.adicionales.tarifaDevoluciones), fmt(tarifas.programadoRutas.adicionales.recargoPeriferia ?? 0), fmt(tarifas.programadoRutas.adicionales.aledanos ?? "N.A"), fmt(tarifas.programadoRutas.adicionales.lejania ?? "N.A")]],
+        [1560, 1170, 1170, 1560, 1300, 1300, 1300]
       ),
       note("ANS: 98% | Hora recogida máxima: 3:00 PM | Capacidad Moto: 50×50×50 / 50kg"),
     );

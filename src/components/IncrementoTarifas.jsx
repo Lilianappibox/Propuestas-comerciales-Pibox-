@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import XLSX from "../utils/xlsxHelper";
 import clientesDefault from "../data/tarifasCliente.json";
+import { publishToServer, fetchFromServer } from "./serverSync";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const SK_BD = "pibox_tarifas_clientes_bd";
@@ -17,6 +18,7 @@ const RATE_FIELDS = [
 ];
 
 const MAX_DISPLAY = 50;
+const MAX_PAGES = 3;
 
 const fmt = (v) => {
   if (v === null || v === undefined || v === "") return "—";
@@ -92,6 +94,8 @@ function parseExcelClientes(file) {
           const iKam = col(["kam", "account_manager"]);
           const iIdCompany = col(["id_company", "idcompany", "company_id"]);
           const iTarifaId = col(["tarifa_id", "tarifaid", "id_tarifa"]);
+          const iEstado = col(["estado", "status", "company_status", "estado_cliente"]);
+          const iEtiqueta = col(["etiqueta", "etiquetas", "tag", "tags", "label"]);
 
           if (iNombre < 0) { resolve([]); return; }
 
@@ -120,6 +124,8 @@ function parseExcelClientes(file) {
               kam: iKam >= 0 ? String(r[iKam] || "").trim() : "",
               idCompany: iIdCompany >= 0 ? String(r[iIdCompany] || "").trim() : "",
               tarifaId: iTarifaId >= 0 ? String(r[iTarifaId] || "").trim() : "",
+              estado: iEstado >= 0 ? String(r[iEstado] || "").trim() : "",
+              etiqueta: iEtiqueta >= 0 ? String(r[iEtiqueta] || "").trim() : "",
             });
           }
           resolve(clients);
@@ -130,25 +136,358 @@ function parseExcelClientes(file) {
   });
 }
 
+function chRowToBD(row) {
+  return {
+    nombre:        row.name_company  || "",
+    moneda:        row.moneda        || "COP",
+    tipoServicio:  row.type_service  || "",
+    ciudad:        row.ciudad        || "",
+    baseFare:      Number(row.base_fare)           || 0,
+    minimumFare:   Number(row.minimum_fare)        || 0,
+    distanceFare:  Number(row.distance_fare)       || 0,
+    extraStopFare: Number(row.extra_stop_fare)     || 0,
+    hourFare:      Number(row.hour_fare)           || 0,
+    hourBaseFare:  Number(row.hour_base_fare)      || 0,
+    packageFare:   Number(row.package_fare)        || 0,
+    comission:     Number(row.comission)           || 0,
+    utilidadCorp:  Number(row.utilidad_corporativa)|| 0,
+    credit:        Number(row.credit)              || 0,
+    tieneCredito:  row.tiene_credito || "",
+    mercadoFlex:   row.etiqueta      || "",
+    kam:           row.name_kam      || "",
+    idCompany:     row.id_company    || "",
+    tarifaId:      row.tarifa_id     || "",
+    estado:        row.estado        || "",
+    etiqueta:      row.etiqueta      || "",
+  };
+}
+
+function TarifasClickhousePanel({ isAdmin, onImportToBD, showToast }) {
+  const [status,    setStatus]    = useState("idle"); // idle | loading | done | error
+  const [data,      setData]      = useState([]);
+  const [error,     setError]     = useState("");
+  const [fetchedAt, setFetchedAt] = useState(null);
+  const [polling,   setPolling]   = useState(false);
+
+  // Filters
+  const [search,        setSearch]        = useState("");
+  const [fEstado,       setFEstado]       = useState("");
+  const [fCiudad,       setFCiudad]       = useState("");
+  const [fTipo,         setFTipo]         = useState("");
+  const [fKam,          setFKam]          = useState("");
+  const [fCredito,      setFCredito]      = useState("");
+  const [fEtiqueta,     setFEtiqueta]     = useState("");
+
+  const uniqueVals = (key) => [...new Set(data.map(r => r[key]).filter(Boolean))].sort();
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return data.filter(r => {
+      if (q && !String(r.name_company || "").toLowerCase().includes(q) && !String(r.name_business || "").toLowerCase().includes(q)) return false;
+      if (fEstado   && r.estado        !== fEstado)   return false;
+      if (fCiudad   && r.ciudad        !== fCiudad)   return false;
+      if (fTipo     && r.type_service  !== fTipo)     return false;
+      if (fKam      && r.name_kam      !== fKam)      return false;
+      if (fCredito  && r.tiene_credito !== fCredito)  return false;
+      if (fEtiqueta && r.etiqueta      !== fEtiqueta) return false;
+      return true;
+    });
+  }, [data, search, fEstado, fCiudad, fTipo, fKam, fCredito, fEtiqueta]);
+
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tarifas_clickhouse/status", { credentials: "same-origin" });
+      const json = await res.json();
+      if (json.status === "done") {
+        setData(json.data || []);
+        setFetchedAt(json.fetched_at);
+        setStatus("done");
+        setPolling(false);
+      } else if (json.status === "error") {
+        setError(json.error || "Error desconocido");
+        setStatus("error");
+        setPolling(false);
+      }
+    } catch (e) {
+      setError(e.message);
+      setStatus("error");
+      setPolling(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setInterval(pollStatus, 5000);
+    return () => clearInterval(timer);
+  }, [polling, pollStatus]);
+
+  const handleConsultar = async () => {
+    setStatus("loading");
+    setError("");
+    setData([]);
+    try {
+      const res = await fetch("/api/tarifas_clickhouse/consulta", { credentials: "same-origin" });
+      const json = await res.json();
+      if (json.status === "done") {
+        setData(json.data || []);
+        setFetchedAt(json.fetched_at);
+        setStatus("done");
+      } else if (json.status === "error") {
+        setError(json.error || "Error");
+        setStatus("error");
+      } else {
+        setPolling(true);
+      }
+    } catch (e) {
+      setError(e.message);
+      setStatus("error");
+    }
+  };
+
+  const handleImport = () => {
+    if (!data.length) return;
+    const bd = data.map(chRowToBD);
+    onImportToBD(bd, `ClickHouse ${new Date().toLocaleDateString("es-CO")}`);
+  };
+
+  const clearFilters = () => { setSearch(""); setFEstado(""); setFCiudad(""); setFTipo(""); setFKam(""); setFCredito(""); setFEtiqueta(""); };
+  const hasFilters = search || fEstado || fCiudad || fTipo || fKam || fCredito || fEtiqueta;
+
+  return (
+    <div className="space-y-4 px-4 py-4">
+      {/* Actions bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={handleConsultar}
+          disabled={status === "loading"}
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+        >
+          {status === "loading" ? (
+            <>
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+              Consultando ClickHouse...
+            </>
+          ) : "🔄 Consultar ClickHouse"}
+        </button>
+
+        {status === "done" && isAdmin && (
+          <button
+            onClick={handleImport}
+            className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition"
+          >
+            📥 Usar como BD de Incremento ({data.length.toLocaleString()} registros)
+          </button>
+        )}
+
+        {status === "done" && (
+          <span className="text-xs text-gray-400">
+            {fetchedAt ? `Actualizado: ${new Date(fetchedAt).toLocaleString("es-CO")}` : ""}
+            &nbsp;·&nbsp;
+            <span className="font-semibold text-purple-700">{data.length.toLocaleString()} tarifas totales</span>
+            {hasFilters && <> &nbsp;·&nbsp; <span className="text-gray-600">{filtered.length.toLocaleString()} filtradas</span></>}
+          </span>
+        )}
+
+        {status === "error" && (
+          <span className="text-sm text-red-600 font-medium">❌ {error}</span>
+        )}
+      </div>
+
+      {/* Filters (only when data is loaded) */}
+      {status === "done" && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+            <input
+              type="text"
+              placeholder="Buscar empresa..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-400 outline-none"
+            />
+            {[
+              { val: fEstado,   set: setFEstado,   key: "estado",       label: "Estado" },
+              { val: fCiudad,   set: setFCiudad,   key: "ciudad",       label: "Ciudad" },
+              { val: fTipo,     set: setFTipo,      key: "type_service", label: "Tipo Servicio" },
+              { val: fKam,      set: setFKam,       key: "name_kam",     label: "KAM" },
+              { val: fEtiqueta, set: setFEtiqueta,  key: "etiqueta",     label: "Etiqueta" },
+            ].map(({ val, set, key, label }) => (
+              <select key={key} value={val} onChange={e => set(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-purple-400 outline-none bg-white">
+                <option value="">Todos: {label}</option>
+                {uniqueVals(key).map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ))}
+            <select value={fCredito} onChange={e => setFCredito(e.target.value)}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-purple-400 outline-none bg-white">
+              <option value="">¿Crédito? (todos)</option>
+              <option value="Tiene crédito">Con crédito</option>
+              <option value="No tiene crédito">Sin crédito</option>
+            </select>
+          </div>
+          {hasFilters && (
+            <button onClick={clearFilters} className="text-xs text-purple-600 hover:underline font-semibold">✕ Limpiar filtros</button>
+          )}
+        </div>
+      )}
+
+      {/* Loading placeholder */}
+      {status === "loading" && (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="inline-block w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-sm text-gray-500">Consultando ClickHouse... puede tardar hasta 2 minutos.</p>
+          <p className="text-xs text-gray-400 mt-1">La consulta corre en segundo plano y se actualiza automáticamente.</p>
+        </div>
+      )}
+
+      {/* Table */}
+      {status === "done" && filtered.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm" style={{ maxHeight: "600px" }}>
+          <table className="text-xs" style={{ minWidth: "2400px", borderCollapse: "collapse" }}>
+            <thead className="sticky top-0 z-10">
+              <tr style={{ background: "linear-gradient(135deg,#5B17A8 0%,#7C22D4 100%)", color: "white" }}>
+                {CH_COLS.map(col => (
+                  <th key={col.key} style={{ minWidth: col.width, padding: "8px 10px", textAlign: col.money || col.pct ? "right" : "left", fontWeight: 600, fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+                    {col.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row, ri) => (
+                <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#faf5ff", borderTop: "1px solid #f3e8ff" }}>
+                  {CH_COLS.map(col => {
+                    const v = row[col.key];
+                    let cell;
+                    if (col.key === "estado") {
+                      cell = (
+                        <span style={{ padding: "2px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700, background: v === "activo" ? "#d1fae5" : "#fee2e2", color: v === "activo" ? "#065f46" : "#991b1b" }}>
+                          {v}
+                        </span>
+                      );
+                    } else if (col.key === "tiene_credito") {
+                      const tiene = String(v).includes("Tiene");
+                      cell = (
+                        <span style={{ padding: "2px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: 600, background: tiene ? "#dbeafe" : "#f3f4f6", color: tiene ? "#1e40af" : "#6b7280" }}>
+                          {tiene ? "Sí" : "No"}
+                        </span>
+                      );
+                    } else if (col.money) {
+                      cell = <span style={{ color: Number(v) > 0 ? "#5B17A8" : "#9ca3af" }}>{fmtMoney(v)}</span>;
+                    } else if (col.pct) {
+                      cell = <span>{fmtPct(v)}</span>;
+                    } else if (col.key === "creacion_tarifa" || col.key === "creacion_company") {
+                      cell = fmtDate(v);
+                    } else if (col.mono) {
+                      cell = <span style={{ fontFamily: "monospace", fontSize: "10px", color: "#6b7280" }}>{String(v || "").slice(0, 24)}{String(v || "").length > 24 ? "…" : ""}</span>;
+                    } else {
+                      cell = String(v || "");
+                    }
+                    return (
+                      <td key={col.key} style={{ padding: "6px 10px", textAlign: col.money || col.pct ? "right" : "left", color: "#374151", whiteSpace: "nowrap", maxWidth: col.width }}>
+                        {cell}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {status === "done" && filtered.length === 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400 text-sm">
+          Sin resultados con los filtros actuales.
+        </div>
+      )}
+
+      {status === "idle" && (
+        <div className="bg-purple-50 rounded-xl border border-purple-100 p-10 text-center">
+          <p className="text-sm text-purple-700 font-medium mb-1">Consulta las tarifas de clientes directamente desde ClickHouse</p>
+          <p className="text-xs text-purple-500">Haz clic en "Consultar ClickHouse" para cargar los datos en tiempo real.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function IncrementoTarifas({ isAdmin }) {
-  // BD dinámica
-  const [clientesDB, setClientesDB] = useState(loadBD);
+  // Vista activa
+  const [chMode, setChMode] = useState(false);
+
+  // ClickHouse state
+  const [chClientsDB,  setChClientsDB]  = useState([]);
+  const [chLoadStatus, setChLoadStatus] = useState("idle"); // idle | loading | done | error
+  const [chError,      setChError]      = useState("");
+  const [chFetchedAt,  setChFetchedAt]  = useState(null);
+  const [chPolling,    setChPolling]    = useState(false);
+
+  // BD dinámica (Excel / localStorage)
+  // No-admins arrancan vacíos y esperan confirmación del servidor antes de mostrar datos
+  const [clientesDB, setClientesDB] = useState(() => isAdmin ? loadBD() : []);
   const [historial, setHistorial] = useState(loadHistorial);
   const [showHist, setShowHist] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [bdInactiva, setBdInactiva] = useState(() => {
+    if (!isAdmin) return true; // esperar respuesta del servidor
+    return localStorage.getItem("pibox_tarifas_bd_inactiva") === "true";
+  });
   const fileRef = useRef();
 
-  // Filtros derivados de la BD actual
-  const tiposServicio = useMemo(() => uniqueFrom(clientesDB, "tipoServicio"), [clientesDB]);
-  const ciudades = useMemo(() => uniqueFrom(clientesDB, "ciudad"), [clientesDB]);
-  const kams = useMemo(() => uniqueFrom(clientesDB, "kam"), [clientesDB]);
+  // No-admin: la única fuente de verdad es el servidor
+  useEffect(() => {
+    if (isAdmin) return;
+    fetchFromServer("tarifas_bd").then((snap) => {
+      if (!snap?.ok) {
+        // Sin snapshot en el servidor → no hay BD disponible
+        setBdInactiva(true);
+        return;
+      }
+      const serverInactiva = snap.data?.inactiva === true;
+      setBdInactiva(serverInactiva);
+      if (!serverInactiva && Array.isArray(snap.data?.clientes) && snap.data.clientes.length > 0) {
+        setClientesDB(snap.data.clientes);
+      }
+    }).catch(() => {
+      // Error de red → mantener BD inactiva (estado inicial para no-admins)
+    });
+  }, [isAdmin]);
+
+  // BD activa: ClickHouse en memoria si está en ese modo, o la local (salvo que esté inactiva)
+  const activeBD = chMode && chClientsDB.length > 0 ? chClientsDB : (bdInactiva ? [] : clientesDB);
+
+  const handleInactivarBD = () => {
+    setBdInactiva(true);
+    localStorage.setItem("pibox_tarifas_bd_inactiva", "true");
+    setSelectedIds(new Set());
+    publishToServer("tarifas_bd", { clientes: clientesDB, inactiva: true }).catch(() => {});
+    showToast("⏸️ Base de datos desactivada para todos los usuarios");
+  };
+
+  const handleReactivarBD = () => {
+    setBdInactiva(false);
+    localStorage.removeItem("pibox_tarifas_bd_inactiva");
+    publishToServer("tarifas_bd", { clientes: clientesDB, inactiva: false }).catch(() => {});
+    showToast("✅ Base de datos reactivada para todos los usuarios");
+  };
+
+  // Filtros derivados de la BD activa
+  const tiposServicio = useMemo(() => uniqueFrom(activeBD, "tipoServicio"), [activeBD]);
+  const ciudades      = useMemo(() => uniqueFrom(activeBD, "ciudad"),       [activeBD]);
+  const kams          = useMemo(() => uniqueFrom(activeBD, "kam"),          [activeBD]);
+  const estados       = useMemo(() => uniqueFrom(activeBD, "estado"),       [activeBD]);
+  const etiquetas     = useMemo(() => uniqueFrom(activeBD, "etiqueta"),     [activeBD]);
 
   // Step 1 — filters & selection
-  const [searchText, setSearchText]       = useState("");
-  const [filterTipo, setFilterTipo]       = useState("");
-  const [filterCiudad, setFilterCiudad]   = useState("");
-  const [filterKam, setFilterKam]         = useState("");
+  const [searchText, setSearchText]         = useState("");
+  const [filterTipo, setFilterTipo]         = useState("");
+  const [filterCiudad, setFilterCiudad]     = useState("");
+  const [filterKam, setFilterKam]           = useState("");
+  const [filterEstado, setFilterEstado]     = useState("");
+  const [filterCredito, setFilterCredito]   = useState("");
+  const [filterEtiqueta, setFilterEtiqueta] = useState("");
   const [selectedIds, setSelectedIds]     = useState(new Set());
+  const [currentPage, setCurrentPage]     = useState(1);
 
   // Step 2 — increment config
   const [pctIncremento, setPctIncremento] = useState(10);
@@ -161,6 +500,69 @@ export default function IncrementoTarifas({ isAdmin }) {
   const [toast, setToast] = useState("");
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 4000); };
+
+  // ── ClickHouse handlers ──
+
+  useEffect(() => {
+    if (!chPolling) return;
+    const timer = setInterval(async () => {
+      try {
+        const res  = await fetch("/api/tarifas_clickhouse/status", { credentials: "same-origin" });
+        const json = await res.json();
+        if (json.status === "done") {
+          setChClientsDB((json.data || []).map(chRowToBD));
+          setChFetchedAt(json.fetched_at);
+          setChLoadStatus("done");
+          setChPolling(false);
+          setSelectedIds(new Set());
+        } else if (json.status === "error") {
+          setChError(json.error || "Error desconocido");
+          setChLoadStatus("error");
+          setChPolling(false);
+        }
+      } catch (e) {
+        setChError(e.message);
+        setChLoadStatus("error");
+        setChPolling(false);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [chPolling]);
+
+  const handleConsultarCH = async () => {
+    setChLoadStatus("loading");
+    setChError("");
+    try {
+      const res  = await fetch("/api/tarifas_clickhouse/consulta", { credentials: "same-origin" });
+      const json = await res.json();
+      if (json.status === "done") {
+        setChClientsDB((json.data || []).map(chRowToBD));
+        setChFetchedAt(json.fetched_at);
+        setChLoadStatus("done");
+        setSelectedIds(new Set());
+      } else if (json.status === "error") {
+        setChError(json.error || "Error");
+        setChLoadStatus("error");
+      } else {
+        setChPolling(true);
+      }
+    } catch (e) {
+      setChError(e.message);
+      setChLoadStatus("error");
+    }
+  };
+
+  const handleSaveChToBD = () => {
+    if (!chClientsDB.length) return;
+    setClientesDB(chClientsDB);
+    saveBD(chClientsDB);
+    const entry = { fecha: new Date().toISOString().slice(0, 19).replace("T", " "), registros: chClientsDB.length, origen: `ClickHouse ${new Date().toLocaleDateString("es-CO")}` };
+    const newHist = [...historial, entry];
+    setHistorial(newHist);
+    saveHistorial(newHist);
+    publishToServer("tarifas_bd", { clientes: chClientsDB }).catch(() => {});
+    showToast(`✅ BD guardada desde ClickHouse: ${chClientsDB.length.toLocaleString()} registros`);
+  };
 
   // Upload Excel
   const handleUpload = async (e) => {
@@ -180,6 +582,8 @@ export default function IncrementoTarifas({ isAdmin }) {
       setHistorial(newHist);
       saveHistorial(newHist);
       setSelectedIds(new Set());
+      // Publicar al servidor para que todos los usuarios vean la BD actualizada
+      publishToServer("tarifas_bd", { clientes }).catch(() => {});
       showToast(`✅ Base de datos actualizada: ${clientes.length.toLocaleString()} clientes desde "${file.name}"`);
     } catch (err) {
       showToast(`❌ Error al leer el archivo: ${err.message}`);
@@ -197,22 +601,38 @@ export default function IncrementoTarifas({ isAdmin }) {
     setHistorial(newHist);
     saveHistorial(newHist);
     setSelectedIds(new Set());
+    publishToServer("tarifas_bd", { clientes: clientesDefault }).catch(() => {});
     showToast("🔄 Base de datos restaurada a la versión original");
   };
 
   // ---------- filtered clients ----------
   const filtered = useMemo(() => {
     const q = searchText.toLowerCase().trim();
-    return clientesDB.filter((c, idx) => {
+    return activeBD.filter((c) => {
       if (q && !c.nombre.toLowerCase().includes(q)) return false;
       if (filterTipo && c.tipoServicio !== filterTipo) return false;
       if (filterCiudad && c.ciudad !== filterCiudad) return false;
       if (filterKam && c.kam !== filterKam) return false;
+      if (filterEstado && c.estado !== filterEstado) return false;
+      if (filterEtiqueta && c.etiqueta !== filterEtiqueta) return false;
+      if (filterCredito) {
+        const v = c.tieneCredito.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const conCredito = (v.includes("tiene") && !v.includes("no tiene")) || v === "si" || v === "yes" || v === "1" || v === "true";
+        if (filterCredito === "si" && !conCredito) return false;
+        if (filterCredito === "no" && conCredito) return false;
+      }
       return true;
     });
-  }, [searchText, filterTipo, filterCiudad, filterKam]);
+  }, [activeBD, searchText, filterTipo, filterCiudad, filterKam, filterEstado, filterCredito, filterEtiqueta]);
 
-  const displayed = useMemo(() => filtered.slice(0, MAX_DISPLAY), [filtered]);
+  const totalPages = useMemo(() => Math.min(MAX_PAGES, Math.ceil(filtered.length / MAX_DISPLAY)), [filtered]);
+
+  useEffect(() => { setCurrentPage(1); }, [filtered]);
+
+  const displayed = useMemo(
+    () => filtered.slice((currentPage - 1) * MAX_DISPLAY, currentPage * MAX_DISPLAY),
+    [filtered, currentPage]
+  );
 
   // ---------- selection helpers ----------
   const toggleClient = useCallback((idx) => {
@@ -228,12 +648,12 @@ export default function IncrementoTarifas({ isAdmin }) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       filtered.forEach((c) => {
-        const idx = clientesDB.indexOf(c);
+        const idx = activeBD.indexOf(c);
         next.add(idx);
       });
       return next;
     });
-  }, [filtered]);
+  }, [filtered, activeBD]);
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
@@ -257,8 +677,8 @@ export default function IncrementoTarifas({ isAdmin }) {
 
   // ---------- computed new rates ----------
   const selectedClients = useMemo(
-    () => [...selectedIds].map((i) => clientesDB[i]),
-    [selectedIds]
+    () => [...selectedIds].map((i) => activeBD[i]),
+    [selectedIds, activeBD]
   );
 
   const multiplier = 1 + pctIncremento / 100;
@@ -394,11 +814,18 @@ export default function IncrementoTarifas({ isAdmin }) {
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold" style={{ background: BRAND_GRADIENT }}>%</div>
               <div>
                 <p className="font-bold text-gray-800 text-sm leading-tight">Incremento de Tarifas</p>
-                <p className="text-xs text-gray-500">{clientesDB.length.toLocaleString()} clientes en la base de datos</p>
+                <p className="text-xs text-gray-500">
+                  {chMode
+                    ? chLoadStatus === "done"
+                      ? <span className="text-purple-700 font-semibold">{chClientsDB.length.toLocaleString()} tarifas desde ClickHouse{chFetchedAt ? ` · ${new Date(chFetchedAt).toLocaleString("es-CO")}` : ""}</span>
+                      : "Fuente: ClickHouse"
+                    : `${clientesDB.length.toLocaleString()} registros en la base de datos`}
+                </p>
               </div>
             </div>
 
-            {isAdmin && (
+            {/* Botones según modo */}
+            {isAdmin && !chMode && (
               <div className="flex gap-2 items-center flex-wrap">
                 <label className={`px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition cursor-pointer ${uploading ? "opacity-50" : ""}`}>
                   {uploading ? "Cargando..." : "📥 Subir Base de Datos (.xlsx)"}
@@ -412,6 +839,39 @@ export default function IncrementoTarifas({ isAdmin }) {
                   className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200 transition">
                   🔄 Restaurar original
                 </button>
+                {bdInactiva ? (
+                  <button onClick={handleReactivarBD}
+                    className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-200 transition border border-green-300">
+                    ✅ Reactivar BD
+                  </button>
+                ) : (
+                  <button onClick={handleInactivarBD}
+                    className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition border border-red-200">
+                    ⏸️ Inactivar BD
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Barra de carga ClickHouse */}
+            {chMode && (
+              <div className="flex gap-2 items-center flex-wrap">
+                <button
+                  onClick={handleConsultarCH}
+                  disabled={chLoadStatus === "loading"}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-semibold hover:bg-purple-700 transition disabled:opacity-50"
+                >
+                  {chLoadStatus === "loading"
+                    ? <><span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" /> Consultando...</>
+                    : "🔄 Consultar ClickHouse"}
+                </button>
+                {chLoadStatus === "error" && <span className="text-xs text-red-600 font-medium">❌ {chError}</span>}
+                {isAdmin && chLoadStatus === "done" && (
+                  <button onClick={handleSaveChToBD}
+                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition">
+                    💾 Guardar como BD permanente
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -435,19 +895,28 @@ export default function IncrementoTarifas({ isAdmin }) {
                   <tbody>
                     {[...historial].reverse().map((h, i) => {
                       const isActual = i === 0;
-                      const isInactiva = h.inactiva;
+                      const isInactiva = isActual ? bdInactiva : h.inactiva;
                       return (
-                        <tr key={i} className={`border-t border-purple-100 ${isActual ? "bg-green-50 font-semibold" : isInactiva ? "bg-gray-100 opacity-50" : ""}`}>
+                        <tr key={i} className={`border-t border-purple-100 ${isActual && !isInactiva ? "bg-green-50 font-semibold" : isInactiva ? "bg-gray-50 opacity-60" : ""}`}>
                           <td className="p-2 text-purple-500">{isActual ? "Actual" : historial.length - i}</td>
                           <td className="p-2">{h.fecha}</td>
                           <td className="p-2 text-right">{h.registros.toLocaleString()}</td>
                           <td className="p-2 text-gray-600">{h.origen}</td>
                           <td className="p-2">
-                            {isActual ? <span className="text-green-600 font-bold">Activa</span>
-                              : isInactiva ? <span className="text-gray-400">Inactiva</span>
-                              : <span className="text-blue-500">Disponible</span>}
+                            {isActual && !isInactiva && <span className="text-green-600 font-bold">Activa</span>}
+                            {isActual && isInactiva  && <span className="text-gray-400 font-semibold">Inactiva</span>}
+                            {!isActual && isInactiva && <span className="text-gray-400">Inactiva</span>}
+                            {!isActual && !isInactiva && <span className="text-blue-500">Disponible</span>}
                           </td>
                           <td className="p-2">
+                            {isActual && !isInactiva && (
+                              <button onClick={handleInactivarBD}
+                                className="text-xs text-red-500 hover:underline font-semibold">Inactivar</button>
+                            )}
+                            {isActual && isInactiva && (
+                              <button onClick={handleReactivarBD}
+                                className="text-xs text-green-600 hover:underline font-semibold">Reactivar</button>
+                            )}
                             {!isActual && !isInactiva && (
                               <button onClick={() => {
                                 const newHist = [...historial];
@@ -474,33 +943,98 @@ export default function IncrementoTarifas({ isAdmin }) {
             </div>
           )}
 
-          {/* Step tabs */}
-          <div className="flex gap-1 overflow-x-auto">
-            {[
-              { id: 1, icon: "1", label: "Seleccionar Clientes" },
-              { id: 2, icon: "2", label: "Configurar Incremento" },
-              { id: 3, icon: "3", label: "Vista Previa y Aprobar" },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setStep(t.id)}
-                className={`flex-shrink-0 flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
-                  step === t.id
-                    ? "bg-purple-600 text-white shadow"
-                    : "text-gray-500 hover:bg-purple-50 hover:text-purple-700"
-                }`}
-              >
-                <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">
-                  {t.icon}
-                </span>
-                {t.label}
-              </button>
-            ))}
+          {/* Fuente de datos + Step tabs */}
+          <div className="flex gap-1 overflow-x-auto flex-wrap items-center">
+            {/* Fuente toggle */}
+            <button
+              onClick={() => { setChMode(false); setSelectedIds(new Set()); }}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                !chMode ? "bg-purple-700 text-white shadow border-purple-700" : "text-gray-500 hover:bg-purple-50 hover:text-purple-700 border-transparent"
+              }`}
+            >
+              📁 Base de Datos (Excel)
+            </button>
+            <button
+              onClick={() => { setChMode(true); setSelectedIds(new Set()); }}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                chMode ? "bg-purple-700 text-white shadow border-purple-700" : "text-gray-500 hover:bg-purple-50 hover:text-purple-700 border-transparent"
+              }`}
+            >
+              📊 ClickHouse (en vivo)
+            </button>
+
+            {/* Separador + Step tabs (siempre visibles) */}
+            <div className="flex gap-1 ml-2 pl-2 border-l border-purple-200">
+              {[
+                { id: 1, icon: "1", label: "Seleccionar Clientes" },
+                { id: 2, icon: "2", label: "Configurar Incremento" },
+                { id: 3, icon: "3", label: "Vista Previa y Aprobar" },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setStep(t.id)}
+                  disabled={chMode && chLoadStatus !== "done" && t.id > 1}
+                  className={`flex-shrink-0 flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    step === t.id
+                      ? "bg-purple-600 text-white shadow"
+                      : "text-gray-500 hover:bg-purple-50 hover:text-purple-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">
+                    {t.icon}
+                  </span>
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      {/* Aviso cuando CH está en idle/loading */}
+      {chMode && chLoadStatus !== "done" && (
+        <div className="max-w-7xl mx-auto px-4 pt-6">
+          {chLoadStatus === "idle" && (
+            <div className="bg-purple-50 border border-purple-100 rounded-xl p-10 text-center">
+              <p className="text-sm text-purple-700 font-semibold mb-1">Fuente: ClickHouse (en vivo)</p>
+              <p className="text-xs text-purple-500">Haz clic en "Consultar ClickHouse" para cargar los datos y habilitar el flujo de incremento.</p>
+            </div>
+          )}
+          {chLoadStatus === "loading" && (
+            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
+              <div className="inline-block w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4" />
+              <p className="text-sm text-gray-500">Consultando ClickHouse... puede tardar hasta 2 minutos.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Banner BD inactiva */}
+      {bdInactiva && !chMode && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⏸️</span>
+              <div>
+                <p className="text-sm font-bold text-amber-800">Base de datos desactivada</p>
+                <p className="text-xs text-amber-600">
+                  {isAdmin
+                    ? "No hay registros activos. Reactiva la BD o usa ClickHouse (en vivo) para continuar."
+                    : "La base de datos está desactivada. Contacta al administrador para reactivarla."}
+                </p>
+              </div>
+            </div>
+            {isAdmin && (
+              <button onClick={handleReactivarBD}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition shadow-sm">
+                ✅ Reactivar base de datos
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6" style={{ display: chMode && chLoadStatus !== "done" ? "none" : undefined }}>
         {/* ---------- STEP 1 ---------- */}
         {step === 1 && (
           <div className="space-y-4">
@@ -546,6 +1080,49 @@ export default function IncrementoTarifas({ isAdmin }) {
                   ))}
                 </select>
               </div>
+              {/* Segunda fila de filtros */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                <select
+                  value={filterEstado}
+                  onChange={(e) => setFilterEstado(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-400 outline-none"
+                >
+                  <option value="">Todos los estados</option>
+                  {estados.map((e) => (
+                    <option key={e} value={e}>{e}</option>
+                  ))}
+                </select>
+                <select
+                  value={filterCredito}
+                  onChange={(e) => setFilterCredito(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-400 outline-none"
+                >
+                  <option value="">¿Tiene crédito? (todos)</option>
+                  <option value="si">Con crédito</option>
+                  <option value="no">Sin crédito</option>
+                </select>
+                <select
+                  value={filterEtiqueta}
+                  onChange={(e) => setFilterEtiqueta(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-400 outline-none"
+                >
+                  <option value="">Todas las etiquetas</option>
+                  {etiquetas.map((e) => (
+                    <option key={e} value={e}>{e}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Limpiar filtros */}
+              {(searchText || filterTipo || filterCiudad || filterKam || filterEstado || filterCredito || filterEtiqueta) && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    onClick={() => { setSearchText(""); setFilterTipo(""); setFilterCiudad(""); setFilterKam(""); setFilterEstado(""); setFilterCredito(""); setFilterEtiqueta(""); }}
+                    className="text-xs text-purple-600 font-semibold hover:text-purple-800 underline transition"
+                  >
+                    ✕ Limpiar todos los filtros
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Selection actions */}
@@ -568,7 +1145,9 @@ export default function IncrementoTarifas({ isAdmin }) {
                 {selectedIds.size} clientes seleccionados
               </span>
               <span className="text-xs text-gray-400 ml-auto">
-                Mostrando {displayed.length} de {filtered.length} resultados
+                {filtered.length > 0
+                  ? `Mostrando ${(currentPage - 1) * MAX_DISPLAY + 1}–${Math.min(currentPage * MAX_DISPLAY, filtered.length)} de ${filtered.length} resultados`
+                  : "Sin resultados"}
               </span>
             </div>
 
@@ -588,7 +1167,7 @@ export default function IncrementoTarifas({ isAdmin }) {
                 </thead>
                 <tbody>
                   {displayed.map((c) => {
-                    const idx = clientesDB.indexOf(c);
+                    const idx = activeBD.indexOf(c);
                     const checked = selectedIds.has(idx);
                     return (
                       <tr
@@ -628,6 +1207,40 @@ export default function IncrementoTarifas({ isAdmin }) {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  ← Anterior
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
+                      p === currentPage
+                        ? "bg-purple-600 text-white border-purple-600"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  Siguiente →
+                </button>
+                <span className="text-xs text-gray-400 ml-2">Hoja {currentPage} de {totalPages}</span>
+              </div>
+            )}
 
             {/* Next button */}
             {selectedIds.size > 0 && (

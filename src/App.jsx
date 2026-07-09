@@ -266,7 +266,7 @@ export default function App() {
     { id: VIEW_PROPUESTAS, label: "Propuestas Comerciales", icon: "📋", visible: !!permisos.verPropuesta && (!railsMode || window.__RAILS_INITIAL_VIEW__ === VIEW_PROPUESTAS) },
     { id: VIEW_TARIFARIO,  label: "Tarifario Pibox",         icon: "💰", visible: !!permisos.verTarifario },
     { id: VIEW_CIERRE,     label: "Cierre Comercial",       icon: "📊", visible: !!permisos.verCierreComercial },
-    { id: VIEW_RIESGO,     label: "Riesgo Comercial",       icon: "🚨", visible: !!permisos.verRiesgoComercial },
+    { id: VIEW_RIESGO,     label: "Operación Pibox",        icon: "📦", visible: !!permisos.verRiesgoComercial },
     { id: VIEW_TADA,       label: "Informe TaDa",           icon: "🍺", visible: !!permisos.verInformeTada },
     { id: VIEW_CRUZ_VERDE, label: "Informe Cruz Verde",     icon: "🟢", visible: !!permisos.verInformeCruzVerde },
     { id: VIEW_USUARIOS,   label: "Usuarios",               icon: "👥", visible: permisos.gestionarUsuarios && !railsMode },

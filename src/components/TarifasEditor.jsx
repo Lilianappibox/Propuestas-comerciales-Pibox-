@@ -453,6 +453,12 @@ export default function TarifasEditor({ tarifas, onChange }) {
                 <Row label="Recargo Periferia ($)">
                   <Input value={a.recargo} onChange={(v) => update(`onDemand.adicionales.${i}.recargo`, v)} prefix="$" />
                 </Row>
+                <Row label="Aledaño ($)">
+                  <Input value={a.aledanos ?? "N.A"} onChange={(v) => update(`onDemand.adicionales.${i}.aledanos`, v)} prefix="$" />
+                </Row>
+                <Row label="Lejanía ($)">
+                  <Input value={a.lejania ?? "N.A"} onChange={(v) => update(`onDemand.adicionales.${i}.lejania`, v)} prefix="$" />
+                </Row>
               </CityCard>
             ))}
           </div>
@@ -503,6 +509,12 @@ export default function TarifasEditor({ tarifas, onChange }) {
               <Row label="Recargo Periferia ($)">
                 <Input value={tarifas.programadoBloqueHoras.adicionales.recargo} onChange={(v) => update("programadoBloqueHoras.adicionales.recargo", v)} prefix="$" />
               </Row>
+              <Row label="Aledaño ($)">
+                <Input value={tarifas.programadoBloqueHoras.adicionales.aledanos ?? "N.A"} onChange={(v) => update("programadoBloqueHoras.adicionales.aledanos", v)} prefix="$" />
+              </Row>
+              <Row label="Lejanía ($)">
+                <Input value={tarifas.programadoBloqueHoras.adicionales.lejania ?? "N.A"} onChange={(v) => update("programadoBloqueHoras.adicionales.lejania", v)} prefix="$" />
+              </Row>
             </div>
           </div>
         )}
@@ -547,6 +559,12 @@ export default function TarifasEditor({ tarifas, onChange }) {
               <Row label="Recargo Periferia ($)">
                 <Input value={tarifas.programadoRutas.adicionales.recargoPeriferia ?? 0} onChange={(v) => update("programadoRutas.adicionales.recargoPeriferia", v)} prefix="$" />
               </Row>
+              <Row label="Aledaño ($)">
+                <Input value={tarifas.programadoRutas.adicionales.aledanos ?? "N.A"} onChange={(v) => update("programadoRutas.adicionales.aledanos", v)} prefix="$" />
+              </Row>
+              <Row label="Lejanía ($)">
+                <Input value={tarifas.programadoRutas.adicionales.lejania ?? "N.A"} onChange={(v) => update("programadoRutas.adicionales.lejania", v)} prefix="$" />
+              </Row>
             </div>
           </div>
         )}
@@ -590,6 +608,12 @@ export default function TarifasEditor({ tarifas, onChange }) {
               </Row>
               <Row label="Recargo Periferia ($)">
                 <Input value={tarifas.entregasOptimizadas?.adicionales?.recargoPeriferia ?? 0} onChange={(v) => update("entregasOptimizadas.adicionales.recargoPeriferia", v)} prefix="$" />
+              </Row>
+              <Row label="Aledaño ($)">
+                <Input value={tarifas.entregasOptimizadas?.adicionales?.aledanos ?? "N.A"} onChange={(v) => update("entregasOptimizadas.adicionales.aledanos", v)} prefix="$" />
+              </Row>
+              <Row label="Lejanía ($)">
+                <Input value={tarifas.entregasOptimizadas?.adicionales?.lejania ?? "N.A"} onChange={(v) => update("entregasOptimizadas.adicionales.lejania", v)} prefix="$" />
               </Row>
             </div>
           </div>

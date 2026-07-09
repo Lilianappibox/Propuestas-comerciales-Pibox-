@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { publishToServer, fetchFromServer } from "./serverSync";
 import { dataInicial } from "../data/cierreComercial";
 import { MonedaProvider } from "./cierre/MonedaContext";
 import BarraTRM from "./cierre/BarraTRM";
@@ -16,41 +17,33 @@ import ProyeccionCierre from "./cierre/ProyeccionCierre";
 import ExportPDF from "./cierre/ExportPDF";
 import PiboxLogo from "./PiboxLogo";
 
-// ── localStorage — claves ─────────────────────────────────────────────────
+// ── localStorage — clave admin ────────────────────────────────────────────
 const SK = "pibox_cierre_v2";
-// Clave compartida: cuando el Admin guarda, también escribe aquí
-// Los KAMs leen de esta clave para ver los datos del Admin
-const SK_SHARED = "pibox_cierre_shared";
 
 function leer(isAdmin) {
-  // KAM: siempre lee dataInicial (los datos publicados en el código)
-  if (!isAdmin) return JSON.parse(JSON.stringify(dataInicial));
   // Admin: lee de localStorage si tiene datos guardados, sino dataInicial
-  try {
-    const s = localStorage.getItem(SK);
-    if (s) {
-      const data = JSON.parse(s);
-      // Limpiar datos problemáticos de proyeccion
-      if (data.proyeccion) {
-        let changed = false;
-        if (data.proyeccion.evolucionDiaria) { delete data.proyeccion.evolucionDiaria; changed = true; }
-        if (data.proyeccion.archivoOps && !data.proyeccion.diasEvolucion) { delete data.proyeccion.archivoOps; changed = true; }
-        if (changed) localStorage.setItem(SK, JSON.stringify(data));
+  if (isAdmin) {
+    try {
+      const s = localStorage.getItem(SK);
+      if (s) {
+        const data = JSON.parse(s);
+        if (data.proyeccion) {
+          let changed = false;
+          if (data.proyeccion.evolucionDiaria) { delete data.proyeccion.evolucionDiaria; changed = true; }
+          if (data.proyeccion.archivoOps && !data.proyeccion.diasEvolucion) { delete data.proyeccion.archivoOps; changed = true; }
+          if (changed) localStorage.setItem(SK, JSON.stringify(data));
+        }
+        return data;
       }
-      return data;
-    }
-  } catch {}
+    } catch {}
+    return JSON.parse(JSON.stringify(dataInicial));
+  }
+  // KAM: retorna dataInicial; el servidor se carga en useEffect
   return JSON.parse(JSON.stringify(dataInicial));
 }
 
-function escribir(data, isAdmin) {
-  try {
-    localStorage.setItem(SK, JSON.stringify(data));
-    // El Admin también escribe en la clave compartida
-    if (isAdmin) {
-      localStorage.setItem(SK_SHARED, JSON.stringify(data));
-    }
-  } catch {}
+function escribir(data) {
+  try { localStorage.setItem(SK, JSON.stringify(data)); } catch {}
 }
 
 // ── Secciones ──────────────────────────────────────────────────────────────
@@ -76,33 +69,41 @@ export default function CierreComercial({ currentUser }) {
   const [toast, setToast] = useState("");
   const [printing, setPrinting] = useState(false);
 
-  // KAMs: recargar datos compartidos cuando la pestaña obtiene foco
-  // (por si el Admin actualizó en otro momento)
+  // KAMs: cargar datos publicados desde el servidor
   useEffect(() => {
     if (isAdmin) return;
-    const handleFocus = () => {
-      const fresh = leer(false);
-      setData(fresh);
+    const cargarDesdeServidor = async () => {
+      const json = await fetchFromServer("cierre");
+      if (json?.ok && json.data && typeof json.data === "object") {
+        setData(json.data);
+      }
     };
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
+    cargarDesdeServidor();
+    window.addEventListener("focus", cargarDesdeServidor);
+    return () => window.removeEventListener("focus", cargarDesdeServidor);
   }, [isAdmin]);
 
   const secciones = SECCIONES_ALL.filter((s) => !s.adminOnly || isAdmin);
 
   const actualizar = (nuevaData) => {
     setData(nuevaData);
-    escribir(nuevaData, isAdmin);
+    if (isAdmin) escribir(nuevaData);
   };
 
-  const mostrarToast = (msg) => {
+  const mostrarToast = (msg, dur = 4000) => {
     setToast(msg);
-    setTimeout(() => setToast(""), 3000);
+    setTimeout(() => setToast(""), dur);
   };
 
-  const handleSave = (nuevaData) => {
+  const handleSave = async (nuevaData) => {
     actualizar(nuevaData);
-    mostrarToast("✅ Cambios guardados y compartidos con el equipo");
+    try {
+      const json = await publishToServer("cierre", nuevaData);
+      if (json.ok) mostrarToast("✅ Publicado para el equipo");
+      else mostrarToast(`⚠️ Error al publicar: ${json.error || "intenta de nuevo"}`);
+    } catch (err) {
+      mostrarToast(`⚠️ Error: ${err.message}`);
+    }
   };
 
   const handlePrint = useCallback(() => {
@@ -190,11 +191,11 @@ export default function CierreComercial({ currentUser }) {
           {printing ? (
             <>
               <CumplimientoEquipo data={data} />
-              <CumplimientoKAM    data={data} />
+              <CumplimientoKAM    data={data} printing={true} />
               <FacturacionLinea   data={data} />
               <MapaCiudades       data={data} />
               <Tendencias         data={data} />
-              <ProyeccionCierre   data={data} />
+              <ProyeccionCierre   data={data} printing={true} />
               <Insights           data={data} />
             </>
           ) : (

@@ -142,6 +142,7 @@ export function procesarDatos(rows) {
   const empMap = {};
   const globalWeekly = {};
   const globalDaily  = {};
+  const opDailyMap   = {}; // op → dateStr → { gmv, servicios, completados }
   const cityMap = {};
 
   for (const row of rows) {
@@ -169,6 +170,13 @@ export function procesarDatos(rows) {
     const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
     const usuario  = toStr(row["passenger_name"]  || "Sin usuario");
 
+    // Estas deben declararse ANTES del try-catch para estar disponibles dentro de él
+    const esCompletado       = status === "Completed";
+    const esCancelado        = status.startsWith("Canceled");
+    const esExpirado         = status === "Expired";
+    const esCancelPax        = status === "Canceled by Passenger";
+    const esCancelConductor  = status === "Canceled by Driver";
+
     // Semana del mes (1–5): qué semana dentro del mes calendario
     let semana = 0;
     let semanaLabel = "";
@@ -195,14 +203,14 @@ export function procesarDatos(rows) {
         if (esCompletado) globalDaily[dateStr].completados++;
         if (esCancelado)  globalDaily[dateStr].cancelados++;
         if (esExpirado)   globalDaily[dateStr].expirados++;
+        // daily por tipo de operación
+        if (!opDailyMap[op]) opDailyMap[op] = {};
+        if (!opDailyMap[op][dateStr]) opDailyMap[op][dateStr] = { date: dateStr, dia, label: diaLabel, gmv: 0, servicios: 0, completados: 0 };
+        opDailyMap[op][dateStr].gmv += gmv;
+        opDailyMap[op][dateStr].servicios++;
+        if (esCompletado) opDailyMap[op][dateStr].completados++;
       }
     } catch {}
-
-    const esCompletado       = status === "Completed";
-    const esCancelado        = status.startsWith("Canceled");
-    const esExpirado         = status === "Expired";
-    const esCancelPax        = status === "Canceled by Passenger";
-    const esCancelConductor  = status === "Canceled by Driver";
 
     if (!empMap[empresa]) {
       empMap[empresa] = {
@@ -276,9 +284,14 @@ export function procesarDatos(rows) {
     e.ciudades[city].gmv   += gmv;
     e.ciudades[city].count++;
 
-    // ops
-    if (!e.ops[op]) e.ops[op] = 0;
-    e.ops[op]++;
+    // ops — almacena métricas por tipo de operación
+    if (!e.ops[op]) e.ops[op] = { total: 0, gmv: 0, completados: 0, cancelados: 0, paquetes: 0 };
+    if (typeof e.ops[op] === "number") e.ops[op] = { total: e.ops[op], gmv: 0, completados: 0, cancelados: 0, paquetes: 0 };
+    e.ops[op].total++;
+    e.ops[op].gmv += gmv;
+    e.ops[op].paquetes += pkgs;
+    if (esCompletado) e.ops[op].completados++;
+    if (esCancelado)  e.ops[op].cancelados++;
 
     // drivers por operación en empresa
     const driverKeyEmp = driverId || driverName;
@@ -369,11 +382,11 @@ export function procesarDatos(rows) {
 
     const topCiudades = Object.entries(e.ciudades)
       .map(([city,v])=>({city, gmv:v.gmv, count:v.count}))
-      .sort((a,b)=>b.gmv-a.gmv).slice(0,8);
+      .sort((a,b)=>b.gmv-a.gmv).slice(0,30);
 
     const topOps = Object.entries(e.ops)
-      .map(([op,count])=>({op, count}))
-      .sort((a,b)=>b.count-a.count);
+      .map(([op, v]) => ({ op, count: typeof v === "object" ? v.total : v }))
+      .sort((a,b) => b.count - a.count);
 
     const weekly = Object.entries(e.weekly)
       .map(([s,v])=>({
@@ -416,6 +429,7 @@ export function procesarDatos(rows) {
       tasa_completado: tc, tasa_cancelacion: tca, tasa_expirado: te,
       topCiudades, topOps, weekly, topUsuarios, topSedes,
       driversPorOp: empDriversPorOp, totalDrivers: empTotalDrivers.size,
+      ops: e.ops,
     };
   });
 
@@ -423,6 +437,7 @@ export function procesarDatos(rows) {
   const globalOps = {};
   const globalStatus = {};
   const globalVehicle = {};
+  const vehicleByOp  = {}; // op → vh → { total, gmv }
   const globalLinea = {};
   const driversPorOp = {}; // op → Set de driver IDs únicos
   const driversGlobal = new Set();
@@ -434,7 +449,7 @@ export function procesarDatos(rows) {
     const gmv = toNum(row["gmv"]);
     const driverId = toStr(row["driver_id"] || row["DRIVER_ID"] || row["driverId"] || "");
     const driverName = toStr(row["driver_name"] || row["DRIVER_NAME"] || row["driverName"] || "");
-    const driverKey = driverId || driverName; // usar ID si existe, si no nombre
+    const driverKey = driverId || driverName;
 
     if (!globalOps[op]) globalOps[op] = { total: 0, gmv: 0 };
     globalOps[op].total++; globalOps[op].gmv += gmv;
@@ -442,6 +457,12 @@ export function procesarDatos(rows) {
     globalStatus[st].total++; globalStatus[st].gmv += gmv;
     if (!globalVehicle[vh]) globalVehicle[vh] = { total: 0, gmv: 0 };
     globalVehicle[vh].total++; globalVehicle[vh].gmv += gmv;
+    // Vehículo por tipo de operación
+    if (vh && vh !== "Sin vehículo") {
+      if (!vehicleByOp[op]) vehicleByOp[op] = {};
+      if (!vehicleByOp[op][vh]) vehicleByOp[op][vh] = { total: 0, gmv: 0 };
+      vehicleByOp[op][vh].total++; vehicleByOp[op][vh].gmv += gmv;
+    }
     if (!globalLinea[linea]) globalLinea[linea] = { total: 0, gmv: 0 };
     globalLinea[linea].total++; globalLinea[linea].gmv += gmv;
 
@@ -453,10 +474,21 @@ export function procesarDatos(rows) {
       driversPorOp[op].servicios++;
     }
   }
+  // porVehiculoByOp: op → array de { name, total, gmv }
+  const porVehiculoByOp = {};
+  for (const [op, vhMap] of Object.entries(vehicleByOp)) {
+    porVehiculoByOp[op] = Object.entries(vhMap)
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.total - a.total);
+  }
   const porTipoOp = Object.entries(globalOps).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const porLinea  = Object.entries(globalLinea).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
   const porStatus = Object.entries(globalStatus).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
-  const porVehiculo = Object.entries(globalVehicle).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+  // Excluir "Sin vehículo" (ClickHouse a veces no provee este campo)
+  const porVehiculo = Object.entries(globalVehicle)
+    .filter(([name]) => name && name !== "Sin vehículo")
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.total - a.total);
   const driversPorTipoOp = Object.entries(driversPorOp)
     .map(([op, v]) => ({ op, driversActivos: v.drivers.size, servicios: v.servicios, promServPorDriver: v.drivers.size > 0 ? Math.round(v.servicios / v.drivers.size) : 0 }))
     .sort((a, b) => b.driversActivos - a.driversActivos);
@@ -478,6 +510,11 @@ export function procesarDatos(rows) {
   })();
 
   const dailyArr = Object.values(globalDaily).sort((a, b) => a.date.localeCompare(b.date));
+  // Daily agrupado por tipo de operación para filtrado en MetricasRiesgo
+  const dailyByOp = {};
+  for (const [op, dateMap] of Object.entries(opDailyMap)) {
+    dailyByOp[op] = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
+  }
 
   const weeklyGlobal = Object.entries(globalWeekly)
     .map(([s,v])=>({
@@ -577,10 +614,12 @@ export function procesarDatos(rows) {
       topCiudades: topCiudadesGlobal,
       weekly: weeklyGlobal,
       daily:  dailyArr,
+      dailyByOp,
       porTipoOp,
       porLinea,
       porStatus,
       porVehiculo,
+      porVehiculoByOp,
       driversPorTipoOp,
       totalDriversActivos,
     }

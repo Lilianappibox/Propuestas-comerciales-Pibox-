@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, idbSaveDrivers, idbSaveHorasRows, UMBRALES_DEFAULT, procesarDatos, mesKey, labelMes } from "./riesgo/utils";
 import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
+import { RiesgoProvider } from "./riesgo/RiesgoContext";
 
 const ConfiguracionRiesgo = lazy(() => import("./riesgo/ConfiguracionRiesgo"));
 const MetricasRiesgo      = lazy(() => import("./riesgo/MetricasRiesgo"));
@@ -30,7 +31,7 @@ const TABS = [
   { id:"config",   icon:"⚙️",  label:"Configuración", adminOnly: true },
 ];
 
-export default function RiesgoComercial({ currentUser }) {
+function RiesgoComercialInner({ currentUser }) {
   const [tab, setTab]       = useState("metricas");
   const [, forceRender]     = useState(0);
   const [importMsg, setImportMsg] = useState(null);
@@ -38,6 +39,9 @@ export default function RiesgoComercial({ currentUser }) {
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState(null);
   const [loadingServer, setLoadingServer] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState(() => {
+    try { return localStorage.getItem("pibox_riesgo_last_sync") || null; } catch { return null; }
+  });
   const [chDesde, setChDesde] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
@@ -176,11 +180,30 @@ export default function RiesgoComercial({ currentUser }) {
     }
   }, []);
 
-  // No-admin: cargar snapshot publicado desde el servidor
+  // No-admin: cargar snapshot publicado y sondear actualizaciones automáticamente
   useEffect(() => {
     if (isAdmin) return;
-    setLoadingServer(true);
-    fetchFromServer("riesgo").then(async (snap) => {
+    const LS_TS = "pibox_riesgo_last_sync";
+
+    const applySnap = async (d, serverTs) => {
+      saveIndex({ ...loadIndex(), ...d.index });
+      await Promise.all([
+        ...Object.entries(d.meses || {}).map(([k, v]) => saveMesData(k, v)),
+        ...Object.entries(d.meses || {}).map(([k, v]) => {
+          const drs = d.drivers?.[k] || v.drivers;
+          if (drs?.length) return idbSaveDrivers(k, drs);
+        }).filter(Boolean),
+      ]);
+      if (d.umbrales) localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(d.umbrales));
+      if (serverTs) {
+        localStorage.setItem(LS_TS, serverTs);
+        setLastSyncAt(serverTs);
+      }
+      forceRender(n => n + 1);
+    };
+
+    const syncFromServer = async (skipIfSameTs = false) => {
+      const snap = await fetchFromServer("riesgo").catch(() => null);
       if (!snap?.ok || !snap?.data?.index) {
         // Fallback al JSON bundled si no hay snapshot en servidor
         const codeIndex = loadIndexReadonly();
@@ -198,24 +221,26 @@ export default function RiesgoComercial({ currentUser }) {
             saveIndex(merged);
           }
         }
-        setLoadingServer(false);
         forceRender(n => n + 1);
-        return;
+        return false;
       }
-      const d = snap.data;
-      saveIndex({ ...loadIndex(), ...d.index });
-      await Promise.all([
-        ...Object.entries(d.meses || {}).map(([k, v]) => saveMesData(k, v)),
-        // horasRows no se publica (demasiado pesado); drivers van en meses[k].drivers
-        ...Object.entries(d.meses || {}).map(([k, v]) => {
-          const drs = d.drivers?.[k] || v.drivers;
-          if (drs?.length) return idbSaveDrivers(k, drs);
-        }).filter(Boolean),
-      ]);
-      if (d.umbrales) localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(d.umbrales));
-      setLoadingServer(false);
-      forceRender(n => n + 1);
-    }).catch(() => setLoadingServer(false));
+      const serverTs = snap.published_at;
+      // En sondeos periódicos, solo actualizar si hay nueva publicación
+      if (skipIfSameTs && serverTs) {
+        const localTs = localStorage.getItem(LS_TS);
+        if (localTs === serverTs) return false;
+      }
+      await applySnap(snap.data, serverTs);
+      return true;
+    };
+
+    // Carga inicial
+    setLoadingServer(true);
+    syncFromServer(false).finally(() => setLoadingServer(false));
+
+    // Sondear cada 3 minutos: detecta cuando el admin publica y actualiza automáticamente
+    const interval = setInterval(() => { syncFromServer(true); }, 3 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [isAdmin]);
 
   const handleMesesChange = () => forceRender(n=>n+1);
@@ -227,13 +252,18 @@ export default function RiesgoComercial({ currentUser }) {
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
-                 style={{background:BRAND_GRADIENT}}>🚨</div>
+                 style={{background:BRAND_GRADIENT}}>📦</div>
             <div>
-              <p className="font-bold text-gray-800 text-sm leading-tight">Riesgo Comercial 360°</p>
+              <p className="font-bold text-gray-800 text-sm leading-tight">Operación Pibox</p>
               <p className="text-xs text-gray-500">Monitoreo automático de clientes · Detección de fuga y deterioro</p>
             </div>
             {loadingServer && (
               <span className="text-xs text-purple-600 font-medium animate-pulse shrink-0">⏳ Sincronizando con el servidor…</span>
+            )}
+            {!isAdmin && !loadingServer && lastSyncAt && (
+              <span className="text-xs text-gray-400 shrink-0 ml-auto">
+                🔄 Actualizado: {new Date(lastSyncAt).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" })}
+              </span>
             )}
             {isAdmin && (
               <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -357,5 +387,13 @@ export default function RiesgoComercial({ currentUser }) {
         )}
       </div>
     </div>
+  );
+}
+
+export default function RiesgoComercial({ currentUser }) {
+  return (
+    <RiesgoProvider>
+      <RiesgoComercialInner currentUser={currentUser} />
+    </RiesgoProvider>
   );
 }

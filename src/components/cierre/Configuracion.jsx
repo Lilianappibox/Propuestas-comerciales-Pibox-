@@ -268,13 +268,7 @@ export default function Configuracion({ data, onSave }) {
       <div className="flex flex-wrap gap-3 items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-purple-800">⚙️ Módulo de Configuración</h2>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => {
-            // Publicar: guarda en la clave compartida para que KAMs vean los datos
-            onSave(form);
-            try { localStorage.setItem("pibox_cierre_shared", JSON.stringify(form)); } catch {}
-            setMsg("✅ Datos publicados para todo el equipo");
-            setTimeout(() => setMsg(""), 4000);
-          }}
+          <button onClick={() => onSave(form)}
             className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition">
             📢 Publicar para el equipo
           </button>
@@ -335,6 +329,29 @@ export default function Configuracion({ data, onSave }) {
           <p className={`mt-3 text-xs font-semibold rounded-lg px-3 py-2 ${msgBase.startsWith("✅") ? "bg-green-50 text-green-700" : msgBase.startsWith("❌") ? "bg-red-50 text-red-600" : "bg-indigo-100 text-indigo-700"}`}>
             {msgBase}
           </p>
+        )}
+
+        {/* ── Acciones base plana ── */}
+        {baseActual && (
+          <div className="mt-4 flex gap-3 flex-wrap">
+            <button
+              onClick={() => onSave(form)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition shadow-sm"
+            >
+              📢 Guardar y publicar base plana
+            </button>
+            <button
+              onClick={() => {
+                const formLimpio = { ...form, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [] };
+                eliminarActual();
+                eliminarAnterior();
+                onSave(formLimpio);
+              }}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-red-600 transition shadow-sm"
+            >
+              🗑️ Eliminar base plana publicada
+            </button>
+          </div>
         )}
 
         {/* ── Historial de cargas ── */}
@@ -752,6 +769,15 @@ export default function Configuracion({ data, onSave }) {
             return s;
           };
 
+          // Fallback: todas las palabras del nombre más corto están en el más largo
+          // Ej: "Jaime Girón" matchea con "Jaime Andrés Girón"
+          const wordMatch = (a, b) => {
+            const wa = normK(a).split(/\s+/).filter(Boolean);
+            const wb = normK(b).split(/\s+/).filter(Boolean);
+            const [shorter, longer] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
+            return shorter.length > 0 && shorter.every(w => longer.includes(w));
+          };
+
           setForm((prev) => {
             const p = { ...(prev.proyeccion || {}) };
             // 1. GMV Actual en Sistema
@@ -759,14 +785,18 @@ export default function Configuracion({ data, onSave }) {
             // 2. Evolución diaria (cuenta de días)
             p.diasEvolucion = evolucion.length;
             p.archivoOps = `ClickHouse ${new Date().toLocaleDateString("es-CO")}`;
-            // 3. GMV por KAM — matching bidireccional con KAM_MAP
+            // 3. GMV por KAM — matching bidireccional con KAM_MAP + fallback por palabras
             const baseKams = p.kams || prev.kams || [];
             if (baseKams.length && kamGmv.length) {
               p.kams = baseKams.map(k => {
                 const ms = buildMatchSet(k.nombre);
-                const match = kamGmv.find(ch =>
-                  ms.has(normK(ch.nombre)) || ms.has(normK(ch.rawNombre))
-                );
+                const match =
+                  kamGmv.find(ch =>
+                    ms.has(normK(ch.nombre)) || ms.has(normK(ch.rawNombre))
+                  ) ||
+                  kamGmv.find(ch =>
+                    wordMatch(k.nombre, ch.rawNombre) || wordMatch(k.nombre, ch.nombre)
+                  );
                 if (!match) return k;
                 const gmv = match.gmv;
                 const cumplimiento = k.meta > 0 ? parseFloat(((gmv / k.meta) * 100).toFixed(2)) : 0;

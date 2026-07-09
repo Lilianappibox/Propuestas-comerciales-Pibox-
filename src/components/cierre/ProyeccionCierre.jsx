@@ -82,7 +82,7 @@ function EditableMoneyInput({ label, value, onChange, accent = "orange" }) {
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
-export default function ProyeccionCierre({ data }) {
+export default function ProyeccionCierre({ data, printing = false }) {
   const { moneda, trm } = useMoneda();
   const M = (n) => fmtMoney(n, moneda, trm);
 
@@ -601,6 +601,33 @@ export default function ProyeccionCierre({ data }) {
                   </div>
                 </div>
 
+                {/* Tabla compacta en PDF — gráfica de barras no renderiza en print */}
+                {printing ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-purple-50 text-purple-800">
+                          <th className="text-left p-2 border border-purple-100">Fecha</th>
+                          <th className="text-right p-2 border border-purple-100">GMV del día</th>
+                          <th className="text-right p-2 border border-purple-100">Media móvil 7d</th>
+                          <th className="text-right p-2 border border-purple-100">GMV Acumulado</th>
+                          <th className="text-right p-2 border border-purple-100">Servicios</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {evData.map((d, i) => (
+                          <tr key={d.rawFecha || i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                            <td className="p-2 border border-gray-100 font-medium">{d.dia}</td>
+                            <td className="p-2 border border-gray-100 text-right text-purple-700 font-semibold">{fmtAbr(d.gmv)}</td>
+                            <td className="p-2 border border-gray-100 text-right text-pink-600">{fmtAbr(d.mm7)}</td>
+                            <td className="p-2 border border-gray-100 text-right text-blue-700 font-semibold">{fmtAbr(d.gmvAcumulado)}</td>
+                            <td className="p-2 border border-gray-100 text-right text-gray-600">{(d.servicios || 0).toLocaleString("es-CO")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
                 <ResponsiveContainer width="100%" height={260}>
                   <ComposedChart data={evData} margin={{ top: 8, right: 60, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
@@ -626,9 +653,11 @@ export default function ProyeccionCierre({ data }) {
                       stroke={PIBOX_PINK} strokeWidth={2} strokeDasharray="6 3" dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
+                )}{/* fin printing ternario */}
               </div>
 
-              {/* ── Gráfica 2: Servicios y Paquetes ── */}
+              {/* ── Gráfica 2: Servicios y Paquetes — oculta en print ── */}
+              {!printing && (
               <div className="bg-white rounded-xl border border-gray-100 p-4 print-no-break">
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                   <div>
@@ -661,6 +690,7 @@ export default function ProyeccionCierre({ data }) {
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
+              )}{/* fin !printing chart 2 */}
             </div>
           );
         })()}

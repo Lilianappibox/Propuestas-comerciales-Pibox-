@@ -161,7 +161,7 @@ function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
 
 const normK = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-export default function CumplimientoKAM({ data }) {
+export default function CumplimientoKAM({ data, printing = false }) {
   const { moneda, trm } = useMoneda();
   const M  = (n) => fmtMoney(n, moneda, trm);
   const Mx = (n) => fmtM(n, moneda, trm);
@@ -221,22 +221,24 @@ export default function CumplimientoKAM({ data }) {
           {kamsFiltrados.map((k) => {
             const gradIdx = data.kams.indexOf(k);
             return (
-              <KAMCard
-                key={k.nombre}
-                k={k}
-                data={data}
-                selected={selectedKAM === k.nombre}
-                onClick={() => setSelectedKAM(k.nombre === selectedKAM ? null : k.nombre)}
-                gradient={KAM_GRADIENTS[gradIdx % KAM_GRADIENTS.length]}
-                M={M}
-                expanded={kamsFiltrados.length === 1}
-              />
+              <div key={k.nombre} style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+                <KAMCard
+                  k={k}
+                  data={data}
+                  selected={selectedKAM === k.nombre}
+                  onClick={() => setSelectedKAM(k.nombre === selectedKAM ? null : k.nombre)}
+                  gradient={KAM_GRADIENTS[gradIdx % KAM_GRADIENTS.length]}
+                  M={M}
+                  expanded={kamsFiltrados.length === 1}
+                />
+              </div>
             );
           })}
         </div>
 
         {/* Gráfico comparativo — oculto en PDF */}
-        <div className="cierre-print-hide">
+        {!printing && (
+        <div>
         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Meta vs GMV por KAM</p>
         <div className="bg-gray-50 rounded-xl p-4">
           <ResponsiveContainer width="100%" height={Math.max(kamsFiltrados.length * 40, 160)}>
@@ -250,7 +252,8 @@ export default function CumplimientoKAM({ data }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-        </div>{/* fin cierre-print-hide */}
+        </div>
+        )}{/* fin !printing chart */}
 
         {/* Top 10 — siempre visible, cambia según selección */}
         <div className="mt-6">

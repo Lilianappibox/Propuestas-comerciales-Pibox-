@@ -126,8 +126,8 @@ export default function AnalisisCiudad() {
     setDeptoSel("");
   };
 
-  // Para compatibilidad: usar la primera ciudad seleccionada como "ciudad" principal
-  const ciudad = ciudadesSeleccionadas[0] || "";
+  // Etiqueta de área para títulos: departamento > lista de ciudades > ciudad única
+  const areaLabel = deptoSel || (ciudadesSeleccionadas.length === 1 ? ciudadesSeleccionadas[0] : ciudadesSeleccionadas.length > 1 ? `${ciudadesSeleccionadas.length} ciudades` : "");
 
   // Agregar datos de todas las ciudades seleccionadas
   const cityData = useMemo(() => {
@@ -181,6 +181,9 @@ export default function AnalisisCiudad() {
         const gmv = match.reduce((s, c) => s + c.gmv, 0);
         const servicios = match.reduce((s, c) => s + c.count, 0);
         result.push({ empresa: emp.empresa, servicios, gmv, paquetes: emp.paquetes, ciudades: match.map(c => c.city).join(", "), ejecutivo: emp.ejecutivo || "" });
+      } else if (emp.ciudadTop && ciudadesSeleccionadas.includes(emp.ciudadTop)) {
+        // Fallback: empresa cuya ciudad principal está en el filtro pero no alcanzó top-N ciudades
+        result.push({ empresa: emp.empresa, servicios: emp.total, gmv: emp.gmv, paquetes: emp.paquetes, ciudades: emp.ciudadTop, ejecutivo: emp.ejecutivo || "" });
       }
     }
     return result.sort((a, b) => b.gmv - a.gmv);
@@ -445,7 +448,7 @@ export default function AnalisisCiudad() {
           {cityData.weekly?.length > 0 && (
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-700 text-sm">📈 Evolución semanal en {ciudad}</h3>
+                <h3 className="font-bold text-gray-700 text-sm">📈 Evolución semanal en {areaLabel}</h3>
                 {mesPrevMeta && (
                   <div className="flex items-center gap-3 text-xs text-gray-500">
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PURPLE}}></span>{dataMes?.label}</span>
@@ -512,7 +515,7 @@ export default function AnalisisCiudad() {
           {cityData.driversPorOp?.length > 0 && (
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
               <div className="flex flex-wrap items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-700 text-sm">🏍️ Drivers Activos por Tipo de Operación — {ciudad}</h3>
+                <h3 className="font-bold text-gray-700 text-sm">🏍️ Drivers Activos por Tipo de Operación — {areaLabel}</h3>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-bold text-white" style={{background:BRAND_GRADIENT}}>
                   Total: {(cityData.totalDrivers || 0).toLocaleString()} drivers
                 </div>
@@ -587,7 +590,8 @@ export default function AnalisisCiudad() {
             let totalRelaunch = 0;
             const matchingEmpresas = (dataMes?.empresas || []).filter(emp => {
               const ciudadesEmp = emp.topCiudades || [];
-              return ciudadesEmp.some(c => ciudadesSeleccionadas.includes(c.city));
+              return ciudadesEmp.some(c => ciudadesSeleccionadas.includes(c.city)) ||
+                (emp.ciudadTop && ciudadesSeleccionadas.includes(emp.ciudadTop));
             });
             for (const e of matchingEmpresas) {
               totalRelaunch += e.relanzamientos || 0;
@@ -659,8 +663,8 @@ export default function AnalisisCiudad() {
 
                 {/* Gráficas comparativas devoluciones + relanzamientos */}
                 {(() => {
-                  const empsActual = dataMes?.empresas?.filter(e => (e.topCiudades||[]).some(c => ciudadesSeleccionadas.includes(c.city))) || [];
-                  const empsPrev = dataPrev?.ciudades ? (dataPrev.empresas||[]).filter(e => (e.topCiudades||[]).some(c => ciudadesSeleccionadas.includes(c.city))) : [];
+                  const empsActual = dataMes?.empresas?.filter(e => (e.topCiudades||[]).some(c => ciudadesSeleccionadas.includes(c.city)) || (e.ciudadTop && ciudadesSeleccionadas.includes(e.ciudadTop))) || [];
+                  const empsPrev = dataPrev?.ciudades ? (dataPrev.empresas||[]).filter(e => (e.topCiudades||[]).some(c => ciudadesSeleccionadas.includes(c.city)) || (e.ciudadTop && ciudadesSeleccionadas.includes(e.ciudadTop))) : [];
                   const totalDevAct = empsActual.reduce((s,e) => s + (e.devueltos||0), 0);
                   const totalRelAct = empsActual.reduce((s,e) => s + (e.relanzamientos||0), 0);
                   const totalServAct = empsActual.reduce((s,e) => s + e.total, 0);

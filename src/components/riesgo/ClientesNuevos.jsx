@@ -3,6 +3,7 @@ import {
   loadMesData, mesesDisponibles, fmtM, fmtFull, fmtPct,
   PIBOX_PURPLE, PIBOX_PINK, SEM_VERDE, SEM_ROJO, SEM_AMARILLO, MESES_ES,
 } from "./utils";
+import { useRiesgoFilter, empresaMatchesOpType } from "./RiesgoContext";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 
@@ -23,6 +24,7 @@ function downloadCSV(rows, filename) {
 
 export default function ClientesNuevos() {
   const meses = mesesDisponibles();
+  const { filterOpType } = useRiesgoFilter();
   const [mesKey, setMesKey] = useState(meses[meses.length - 1]?.key || "");
   useEffect(() => {
     if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
@@ -52,7 +54,7 @@ export default function ClientesNuevos() {
     }
 
     // New clients: in current month but not in prev 3
-    const nc = dataActual.empresas.filter(e => e.companyId && !prevIds.has(e.companyId));
+    const nc = dataActual.empresas.filter(e => e.companyId && !prevIds.has(e.companyId) && empresaMatchesOpType(e, filterOpType));
 
     // Aggregates
     let totalServ = 0, totalGmv = 0, totalComp = 0, totalCanc = 0, totalExp = 0, totalRelaunch = 0, totalDev = 0;
@@ -108,7 +110,7 @@ export default function ClientesNuevos() {
       relaunchDist: relaunchArr,
       top5: t5,
     };
-  }, [mesKey]);
+  }, [mesKey, filterOpType]);
 
   const mesLabel = (key) => {
     if (!key) return "";

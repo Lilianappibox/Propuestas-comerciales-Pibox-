@@ -9,6 +9,7 @@ import {
   PIBOX_PURPLE, PIBOX_PINK, SEM_ROJO, SEM_AMARILLO, SEM_VERDE,
   UMBRALES_DEFAULT,
 } from "./utils";
+import { empresaMatchesOpType, getOpMetrics, OP_TYPES } from "./RiesgoContext";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const COLORS = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7","#6366F1","#EC4899","#8B5CF6"];
@@ -65,8 +66,10 @@ export default function MetricasRiesgo() {
   const meses       = mesesDisponibles();
   const umb         = getUmbrales();
 
-  const [mesKey, setMesKey]           = useState(meses[meses.length-1]?.key || "");
+  const [mesKey, setMesKey]             = useState(meses[meses.length-1]?.key || "");
+  const [filterOpType, setFilterOpType] = useState("");
   const [historialGlobal, setHistorialGlobal] = useState([]);
+  const [empresaSel, setEmpresaSel]     = useState(null);
   useEffect(() => {
     if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
       setMesKey(meses[meses.length - 1].key);
@@ -102,18 +105,104 @@ export default function MetricasRiesgo() {
   const empresasConScore = useMemo(()=>{
     if (!dataMes) return [];
     const ORDER = { rojo: 0, amarillo: 1, verde: 2 };
-    return dataMes.empresas.map(e => {
-      const prev = dataPrev?.empresas?.find(p=>p.empresa===e.empresa);
-      return { ...e, ...calcularScore(e, prev||null, umb) };
-    }).sort((a,b) => {
-      // 1º prioridad: nivel de riesgo (rojo → amarillo → verde)
-      const riskDiff = ORDER[a.color] - ORDER[b.color];
-      if (riskDiff !== 0) return riskDiff;
-      // 2º prioridad: GMV más alto primero dentro del mismo nivel
-      return b.gmv - a.gmv;
-    });
-  }, [dataMes, dataPrev, umb]);
+    return dataMes.empresas
+      .filter(e => empresaMatchesOpType(e, filterOpType))
+      .map(e => {
+        const opData = getOpMetrics(e, filterOpType);
+        const eBase  = opData ? { ...e, gmv: opData.gmv, total: opData.total, completados: opData.completados, cancelados: opData.cancelados, paquetes: opData.paquetes } : e;
+        const prev   = dataPrev?.empresas?.find(p=>p.empresa===e.empresa);
+        const prevOp = prev ? getOpMetrics(prev, filterOpType) : null;
+        const prevBase = prevOp ? { ...prev, gmv: prevOp.gmv, total: prevOp.total, completados: prevOp.completados } : prev;
+        return { ...eBase, ...calcularScore(eBase, prevBase||null, umb) };
+      }).sort((a,b) => {
+        const riskDiff = ORDER[a.color] - ORDER[b.color];
+        if (riskDiff !== 0) return riskDiff;
+        return b.gmv - a.gmv;
+      });
+  }, [dataMes, dataPrev, umb, filterOpType]);
 
+
+  // Totales filtrados por tipo de operación — alimenta todos los charts cuando hay filtro activo
+  const filteredTot = useMemo(() => {
+    if (!filterOpType || !dataMes) return null;
+    console.log("[DEBUG vehiculo] filteredTot START — filterOpType:", filterOpType);
+    const rawTot  = dataMes.totales;
+    const totComp = empresasConScore.reduce((s, e) => s + e.completados, 0);
+    const totCanc = empresasConScore.reduce((s, e) => s + e.cancelados,  0);
+    const totServ = empresasConScore.reduce((s, e) => s + e.total,       0);
+    const totGmv  = empresasConScore.reduce((s, e) => s + e.gmv,         0);
+
+    // Ciudad — desglose por tipo de op guardado en dataMes.ciudades[].ops
+    const topCiudades = (dataMes.ciudades || [])
+      .map(c => {
+        const opEnt = (c.ops || []).find(o =>
+          (o.op || "").toLowerCase().includes(filterOpType.toLowerCase())
+        );
+        return { city: c.city, gmv: opEnt?.gmv || 0, servicios: opEnt?.total || 0, paquetes: opEnt?.paquetes || 0 };
+      })
+      .filter(c => c.gmv > 0 || c.servicios > 0)
+      .sort((a, b) => b.gmv - a.gmv);
+
+    const porTipoOp = [{ name: filterOpType, total: totServ, gmv: totGmv }];
+    const otroServ  = Math.max(0, totServ - totComp - totCanc);
+    const porStatus = [
+      { name: "Completed", total: totComp },
+      { name: "Canceled",  total: totCanc },
+      ...(otroServ > 0 ? [{ name: "Other", total: otroServ }] : []),
+    ].filter(d => d.total > 0);
+
+    // Drivers — solo el tipo de op seleccionado
+    const opDrv = (rawTot?.driversPorTipoOp || []).find(d =>
+      (d.op || "").toLowerCase().includes(filterOpType.toLowerCase())
+    );
+    const driversPorTipoOp   = opDrv ? [opDrv] : [];
+    const totalDriversActivos = opDrv?.driversActivos || 0;
+
+    // Weekly — suma de semanales por empresa filtrada (aproximación con todos sus ops)
+    const wMap = {};
+    for (const e of empresasConScore) {
+      for (const w of (e.weekly || [])) {
+        if (!wMap[w.semana]) wMap[w.semana] = {
+          semana: w.semana, label: w.label,
+          gmv: 0, servicios: 0, completados: 0, cancelados: 0, canceladosConductor: 0, expirados: 0,
+        };
+        const wm = wMap[w.semana];
+        wm.gmv += w.gmv; wm.servicios += w.servicios;
+        wm.completados         += w.completados;
+        wm.cancelados          += w.cancelados          || 0;
+        wm.canceladosConductor += w.canceladosConductor || 0;
+        wm.expirados           += w.expirados           || 0;
+      }
+    }
+    const weekly = Object.values(wMap).sort((a, b) => a.semana - b.semana).map(w => ({
+      ...w,
+      tasa_completado: (w.completados + w.canceladosConductor + w.expirados) > 0
+        ? w.completados / (w.completados + w.canceladosConductor + w.expirados) : 0,
+      tasa_cancelacion: w.servicios > 0 ? w.cancelados / w.servicios : 0,
+    }));
+
+    // Daily: buscar el op type en dailyByOp (match parcial para cubrir variaciones de nombre)
+    const dailyByOp = dataMes?.totales?.dailyByOp || {};
+    const dailyOpKey = Object.keys(dailyByOp).find(k =>
+      k.toLowerCase().includes(filterOpType.toLowerCase()) ||
+      filterOpType.toLowerCase().includes(k.toLowerCase())
+    );
+    const daily = dailyOpKey ? dailyByOp[dailyOpKey] : null;
+
+    // Vehículo: buscar el op type en porVehiculoByOp
+    const vhByOpMap = dataMes?.totales?.porVehiculoByOp || {};
+    console.log("[DEBUG vehiculo] filterOpType:", filterOpType);
+    console.log("[DEBUG vehiculo] porVehiculoByOp keys:", Object.keys(vhByOpMap));
+    console.log("[DEBUG vehiculo] porVehiculo global:", dataMes?.totales?.porVehiculo);
+    const vhOpKey = Object.keys(vhByOpMap).find(k =>
+      k.toLowerCase().includes(filterOpType.toLowerCase()) ||
+      filterOpType.toLowerCase().includes(k.toLowerCase())
+    );
+    console.log("[DEBUG vehiculo] vhOpKey encontrado:", vhOpKey);
+    const porVehiculo = vhOpKey ? vhByOpMap[vhOpKey] : [];
+
+    return { topCiudades, porTipoOp, porStatus, porVehiculo, driversPorTipoOp, totalDriversActivos, weekly, ...(daily ? { daily } : {}) };
+  }, [filterOpType, empresasConScore, dataMes]); // eslint-disable-line
 
   if (!meses.length) return (
     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-800 text-sm">
@@ -123,6 +212,8 @@ export default function MetricasRiesgo() {
 
   // ── Totales del mes ───────────────────────────────────────────────────────
   const tot       = dataMes?.totales;
+  // activeTot: usa los datos filtrados por tipo de op cuando hay filtro activo
+  const activeTot = (filterOpType && filteredTot) ? filteredTot : tot;
   const nRojo     = empresasConScore.filter(e=>e.color==="rojo").length;
   const nAmarillo = empresasConScore.filter(e=>e.color==="amarillo").length;
   const nVerde    = empresasConScore.filter(e=>e.color==="verde").length;
@@ -131,10 +222,11 @@ export default function MetricasRiesgo() {
                     Math.max(empresasConScore.reduce((s,e)=>s+e.total,0),1);
 
   // ── Totales mes anterior ─────────────────────────────────────────────────
-  const empPrevAll    = dataPrev?.empresas || [];
-  const gmvPrevTotal  = empPrevAll.reduce((s,e)=>s+e.gmv,0);
-  const totPrevSvc    = empPrevAll.reduce((s,e)=>s+e.total,0);
-  const compPrevSvc   = empPrevAll.reduce((s,e)=>s+e.completados,0);
+  const empPrevAll    = (dataPrev?.empresas || []).filter(e => empresaMatchesOpType(e, filterOpType));
+  const _prevVal = (e, k) => { const op = getOpMetrics(e, filterOpType); return op ? (op[k]||0) : e[k]||0; };
+  const gmvPrevTotal  = empPrevAll.reduce((s,e)=>s+_prevVal(e,"gmv"),0);
+  const totPrevSvc    = empPrevAll.reduce((s,e)=>s+_prevVal(e,"total"),0);
+  const compPrevSvc   = empPrevAll.reduce((s,e)=>s+_prevVal(e,"completados"),0);
   const tcPrev        = totPrevSvc > 0 ? compPrevSvc/totPrevSvc : null;
   const nEmpPrev      = empPrevAll.length;
   const nRojoPrev     = empPrevAll.filter(e=>calcularScore(e,null,umb).color==="rojo").length;
@@ -142,11 +234,13 @@ export default function MetricasRiesgo() {
   // Servicios, paquetes, drivers actuales
   const totalServicios = empresasConScore.reduce((s,e)=>s+e.total, 0);
   const totalPaquetes  = empresasConScore.reduce((s,e)=>s+(e.paquetes||0), 0);
-  const totalDrivers   = tot?.totalDriversActivos || 0;
+  const totalDrivers   = filterOpType
+    ? (tot?.driversPorTipoOp?.find(d=>d.op?.toLowerCase().includes(filterOpType.toLowerCase()))?.driversActivos || 0)
+    : (tot?.totalDriversActivos || 0);
 
   // Mes anterior
-  const totalServPrev   = empPrevAll.reduce((s,e)=>s+e.total, 0);
-  const totalPaqPrev    = empPrevAll.reduce((s,e)=>s+(e.paquetes||0), 0);
+  const totalServPrev   = empPrevAll.reduce((s,e)=>s+_prevVal(e,"total"), 0);
+  const totalPaqPrev    = empPrevAll.reduce((s,e)=>s+_prevVal(e,"paquetes"), 0);
   const totalDriversPrev = dataPrev?.totales?.totalDriversActivos || 0;
 
   const varGmv     = gmvPrevTotal  > 0 ? (gmvTotal - gmvPrevTotal)/gmvPrevTotal  : null;
@@ -159,36 +253,52 @@ export default function MetricasRiesgo() {
 
   // ── Efectividad Comercial y Operativa ────────────────────────────────────
   const getStatus = (porStatus, name) => (porStatus || []).find(d => d.name === name)?.total || 0;
-  const ps     = tot?.porStatus || [];
-  const psPrev = dataPrev?.totales?.porStatus || [];
+  const ps = activeTot?.porStatus || [];
+  // psPrev: cuando hay filtro usa las métricas op-específicas del mes anterior
+  const psPrev = filterOpType
+    ? (() => {
+        const pC = empPrevAll.reduce((s, e) => s + _prevVal(e, "completados"), 0);
+        const pK = empPrevAll.reduce((s, e) => s + _prevVal(e, "cancelados"),  0);
+        return [{ name:"Completed",total:pC },{ name:"Canceled",total:pK }].filter(d=>d.total>0);
+      })()
+    : (dataPrev?.totales?.porStatus || []);
 
-  const sCompleted   = getStatus(ps, "Completed");
-  const sCancelPax   = getStatus(ps, "Canceled by Passenger");
-  const sCancelDrv   = getStatus(ps, "Canceled by Driver");
-  const sCancelOps   = getStatus(ps, "Canceled by Ops");
-  const sExpired     = getStatus(ps, "Expired");
-
-  const denomComercial = sCompleted + sCancelPax + sCancelDrv + sCancelOps + sExpired;
-  const denomOperativa = sCompleted + sCancelDrv + sExpired;
-  const efectComercial = denomComercial > 0 ? sCompleted / denomComercial : null;
-  const efectOperativa = denomOperativa > 0 ? sCompleted / denomOperativa : null;
-
-  // Variación vs mes anterior
-  const sCompPrev    = getStatus(psPrev, "Completed");
-  const sCancelPaxP  = getStatus(psPrev, "Canceled by Passenger");
-  const sCancelDrvP  = getStatus(psPrev, "Canceled by Driver");
-  const sCancelOpsP  = getStatus(psPrev, "Canceled by Ops");
-  const sExpiredP    = getStatus(psPrev, "Expired");
-  const denomComPrev = sCompPrev + sCancelPaxP + sCancelDrvP + sCancelOpsP + sExpiredP;
-  const denomOpPrev  = sCompPrev + sCancelDrvP + sExpiredP;
-  const efComPrev    = denomComPrev > 0 ? sCompPrev / denomComPrev : null;
-  const efOpPrev     = denomOpPrev  > 0 ? sCompPrev / denomOpPrev  : null;
-  const varEfCom     = efectComercial !== null && efComPrev !== null ? efectComercial - efComPrev : null;
-  const varEfOp      = efectOperativa !== null && efOpPrev  !== null ? efectOperativa - efOpPrev  : null;
+  let efectComercial, efectOperativa, varEfCom, varEfOp;
+  if (filterOpType) {
+    const fc = getStatus(ps, "Completed"), fk = getStatus(ps, "Canceled");
+    efectComercial = totalServicios > 0 ? fc / totalServicios : null;
+    efectOperativa = (fc + fk) > 0     ? fc / (fc + fk)      : null;
+    const pc = getStatus(psPrev, "Completed"), pk = getStatus(psPrev, "Canceled");
+    const efCP = totPrevSvc > 0    ? pc / totPrevSvc    : null;
+    const efOP = (pc + pk) > 0    ? pc / (pc + pk)     : null;
+    varEfCom = efectComercial !== null && efCP !== null ? efectComercial - efCP : null;
+    varEfOp  = efectOperativa !== null && efOP !== null ? efectOperativa - efOP : null;
+  } else {
+    const sCompleted   = getStatus(ps, "Completed");
+    const sCancelPax   = getStatus(ps, "Canceled by Passenger");
+    const sCancelDrv   = getStatus(ps, "Canceled by Driver");
+    const sCancelOps   = getStatus(ps, "Canceled by Ops");
+    const sExpired     = getStatus(ps, "Expired");
+    const denomComercial = sCompleted + sCancelPax + sCancelDrv + sCancelOps + sExpired;
+    const denomOperativa = sCompleted + sCancelDrv + sExpired;
+    efectComercial = denomComercial > 0 ? sCompleted / denomComercial : null;
+    efectOperativa = denomOperativa > 0 ? sCompleted / denomOperativa : null;
+    const sCompPrev    = getStatus(psPrev, "Completed");
+    const sCancelPaxP  = getStatus(psPrev, "Canceled by Passenger");
+    const sCancelDrvP  = getStatus(psPrev, "Canceled by Driver");
+    const sCancelOpsP  = getStatus(psPrev, "Canceled by Ops");
+    const sExpiredP    = getStatus(psPrev, "Expired");
+    const denomComPrev = sCompPrev + sCancelPaxP + sCancelDrvP + sCancelOpsP + sExpiredP;
+    const denomOpPrev  = sCompPrev + sCancelDrvP + sExpiredP;
+    const efComPrev    = denomComPrev > 0 ? sCompPrev / denomComPrev : null;
+    const efOpPrev     = denomOpPrev  > 0 ? sCompPrev / denomOpPrev  : null;
+    varEfCom = efectComercial !== null && efComPrev !== null ? efectComercial - efComPrev : null;
+    varEfOp  = efectOperativa !== null && efOpPrev  !== null ? efectOperativa - efOpPrev  : null;
+  }
 
   return (
     <div className="space-y-6">
-      {/* Selección de mes */}
+      {/* Selección de mes + filtro operation type */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
         <div className="flex flex-wrap gap-3 items-end">
           <div>
@@ -197,6 +307,18 @@ export default function MetricasRiesgo() {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
               {[...meses].reverse().map(m=>(
                 <option key={m.key} value={m.key}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">🔖 Operation Type</label>
+            <select
+              value={filterOpType}
+              onChange={e => setFilterOpType(e.target.value)}
+              className="border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white text-gray-700"
+            >
+              {OP_TYPES.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           </div>
@@ -245,7 +367,8 @@ export default function MetricasRiesgo() {
 
       {/* GMV Diario */}
       {(() => {
-        const daily = tot?.daily;
+        // Usa daily filtrado por op type cuando está disponible (requiere re-cargar desde ClickHouse)
+        const daily = activeTot?.daily || tot?.daily;
         if (!daily?.length) return (
           <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-5 text-center text-xs text-gray-400">
             📆 La gráfica de GMV diario estará disponible al volver a subir los datos del mes desde <b>⚙️ Configuración</b>.
@@ -275,7 +398,7 @@ export default function MetricasRiesgo() {
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
               <div>
-                <h3 className="font-bold text-gray-700 text-sm">📆 GMV Diario</h3>
+                <h3 className="font-bold text-gray-700 text-sm">📆 GMV Diario{filterOpType && !activeTot?.daily && <span className="text-xs font-normal text-gray-400 ml-1">(todos los tipos — recarga ClickHouse para filtrar)</span>}</h3>
                 <p className="text-xs text-gray-400 mt-0.5">
                   Barras: GMV del día · Línea: media móvil 7 días · {chartDaily.length} días con datos
                 </p>
@@ -463,8 +586,13 @@ export default function MetricasRiesgo() {
           <ResponsiveContainer width="100%" height={200}>
             <BarChart
               data={(() => {
-                const top = tot?.topCiudades?.slice(0,10) || [];
-                const prevCiudades = dataPrev?.totales?.topCiudades || [];
+                const top = (activeTot?.topCiudades || []).slice(0, 10);
+                const prevCiudades = filterOpType
+                  ? (dataPrev?.ciudades || []).map(c => {
+                      const opEnt = (c.ops||[]).find(o=>o.op.toLowerCase().includes(filterOpType.toLowerCase()));
+                      return { city:c.city, gmv:opEnt?.gmv||0 };
+                    })
+                  : (dataPrev?.totales?.topCiudades || []);
                 return top.map(c => ({
                   ...c,
                   gmvPrev: prevCiudades.find(p=>p.city===c.city)?.gmv || 0,
@@ -492,8 +620,13 @@ export default function MetricasRiesgo() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart
               data={(() => {
-                const top = [...(tot?.topCiudades || [])].sort((a,b) => b.servicios - a.servicios).slice(0,10);
-                const prevCiudades = dataPrev?.totales?.topCiudades || [];
+                const top = [...(activeTot?.topCiudades || [])].sort((a,b) => b.servicios - a.servicios).slice(0, 10);
+                const prevCiudades = filterOpType
+                  ? (dataPrev?.ciudades || []).map(c => {
+                      const opEnt = (c.ops||[]).find(o=>o.op.toLowerCase().includes(filterOpType.toLowerCase()));
+                      return { city:c.city, servicios:opEnt?.total||0 };
+                    })
+                  : (dataPrev?.totales?.topCiudades || []);
                 return top.map(c => ({
                   ...c,
                   serviciosPrev: prevCiudades.find(p=>p.city===c.city)?.servicios || 0,
@@ -518,8 +651,13 @@ export default function MetricasRiesgo() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart
               data={(() => {
-                const top = [...(tot?.topCiudades || [])].sort((a,b) => b.paquetes - a.paquetes).slice(0,10);
-                const prevCiudades = dataPrev?.totales?.topCiudades || [];
+                const top = [...(activeTot?.topCiudades || [])].sort((a,b) => b.paquetes - a.paquetes).slice(0, 10);
+                const prevCiudades = filterOpType
+                  ? (dataPrev?.ciudades || []).map(c => {
+                      const opEnt = (c.ops||[]).find(o=>o.op.toLowerCase().includes(filterOpType.toLowerCase()));
+                      return { city:c.city, paquetes:opEnt?.paquetes||0 };
+                    })
+                  : (dataPrev?.totales?.topCiudades || []);
                 return top.map(c => ({
                   ...c,
                   paquetesPrev: prevCiudades.find(p=>p.city===c.city)?.paquetes || 0,
@@ -543,22 +681,22 @@ export default function MetricasRiesgo() {
         {/* Línea Operativa */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
           <h3 className="font-bold text-gray-700 text-sm mb-3">📦 Línea Operativa</h3>
-          {(tot?.porLinea?.length > 0) ? (
+          {(activeTot?.porTipoOp?.length > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={tot.porLinea} dataKey="total" nameKey="name"
+                <Pie data={activeTot.porTipoOp} dataKey="total" nameKey="name"
                   cx="50%" cy="50%" innerRadius={45} outerRadius={75}
                   label={({name,percent})=>`${name.split(" ")[0]} ${(percent*100).toFixed(0)}%`}
                   labelLine={false}>
-                  {tot.porLinea.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                  {activeTot.porTipoOp.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
                 </Pie>
                 <Tooltip formatter={(v,n)=>[v.toLocaleString()+" servicios",n]}/>
               </PieChart>
             </ResponsiveContainer>
           ) : <p className="text-xs text-gray-400 text-center py-8">Sin datos</p>}
-          {tot?.porLinea?.length > 0 && (
+          {activeTot?.porTipoOp?.length > 0 && (
             <div className="mt-2 space-y-1">
-              {tot.porLinea.slice(0,6).map((d,i)=>(
+              {activeTot.porTipoOp.slice(0,8).map((d,i)=>(
                 <div key={d.name} className="flex justify-between text-xs">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full inline-block" style={{background:COLORS[i%COLORS.length]}}/>
@@ -575,18 +713,16 @@ export default function MetricasRiesgo() {
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
           <h3 className="font-bold text-gray-700 text-sm mb-1">📋 Estado del Servicio</h3>
           {mesPrevMeta && <p className="text-xs text-gray-400 mb-3">🟣 {dataMes?.label} · 🩷 {mesPrevMeta.label}</p>}
-          {(tot?.porStatus?.length > 0) ? (
+          {(activeTot?.porStatus?.length > 0) ? (
             <>
-              <ResponsiveContainer width="100%" height={Math.max(220, (tot.porStatus.length || 1) * 45)}>
+              <ResponsiveContainer width="100%" height={Math.max(220, (activeTot.porStatus.length || 1) * 45)}>
                 <BarChart
                   data={(() => {
-                    const prevStatus = dataPrev?.totales?.porStatus || [];
-                    // Asegurar todos los estados visibles
-                    const allNames = new Set([...tot.porStatus.map(d=>d.name), ...prevStatus.map(d=>d.name)]);
+                    const allNames = new Set([...activeTot.porStatus.map(d=>d.name), ...psPrev.map(d=>d.name)]);
                     return [...allNames].map(name => ({
                       name,
-                      total: tot.porStatus.find(d=>d.name===name)?.total || 0,
-                      totalPrev: prevStatus.find(p=>p.name===name)?.total || 0,
+                      total:     activeTot.porStatus.find(d=>d.name===name)?.total || 0,
+                      totalPrev: psPrev.find(p=>p.name===name)?.total || 0,
                     })).sort((a,b) => b.total - a.total);
                   })()}
                   layout="vertical" margin={{left:5,right:10}}>
@@ -595,9 +731,9 @@ export default function MetricasRiesgo() {
                   <Tooltip formatter={(v)=>[v.toLocaleString()+" servicios"]}/>
                   <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
                   <Bar dataKey="total" name={dataMes?.label||"Actual"} radius={[0,4,4,0]}>
-                    {[...new Set([...tot.porStatus.map(d=>d.name), ...(dataPrev?.totales?.porStatus||[]).map(d=>d.name)])].sort((a,b) => {
-                      const at = tot.porStatus.find(d=>d.name===a)?.total||0;
-                      const bt = tot.porStatus.find(d=>d.name===b)?.total||0;
+                    {[...new Set([...activeTot.porStatus.map(d=>d.name), ...psPrev.map(d=>d.name)])].sort((a,b) => {
+                      const at = activeTot.porStatus.find(d=>d.name===a)?.total||0;
+                      const bt = activeTot.porStatus.find(d=>d.name===b)?.total||0;
                       return bt - at;
                     }).map((name,i)=>{
                       const c = name==="Completed"?SEM_VERDE:name.startsWith("Canceled")?SEM_ROJO:name==="Expired"?SEM_AMARILLO:COLORS[i%COLORS.length];
@@ -609,8 +745,8 @@ export default function MetricasRiesgo() {
               </ResponsiveContainer>
               {/* Tabla comparativa debajo */}
               <div className="mt-3 space-y-1">
-                {tot.porStatus.slice(0,6).map(d => {
-                  const prev = (dataPrev?.totales?.porStatus || []).find(p => p.name === d.name);
+                {activeTot.porStatus.slice(0,6).map(d => {
+                  const prev = psPrev.find(p => p.name === d.name);
                   const prevTotal = prev?.total || 0;
                   const varPct = prevTotal > 0 ? ((d.total - prevTotal) / prevTotal * 100) : 0;
                   const c = d.name==="Completed"?SEM_VERDE:d.name.startsWith("Canceled")?SEM_ROJO:d.name==="Expired"?SEM_AMARILLO:"#6b7280";
@@ -636,22 +772,22 @@ export default function MetricasRiesgo() {
         {/* Tipo de Vehículo */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
           <h3 className="font-bold text-gray-700 text-sm mb-3">🚗 Tipo de Vehículo</h3>
-          {(tot?.porVehiculo?.length > 0) ? (
+          {(activeTot?.porVehiculo?.length > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={tot.porVehiculo} dataKey="total" nameKey="name"
+                <Pie data={activeTot.porVehiculo} dataKey="total" nameKey="name"
                   cx="50%" cy="50%" innerRadius={45} outerRadius={75}
                   label={({name,percent})=>`${name.split(" ")[0]} ${(percent*100).toFixed(0)}%`}
                   labelLine={false}>
-                  {tot.porVehiculo.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                  {activeTot.porVehiculo.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
                 </Pie>
                 <Tooltip formatter={(v,n)=>[v.toLocaleString()+" servicios",n]}/>
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="text-xs text-gray-400 text-center py-8">Sin datos</p>}
-          {tot?.porVehiculo?.length > 0 && (
+          ) : <p className="text-xs text-gray-400 text-center py-8">Tipo de vehículo no disponible en los datos de ClickHouse</p>}
+          {activeTot?.porVehiculo?.length > 0 && (
             <div className="mt-2 space-y-1">
-              {tot.porVehiculo.slice(0,5).map((d,i)=>(
+              {activeTot.porVehiculo.slice(0,5).map((d,i)=>(
                 <div key={d.name} className="flex justify-between text-xs">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full inline-block" style={{background:COLORS[i%COLORS.length]}}/>
@@ -666,12 +802,12 @@ export default function MetricasRiesgo() {
       </div>
 
       {/* Drivers activos por tipo de operación */}
-      {tot?.driversPorTipoOp?.length > 0 && (
+      {(activeTot?.driversPorTipoOp?.length > 0) && (
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
           <div className="flex flex-wrap items-center justify-between mb-4">
             <h3 className="font-bold text-gray-700 text-sm">🏍️ Drivers Activos por Tipo de Operación</h3>
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-bold" style={{background:BRAND_GRADIENT,color:"#fff"}}>
-              Total: {tot.totalDriversActivos.toLocaleString()} drivers únicos
+              Total: {(activeTot?.totalDriversActivos || 0).toLocaleString()} drivers únicos
             </div>
           </div>
 
@@ -688,7 +824,7 @@ export default function MetricasRiesgo() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tot.driversPorTipoOp.map((d, i) => (
+                  {(activeTot?.driversPorTipoOp || []).map((d, i) => (
                     <tr key={d.op} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
                       <td className="px-3 py-2 font-semibold text-gray-800">{d.op}</td>
                       <td className="px-3 py-2 text-right font-bold text-purple-700">{d.driversActivos.toLocaleString()}</td>
@@ -700,11 +836,11 @@ export default function MetricasRiesgo() {
                   ))}
                   <tr className="border-t-2 border-purple-300 bg-purple-50 font-bold">
                     <td className="px-3 py-2 text-purple-800">TOTAL</td>
-                    <td className="px-3 py-2 text-right text-purple-800">{tot.totalDriversActivos.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right text-gray-700">{tot.driversPorTipoOp.reduce((s, d) => s + d.servicios, 0).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-purple-800">{(activeTot?.totalDriversActivos||0).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{(activeTot?.driversPorTipoOp||[]).reduce((s, d) => s + d.servicios, 0).toLocaleString()}</td>
                     <td className="px-3 py-2 text-right">
                       <span className="bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full text-xs font-bold">
-                        {tot.totalDriversActivos > 0 ? Math.round(tot.driversPorTipoOp.reduce((s, d) => s + d.servicios, 0) / tot.totalDriversActivos) : 0}
+                        {(activeTot?.totalDriversActivos||0) > 0 ? Math.round((activeTot?.driversPorTipoOp||[]).reduce((s, d) => s + d.servicios, 0) / activeTot.totalDriversActivos) : 0}
                       </span>
                     </td>
                   </tr>
@@ -713,8 +849,8 @@ export default function MetricasRiesgo() {
             </div>
 
             {/* Gráfico */}
-            <ResponsiveContainer width="100%" height={Math.max(200, tot.driversPorTipoOp.length * 40)}>
-              <BarChart data={tot.driversPorTipoOp} layout="vertical" margin={{left:5,right:10}}>
+            <ResponsiveContainer width="100%" height={Math.max(200, (activeTot?.driversPorTipoOp||[]).length * 40)}>
+              <BarChart data={activeTot?.driversPorTipoOp||[]} layout="vertical" margin={{left:5,right:10}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF"/>
                 <XAxis type="number" tick={{fontSize:9}}/>
                 <YAxis type="category" dataKey="op" tick={{fontSize:9}} width={90}/>
@@ -761,9 +897,9 @@ export default function MetricasRiesgo() {
         const hasData = totalBookings > 0;
         const empWithRelaunch = empresasConScore.filter(e => (e.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0));
 
-        return hasData ? (
+        return (
           <>
-            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+            {hasData && <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
               <h3 className="font-bold text-gray-700 text-sm mb-4">📏 Cumplimiento por rango de distancia <span className="text-xs font-normal text-gray-400">(solo Op. On Demand)</span></h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
@@ -800,7 +936,7 @@ export default function MetricasRiesgo() {
                   </tfoot>
                 </table>
               </div>
-            </div>
+            </div>}
 
             {/* Gráficas comparativas: Devoluciones + Relanzamientos vs mes anterior */}
             {(() => {
@@ -915,10 +1051,10 @@ export default function MetricasRiesgo() {
             })()}
 
             {/* Evolución semanal */}
-            {tot?.weekly?.length > 0 && (
+            {activeTot?.weekly?.length > 0 && (
               <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-gray-700 text-sm">📈 Evolución semanal</h3>
+                  <h3 className="font-bold text-gray-700 text-sm">📈 Evolución semanal{filterOpType && <span className="text-xs font-normal text-gray-400 ml-1">(aprox. empresas filtradas)</span>}</h3>
                   {mesPrevMeta && (
                     <div className="flex items-center gap-3 text-xs text-gray-500">
                       <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:PIBOX_PURPLE}}></span>{dataMes?.label}</span>
@@ -930,7 +1066,7 @@ export default function MetricasRiesgo() {
                   <div>
                     <p className="text-xs text-gray-500 mb-2 font-semibold">GMV por semana</p>
                     <ResponsiveContainer width="100%" height={160}>
-                      <BarChart data={tot.weekly.map((w,i)=>({
+                      <BarChart data={(activeTot?.weekly||[]).map((w,i)=>({
                           ...w,
                           gmvPrev: dataPrev?.totales?.weekly?.[i]?.gmv ?? null,
                         }))} margin={{right:4}}>
@@ -947,7 +1083,7 @@ export default function MetricasRiesgo() {
                   <div>
                     <p className="text-xs text-gray-500 mb-2 font-semibold">Servicios por semana</p>
                     <ResponsiveContainer width="100%" height={160}>
-                      <BarChart data={tot.weekly.map((w,i)=>({
+                      <BarChart data={(activeTot?.weekly||[]).map((w,i)=>({
                           ...w,
                           serviciosPrev: dataPrev?.totales?.weekly?.[i]?.servicios ?? null,
                         }))} margin={{right:4}}>
@@ -964,7 +1100,7 @@ export default function MetricasRiesgo() {
                   <div>
                     <p className="text-xs text-gray-500 mb-2 font-semibold">Ef. Operativa / Cancelación</p>
                     <ResponsiveContainer width="100%" height={160}>
-                      <LineChart data={tot.weekly.map((w,i)=>({
+                      <LineChart data={(activeTot?.weekly||[]).map((w,i)=>({
                           ...w,
                           tc_prev:   dataPrev?.totales?.weekly?.[i]?.tasa_completado  ?? null,
                           canc_prev: dataPrev?.totales?.weekly?.[i]?.tasa_cancelacion ?? null,
@@ -1097,8 +1233,8 @@ export default function MetricasRiesgo() {
               const totalDias = new Date(yr, mo, 0).getDate();
 
               let ultimoDia = 0;
-              if (tot?.weekly?.length) {
-                const lastLabel = tot.weekly[tot.weekly.length - 1]?.label || "";
+              if (activeTot?.weekly?.length) {
+                const lastLabel = activeTot.weekly[activeTot.weekly.length - 1]?.label || "";
                 const mMatch = lastLabel.match(/[–\-](\d{1,2})\/\d{2}/);
                 if (mMatch) ultimoDia = parseInt(mMatch[1], 10);
               }
@@ -1407,7 +1543,7 @@ export default function MetricasRiesgo() {
               );
             })()}
           </>
-        ) : null;
+        );
       })()}
 
     </div>

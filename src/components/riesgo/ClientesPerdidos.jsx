@@ -3,6 +3,7 @@ import {
   loadMesData, mesesDisponibles, fmtM, fmtFull, fmtPct,
   PIBOX_PURPLE, PIBOX_PINK, SEM_VERDE, SEM_ROJO, SEM_AMARILLO, MESES_ES,
 } from "./utils";
+import { useRiesgoFilter, empresaMatchesOpType } from "./RiesgoContext";
 
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 
@@ -23,6 +24,7 @@ function downloadCSV(rows, filename) {
 
 export default function ClientesPerdidos() {
   const meses = mesesDisponibles();
+  const { filterOpType } = useRiesgoFilter();
   const [mesKey, setMesKey] = useState(meses[meses.length - 1]?.key || "");
   useEffect(() => {
     if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
@@ -60,6 +62,7 @@ export default function ClientesPerdidos() {
     // Lost: had gmv>0 in prev but not in actual (or gmv=0 in actual)
     const lost = empresasPrev.filter(e => {
       if (!e.companyId) return false;
+      if (!empresaMatchesOpType(e, filterOpType)) return false;
       if (!actualIds.has(e.companyId)) return true;
       const actual = actualByCompany[e.companyId];
       return actual && actual.gmv === 0;
@@ -134,7 +137,7 @@ export default function ClientesPerdidos() {
       },
       top5: t5,
     };
-  }, [mesKey]);
+  }, [mesKey, filterOpType]);
 
   const mesLabel = (key) => {
     if (!key) return "";

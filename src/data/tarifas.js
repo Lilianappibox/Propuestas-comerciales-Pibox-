@@ -6,7 +6,7 @@ export const TARIFAS_DEFAULT = {
       { ciudad: "Cali", vehiculo: "Motocicleta", kmBase: 10, tarifaKmBase: 9800, tarifaKmExtra: 1200, paradaAdicional: 2500, vdRuta: 5000000 },
     ],
     adicionales: [
-      { ciudad: "Nacional", vehiculo: "Moto", tiempoEspera: "5 minutos", tarifaMinuto: 350, bonificacion: 2000, recargo: 3500 },
+      { ciudad: "Nacional", vehiculo: "Moto", tiempoEspera: "5 minutos", tarifaMinuto: 350, bonificacion: 2000, recargo: 3500, aledanos: "N.A", lejania: "N.A" },
     ],
   },
   programadoBloqueHoras: {
@@ -17,6 +17,8 @@ export const TARIFAS_DEFAULT = {
       recaudoIdaVuelta: 5,
       paradaEnFalso: 0,
       recargo: 0,
+      aledanos: "N.A",
+      lejania: "N.A",
       indumentaria: "",
     },
   },
@@ -29,6 +31,9 @@ export const TARIFAS_DEFAULT = {
       medioRecaudo: "Datáfono / Efectivo",
       intentosEntrega: 1,
       tarifaDevoluciones: 8500,
+      recargoPeriferia: 0,
+      aledanos: "N.A",
+      lejania: "N.A",
     },
   },
   picarga: {
@@ -64,6 +69,9 @@ export const TARIFAS_DEFAULT = {
       medioRecaudo: "Datáfono / Efectivo",
       intentosEntrega: 1,
       tarifaDevoluciones: 8500,
+      recargoPeriferia: 0,
+      aledanos: "N.A",
+      lejania: "N.A",
     },
   },
   storage: {

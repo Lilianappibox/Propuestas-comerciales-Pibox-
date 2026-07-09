@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import IncrementoTarifas from "./IncrementoTarifas";
 import InformeTada from "./InformeTada";
 
@@ -376,8 +376,390 @@ function DataTable({ headers, rows }) {
 
 const f = (n) => `$${Math.round(n).toLocaleString("es-CO")}`;
 
+// ── Helpers compartidos ──────────────────────────────────────────────────────
+
+function CalcField({ label, value, onChange, prefix = "", suffix = "" }) {
+  const [raw, setRaw] = useState(null);
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <div className="flex items-center gap-1">
+        {prefix && <span className="text-xs text-gray-400">{prefix}</span>}
+        <input
+          type="text" inputMode="decimal"
+          value={raw !== null ? raw : value}
+          onFocus={(e) => { setRaw(String(value)); e.target.select(); }}
+          onChange={(e) => setRaw(e.target.value)}
+          onBlur={() => {
+            const clean = (raw || "").replace(/[^0-9.,\-]/g, "").replace(",", ".");
+            const n = Number(clean);
+            onChange(isNaN(n) || clean === "" ? 0 : n);
+            setRaw(null);
+          }}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400"
+        />
+        {suffix && <span className="text-xs text-gray-400">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function CalcResult({ label, value, color = "text-gray-800" }) {
+  return (
+    <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+      <span className="text-sm text-gray-600">{label}</span>
+      <span className={`text-sm font-bold ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+const fCalc = (n) => `$${Math.round(n).toLocaleString("es-CO")}`;
+const fPct  = (n) => `${Number(n).toFixed(1)}%`;
+
+// ── Proyección Tarifa Cliente ─────────────────────────────────────────────────
+
+function ProyeccionTarifaCliente() {
+  const [search,   setSearch]   = useState("");
+  const [chStatus, setChStatus] = useState("idle"); // idle | loading | polling | done | error
+  const [chData,   setChData]   = useState([]);
+  const [chError,  setChError]  = useState("");
+  const [selected, setSelected] = useState(null);
+  const [calcMode, setCalcMode] = useState("tarifa");
+
+  // Calculator fields — pre-llenados desde la tarifa seleccionada
+  const [tarifaCliente, setTarifaCliente] = useState(0);
+  const [utilCorp,      setUtilCorp]      = useState(3);
+  const [utilPlat,      setUtilPlat]      = useState(15);
+  const [kmBase,        setKmBase]        = useState(3);
+  const [tarifaBase,    setTarifaBase]    = useState(0);
+  const [kmRecorridos,  setKmRecorridos]  = useState(10);
+  const [tarifaKmExtra, setTarifaKmExtra] = useState(0);
+  const [paradasExtra,  setParadasExtra]  = useState(0);
+  const [tarifaParada,  setTarifaParada]  = useState(0);
+  const [paquetes,      setPaquetes]      = useState(1);
+  const [tarifaHora,    setTarifaHora]    = useState(0);
+  const [horas,         setHoras]         = useState(4);
+  const [horasExtra,    setHorasExtra]    = useState(0);
+  const [tarifaHoraExtra, setTarifaHoraExtra] = useState(0);
+  const [utilCorpH,     setUtilCorpH]     = useState(3);
+
+  // Carga datos de ClickHouse
+  const handleCargar = useCallback(async () => {
+    if (chStatus === "loading" || chStatus === "polling" || chStatus === "done") return;
+    setChStatus("loading");
+    setChError("");
+    try {
+      const res  = await fetch("/api/tarifas_clickhouse/consulta", { credentials: "same-origin" });
+      const json = await res.json();
+      if (json.status === "done") {
+        setChData(json.data || []);
+        setChStatus("done");
+      } else if (json.status === "error") {
+        setChError(json.error || "Error");
+        setChStatus("error");
+      } else {
+        setChStatus("polling");
+      }
+    } catch (e) {
+      setChError(e.message);
+      setChStatus("error");
+    }
+  }, [chStatus]);
+
+  useEffect(() => {
+    if (chStatus !== "polling") return;
+    const t = setInterval(async () => {
+      try {
+        const res  = await fetch("/api/tarifas_clickhouse/status", { credentials: "same-origin" });
+        const json = await res.json();
+        if (json.status === "done") {
+          setChData(json.data || []);
+          setChStatus("done");
+        } else if (json.status === "error") {
+          setChError(json.error || "Error");
+          setChStatus("error");
+        }
+      } catch (e) {
+        setChError(e.message);
+        setChStatus("error");
+      }
+    }, 5000);
+    return () => clearInterval(t);
+  }, [chStatus]);
+
+  // Pre-llenar campos al seleccionar una tarifa
+  const handleSelect = useCallback((row) => {
+    setSelected(row);
+    const base  = Number(row.base_fare)           || 0;
+    const dist  = Number(row.distance_fare)       || 0;
+    const hora  = Number(row.hour_fare)           || 0;
+    const stop  = Number(row.extra_stop_fare)     || 0;
+    const comm  = Number(row.comission)           || 3;
+    const util  = Number(row.utilidad_corporativa)|| 3;
+    setTarifaCliente(base);
+    setUtilCorp(comm);
+    setUtilPlat(15);
+    setTarifaBase(base);
+    setTarifaKmExtra(dist);
+    setTarifaParada(stop);
+    setTarifaHora(hora);
+    setTarifaHoraExtra(Math.round(hora * 1.25));
+    setUtilCorpH(util || 3);
+    setCalcMode("tarifa");
+  }, []);
+
+  // Filtrar resultados
+  const results = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || chStatus !== "done") return [];
+    return chData.filter(r =>
+      String(r.name_company || "").toLowerCase().includes(q) ||
+      String(r.id_company   || "").toLowerCase().includes(q)
+    ).slice(0, 30);
+  }, [search, chData, chStatus]);
+
+  // Cálculos
+  const utilCorpVal  = tarifaCliente * (utilCorp / 100);
+  const pagoSinPlat  = tarifaCliente - utilCorpVal;
+  const utilPlatVal  = pagoSinPlat   * (utilPlat / 100);
+  const pagoPiloto   = pagoSinPlat   - utilPlatVal;
+  const utilTotal    = utilCorpVal   + utilPlatVal;
+  const kmExtraCount = Math.max(0, kmRecorridos - kmBase);
+  const costoKmExtra = kmExtraCount  * tarifaKmExtra;
+  const costoParadas = paradasExtra  * tarifaParada;
+  const totalServicio= tarifaBase    + costoKmExtra + costoParadas;
+  const costoPorPaq  = paquetes > 0  ? totalServicio / paquetes : 0;
+  const costoBaseH   = tarifaHora    * horas;
+  const costoExtraH  = horasExtra    * tarifaHoraExtra;
+  const totalHoras   = costoBaseH    + costoExtraH;
+  const utilCorpHVal = totalHoras    * (utilCorpH / 100);
+  const cobroClienteH= totalHoras    + utilCorpHVal;
+
+  const fmtM = (v) => { const n = Number(v); return n > 0 ? `$${Math.round(n).toLocaleString("es-CO")}` : "—"; };
+
+  return (
+    <div className="space-y-5">
+      {/* Buscador */}
+      <div className="bg-white rounded-xl border border-purple-100 shadow-sm p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[220px]">
+            <input
+              type="text"
+              value={search}
+              onChange={e => { setSearch(e.target.value); if (chStatus === "idle") handleCargar(); }}
+              placeholder="Buscar empresa por nombre o ID de ClickHouse..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+          </div>
+          {chStatus === "idle" && (
+            <button onClick={handleCargar}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-xs font-semibold hover:bg-purple-700 transition">
+              🔄 Cargar desde ClickHouse
+            </button>
+          )}
+          {chStatus === "loading" && (
+            <span className="flex items-center gap-1.5 text-xs text-purple-600 font-medium">
+              <span className="animate-spin w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full inline-block" />
+              Cargando...
+            </span>
+          )}
+          {chStatus === "polling" && (
+            <span className="flex items-center gap-1.5 text-xs text-purple-600 font-medium">
+              <span className="animate-spin w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full inline-block" />
+              Consultando ClickHouse...
+            </span>
+          )}
+          {chStatus === "done" && (
+            <span className="text-xs text-gray-400">{chData.length.toLocaleString()} tarifas disponibles</span>
+          )}
+          {chStatus === "error" && (
+            <span className="text-xs text-red-600">❌ {chError}</span>
+          )}
+        </div>
+
+        {/* Resultados de búsqueda */}
+        {results.length > 0 && (
+          <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-64">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-purple-600 text-white">
+                <tr>
+                  {["Empresa","Tipo Servicio","Ciudad","Estado","Tarifa Base","Distancia","Hora","Comisión","Util. Corp","KAM"].map(h => (
+                    <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap text-[10px] uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((row, i) => {
+                  const isSelected = selected?.tarifa_id === row.tarifa_id;
+                  return (
+                    <tr key={i} onClick={() => handleSelect(row)}
+                      className={`border-t border-gray-100 cursor-pointer transition ${isSelected ? "bg-purple-100" : i % 2 === 0 ? "bg-white hover:bg-purple-50" : "bg-purple-50/30 hover:bg-purple-50"}`}>
+                      <td className="px-3 py-1.5 font-medium text-gray-800 max-w-[160px] truncate">{row.name_company}</td>
+                      <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{row.type_service}</td>
+                      <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{row.ciudad}</td>
+                      <td className="px-3 py-1.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.estado === "activo" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{row.estado}</span>
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-purple-700 font-semibold">{fmtM(row.base_fare)}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-600">{fmtM(row.distance_fare)}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-600">{fmtM(row.hour_fare)}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-600">{row.comission ? `${row.comission}%` : "—"}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-600">{row.utilidad_corporativa ? `${row.utilidad_corporativa}%` : "—"}</td>
+                      <td className="px-3 py-1.5 text-gray-500 max-w-[120px] truncate">{row.name_kam}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {search.trim() && chStatus === "done" && results.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-2">Sin resultados para "{search}"</p>
+        )}
+      </div>
+
+      {/* Tarjeta de la tarifa seleccionada + calculadora */}
+      {selected && (
+        <div className="space-y-4">
+          {/* Info card */}
+          <div className="bg-gradient-to-r from-purple-50 to-purple-100/50 rounded-xl border border-purple-200 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+              <div>
+                <p className="font-bold text-purple-900 text-base">{selected.name_company}</p>
+                <p className="text-xs text-purple-600">{selected.name_business !== selected.name_company ? selected.name_business + " · " : ""}{selected.type_service} · {selected.ciudad}</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <span className={`px-2 py-1 rounded-lg text-xs font-bold ${selected.estado === "activo" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{selected.estado}</span>
+                {selected.tiene_credito?.includes("Tiene") && <span className="px-2 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">Con crédito</span>}
+                {selected.etiqueta && selected.etiqueta !== "No MercadoFlex" && <span className="px-2 py-1 rounded-lg text-xs font-bold bg-orange-100 text-orange-700">{selected.etiqueta}</span>}
+              </div>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 text-xs">
+              {[
+                { l: "Tarifa Base",    v: fmtM(selected.base_fare) },
+                { l: "Mínima",        v: fmtM(selected.minimum_fare) },
+                { l: "Distancia/km",  v: fmtM(selected.distance_fare) },
+                { l: "Hora",          v: fmtM(selected.hour_fare) },
+                { l: "Parada Extra",  v: fmtM(selected.extra_stop_fare) },
+                { l: "Paquete",       v: fmtM(selected.package_fare) },
+                { l: "Comisión",      v: selected.comission ? `${selected.comission}%` : "—" },
+                { l: "Util. Corp.",   v: selected.utilidad_corporativa ? `${selected.utilidad_corporativa}%` : "—" },
+              ].map(({ l, v }) => (
+                <div key={l} className="bg-white/70 rounded-lg p-2 text-center border border-purple-100">
+                  <p className="text-gray-400 text-[9px] uppercase tracking-wide mb-0.5">{l}</p>
+                  <p className="font-bold text-purple-800">{v}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2">KAM: {selected.name_kam} · Tarifa ID: <span className="font-mono">{selected.tarifa_id?.slice(0, 20)}…</span></p>
+          </div>
+
+          {/* Sub-modo calculadora */}
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { id: "tarifa", label: "💰 Utilidades por Tarifa" },
+              { id: "ruta",   label: "🛣️ Costeo de Ruta (Km)" },
+              { id: "horas",  label: "⏱️ Costeo por Horas" },
+            ].map(m => (
+              <button key={m.id} onClick={() => setCalcMode(m.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${calcMode === m.id ? "bg-purple-600 text-white shadow" : "bg-gray-100 text-gray-600 hover:bg-purple-50"}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Calculadora: Utilidades por tarifa */}
+          {calcMode === "tarifa" && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h3 className="font-bold text-purple-800 text-sm">Datos de entrada</h3>
+                <CalcField label="Tarifa al Cliente" value={tarifaCliente} onChange={setTarifaCliente} prefix="$" />
+                <CalcField label="Utilidad Corporativa" value={utilCorp} onChange={setUtilCorp} suffix="%" />
+                <CalcField label="Utilidad Plataforma Pibox" value={utilPlat} onChange={setUtilPlat} suffix="%" />
+              </div>
+              <div className="bg-purple-50 rounded-xl p-5 border border-purple-200">
+                <h3 className="font-bold text-purple-800 text-sm mb-3">Resultados</h3>
+                <CalcResult label="Tarifa al Cliente"              value={fCalc(tarifaCliente)} color="text-purple-700" />
+                <CalcResult label={`Utilidad Corporativa (${utilCorp}%)`} value={fCalc(utilCorpVal)} color="text-green-600" />
+                <CalcResult label="Pago piloto antes de plataforma" value={fCalc(pagoSinPlat)} />
+                <CalcResult label={`Utilidad Plataforma (${utilPlat}%)`} value={fCalc(utilPlatVal)} color="text-blue-600" />
+                <CalcResult label="Pago al Piloto final"            value={fCalc(pagoPiloto)} color="text-orange-600" />
+                <div className="mt-3 pt-3 border-t-2 border-purple-300">
+                  <CalcResult label="Utilidad Total (Corp + Plat)"  value={fCalc(utilTotal)} color="text-green-700" />
+                  <CalcResult label="% Utilidad sobre tarifa"        value={tarifaCliente > 0 ? fPct((utilTotal / tarifaCliente) * 100) : "—"} color="text-green-700" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Calculadora: Costeo de ruta */}
+          {calcMode === "ruta" && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h3 className="font-bold text-purple-800 text-sm">Datos de la ruta</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <CalcField label="Km Base"         value={kmBase}        onChange={setKmBase} />
+                  <CalcField label="Tarifa Base"      value={tarifaBase}    onChange={setTarifaBase}    prefix="$" />
+                  <CalcField label="Km Recorridos"   value={kmRecorridos}  onChange={setKmRecorridos} />
+                  <CalcField label="Tarifa Km Extra"  value={tarifaKmExtra} onChange={setTarifaKmExtra} prefix="$" />
+                  <CalcField label="Paradas Extra"   value={paradasExtra}  onChange={setParadasExtra} />
+                  <CalcField label="Tarifa Parada"    value={tarifaParada}  onChange={setTarifaParada}  prefix="$" />
+                  <CalcField label="Paquetes en ruta" value={paquetes}      onChange={setPaquetes} />
+                </div>
+              </div>
+              <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
+                <h3 className="font-bold text-blue-800 text-sm mb-3">Desglose del Servicio</h3>
+                <CalcResult label="Costo Base" value={fCalc(tarifaBase)} />
+                <CalcResult label={`Km Extra (${kmExtraCount} km × ${fCalc(tarifaKmExtra)})`} value={fCalc(costoKmExtra)} />
+                <CalcResult label={`Paradas Extra (${paradasExtra} × ${fCalc(tarifaParada)})`} value={fCalc(costoParadas)} />
+                <div className="mt-3 pt-3 border-t-2 border-blue-300">
+                  <CalcResult label="Total Servicio"                value={fCalc(totalServicio)} color="text-blue-700" />
+                  <CalcResult label={`Costo por Paquete (${paquetes} paq)`} value={fCalc(costoPorPaq)} color="text-purple-700" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Calculadora: Costeo por horas */}
+          {calcMode === "horas" && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h3 className="font-bold text-purple-800 text-sm">Datos del bloque</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <CalcField label="Tarifa / Hora"     value={tarifaHora}      onChange={setTarifaHora}      prefix="$" />
+                  <CalcField label="Horas contratadas" value={horas}           onChange={setHoras} />
+                  <CalcField label="Horas extra"       value={horasExtra}      onChange={setHorasExtra} />
+                  <CalcField label="Tarifa hora extra" value={tarifaHoraExtra} onChange={setTarifaHoraExtra} prefix="$" />
+                  <CalcField label="Utilidad Corp."    value={utilCorpH}       onChange={setUtilCorpH}       suffix="%" />
+                </div>
+              </div>
+              <div className="bg-green-50 rounded-xl p-5 border border-green-200">
+                <h3 className="font-bold text-green-800 text-sm mb-3">Desglose</h3>
+                <CalcResult label={`Base (${horas}h × ${fCalc(tarifaHora)})`} value={fCalc(costoBaseH)} />
+                {horasExtra > 0 && <CalcResult label={`Horas extra (${horasExtra}h × ${fCalc(tarifaHoraExtra)})`} value={fCalc(costoExtraH)} />}
+                <CalcResult label="Subtotal" value={fCalc(totalHoras)} />
+                <CalcResult label={`Utilidad Corp. (${utilCorpH}%)`} value={fCalc(utilCorpHVal)} color="text-green-600" />
+                <div className="mt-3 pt-3 border-t-2 border-green-300">
+                  <CalcResult label="Cobro al Cliente" value={fCalc(cobroClienteH)} color="text-green-700" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!selected && chStatus === "idle" && (
+        <div className="bg-purple-50 rounded-xl border border-purple-100 p-8 text-center">
+          <p className="text-sm text-purple-700 font-medium mb-1">Busca una empresa para pre-cargar sus tarifas</p>
+          <p className="text-xs text-purple-400">Escribe en el buscador o haz clic en "Cargar desde ClickHouse"</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Calculadora() {
-  const [mode, setMode] = useState("tarifa"); // tarifa | ruta | horas
+  const [mode, setMode] = useState("tarifa"); // tarifa | ruta | horas | proyeccion
   // Calculadora de tarifa
   const [tarifaCliente, setTarifaCliente] = useState(128000);
   const [utilCorp, setUtilCorp] = useState(15);
@@ -419,48 +801,15 @@ function Calculadora() {
   const utilCorpHVal = totalHoras * (utilCorpH / 100);
   const cobroClienteH = totalHoras + utilCorpHVal;
 
-  const Field = ({ label, value, onChange, prefix = "", suffix = "" }) => {
-    const [raw, setRaw] = useState(null);
-    return (
-      <div>
-        <label className="block text-xs text-gray-500 mb-1">{label}</label>
-        <div className="flex items-center gap-1">
-          {prefix && <span className="text-xs text-gray-400">{prefix}</span>}
-          <input
-            type="text"
-            inputMode="decimal"
-            value={raw !== null ? raw : value}
-            onFocus={(e) => { setRaw(String(value)); e.target.select(); }}
-            onChange={(e) => setRaw(e.target.value)}
-            onBlur={() => {
-              const clean = (raw || "").replace(/[^0-9.,\-]/g, "").replace(",", ".");
-              const n = Number(clean);
-              onChange(isNaN(n) || clean === "" ? 0 : n);
-              setRaw(null);
-            }}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400"
-          />
-          {suffix && <span className="text-xs text-gray-400">{suffix}</span>}
-        </div>
-      </div>
-    );
-  };
-
-  const Result = ({ label, value, color = "text-gray-800" }) => (
-    <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span className={`text-sm font-bold ${color}`}>{value}</span>
-    </div>
-  );
-
   return (
     <div className="space-y-5">
       {/* Mode selector */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {[
-          { id: "tarifa", label: "💰 Utilidades por Tarifa" },
-          { id: "ruta", label: "🛣️ Costeo de Ruta (Km)" },
-          { id: "horas", label: "⏱️ Costeo por Horas" },
+          { id: "tarifa",     label: "💰 Utilidades por Tarifa" },
+          { id: "ruta",       label: "🛣️ Costeo de Ruta (Km)" },
+          { id: "horas",      label: "⏱️ Costeo por Horas" },
+          { id: "proyeccion", label: "🎯 Proyección Tarifa Cliente" },
         ].map((m) => (
           <button key={m.id} onClick={() => setMode(m.id)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
@@ -473,20 +822,20 @@ function Calculadora() {
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <h3 className="font-bold text-purple-800 text-sm">Datos de entrada</h3>
-            <Field label="Tarifa al Cliente" value={tarifaCliente} onChange={setTarifaCliente} prefix="$" />
-            <Field label="Utilidad Corporativa" value={utilCorp} onChange={setUtilCorp} suffix="%" />
-            <Field label="Utilidad Plataforma Pibox" value={utilPlat} onChange={setUtilPlat} suffix="%" />
+            <CalcField label="Tarifa al Cliente" value={tarifaCliente} onChange={setTarifaCliente} prefix="$" />
+            <CalcField label="Utilidad Corporativa" value={utilCorp} onChange={setUtilCorp} suffix="%" />
+            <CalcField label="Utilidad Plataforma Pibox" value={utilPlat} onChange={setUtilPlat} suffix="%" />
           </div>
           <div className="bg-purple-50 rounded-xl p-5 border border-purple-200">
             <h3 className="font-bold text-purple-800 text-sm mb-3">Resultados</h3>
-            <Result label="Tarifa al Cliente" value={f(tarifaCliente)} color="text-purple-700" />
-            <Result label={`Utilidad Corporativa (${utilCorp}%)`} value={f(utilCorpVal)} color="text-green-600" />
-            <Result label="Pago piloto antes de plataforma" value={f(pagoSinPlat)} />
-            <Result label={`Utilidad Plataforma (${utilPlat}%)`} value={f(utilPlatVal)} color="text-blue-600" />
-            <Result label="Pago al Piloto final" value={f(pagoPiloto)} color="text-orange-600" />
+            <CalcResult label="Tarifa al Cliente" value={f(tarifaCliente)} color="text-purple-700" />
+            <CalcResult label={`Utilidad Corporativa (${utilCorp}%)`} value={f(utilCorpVal)} color="text-green-600" />
+            <CalcResult label="Pago piloto antes de plataforma" value={f(pagoSinPlat)} />
+            <CalcResult label={`Utilidad Plataforma (${utilPlat}%)`} value={f(utilPlatVal)} color="text-blue-600" />
+            <CalcResult label="Pago al Piloto final" value={f(pagoPiloto)} color="text-orange-600" />
             <div className="mt-3 pt-3 border-t-2 border-purple-300">
-              <Result label="Utilidad Total (Corp + Plat)" value={f(utilTotal)} color="text-green-700" />
-              <Result label="% Utilidad sobre tarifa" value={`${((utilTotal / tarifaCliente) * 100).toFixed(1)}%`} color="text-green-700" />
+              <CalcResult label="Utilidad Total (Corp + Plat)" value={f(utilTotal)} color="text-green-700" />
+              <CalcResult label="% Utilidad sobre tarifa" value={`${((utilTotal / tarifaCliente) * 100).toFixed(1)}%`} color="text-green-700" />
             </div>
           </div>
         </div>
@@ -497,48 +846,50 @@ function Calculadora() {
           <div className="space-y-3">
             <h3 className="font-bold text-purple-800 text-sm">Datos de la ruta</h3>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Km Base" value={kmBase} onChange={setKmBase} />
-              <Field label="Tarifa Base" value={tarifaBase} onChange={setTarifaBase} prefix="$" />
-              <Field label="Km Recorridos" value={kmRecorridos} onChange={setKmRecorridos} />
-              <Field label="Tarifa Km Extra" value={tarifaKmExtra} onChange={setTarifaKmExtra} prefix="$" />
-              <Field label="Paradas Extra" value={paradasExtra} onChange={setParadasExtra} />
-              <Field label="Tarifa Parada" value={tarifaParada} onChange={setTarifaParada} prefix="$" />
-              <Field label="Paquetes en ruta" value={paquetes} onChange={setPaquetes} />
+              <CalcField label="Km Base" value={kmBase} onChange={setKmBase} />
+              <CalcField label="Tarifa Base" value={tarifaBase} onChange={setTarifaBase} prefix="$" />
+              <CalcField label="Km Recorridos" value={kmRecorridos} onChange={setKmRecorridos} />
+              <CalcField label="Tarifa Km Extra" value={tarifaKmExtra} onChange={setTarifaKmExtra} prefix="$" />
+              <CalcField label="Paradas Extra" value={paradasExtra} onChange={setParadasExtra} />
+              <CalcField label="Tarifa Parada" value={tarifaParada} onChange={setTarifaParada} prefix="$" />
+              <CalcField label="Paquetes en ruta" value={paquetes} onChange={setPaquetes} />
             </div>
           </div>
           <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
             <h3 className="font-bold text-blue-800 text-sm mb-3">Desglose del Servicio</h3>
-            <Result label="Costo Base" value={f(costoBase)} />
-            <Result label={`Km Extra (${kmExtraCount} km × ${f(tarifaKmExtra)})`} value={f(costoKmExtra)} />
-            <Result label={`Paradas Extra (${paradasExtra} × ${f(tarifaParada)})`} value={f(costoParadas)} />
+            <CalcResult label="Costo Base" value={f(costoBase)} />
+            <CalcResult label={`Km Extra (${kmExtraCount} km × ${f(tarifaKmExtra)})`} value={f(costoKmExtra)} />
+            <CalcResult label={`Paradas Extra (${paradasExtra} × ${f(tarifaParada)})`} value={f(costoParadas)} />
             <div className="mt-3 pt-3 border-t-2 border-blue-300">
-              <Result label="Total Servicio" value={f(totalServicio)} color="text-blue-700" />
-              <Result label={`Costo por Paquete (${paquetes} paq)`} value={f(costoPorPaquete)} color="text-purple-700" />
+              <CalcResult label="Total Servicio" value={f(totalServicio)} color="text-blue-700" />
+              <CalcResult label={`Costo por Paquete (${paquetes} paq)`} value={f(costoPorPaquete)} color="text-purple-700" />
             </div>
           </div>
         </div>
       )}
+
+      {mode === "proyeccion" && <ProyeccionTarifaCliente />}
 
       {mode === "horas" && (
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <h3 className="font-bold text-purple-800 text-sm">Datos del bloque</h3>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Tarifa / Hora" value={tarifaHora} onChange={setTarifaHora} prefix="$" />
-              <Field label="Horas contratadas" value={horas} onChange={setHoras} />
-              <Field label="Horas extra" value={horasExtra} onChange={setHorasExtra} />
-              <Field label="Tarifa hora extra" value={tarifaHoraExtra} onChange={setTarifaHoraExtra} prefix="$" />
-              <Field label="Utilidad Corporativa" value={utilCorpH} onChange={setUtilCorpH} suffix="%" />
+              <CalcField label="Tarifa / Hora" value={tarifaHora} onChange={setTarifaHora} prefix="$" />
+              <CalcField label="Horas contratadas" value={horas} onChange={setHoras} />
+              <CalcField label="Horas extra" value={horasExtra} onChange={setHorasExtra} />
+              <CalcField label="Tarifa hora extra" value={tarifaHoraExtra} onChange={setTarifaHoraExtra} prefix="$" />
+              <CalcField label="Utilidad Corporativa" value={utilCorpH} onChange={setUtilCorpH} suffix="%" />
             </div>
           </div>
           <div className="bg-green-50 rounded-xl p-5 border border-green-200">
             <h3 className="font-bold text-green-800 text-sm mb-3">Desglose</h3>
-            <Result label={`Base (${horas}h × ${f(tarifaHora)})`} value={f(costoBaseH)} />
-            {horasExtra > 0 && <Result label={`Horas extra (${horasExtra}h × ${f(tarifaHoraExtra)})`} value={f(costoExtraH)} />}
-            <Result label="Subtotal" value={f(totalHoras)} />
-            <Result label={`Utilidad Corp. (${utilCorpH}%)`} value={f(utilCorpHVal)} color="text-green-600" />
+            <CalcResult label={`Base (${horas}h × ${f(tarifaHora)})`} value={f(costoBaseH)} />
+            {horasExtra > 0 && <CalcResult label={`Horas extra (${horasExtra}h × ${f(tarifaHoraExtra)})`} value={f(costoExtraH)} />}
+            <CalcResult label="Subtotal" value={f(totalHoras)} />
+            <CalcResult label={`Utilidad Corp. (${utilCorpH}%)`} value={f(utilCorpHVal)} color="text-green-600" />
             <div className="mt-3 pt-3 border-t-2 border-green-300">
-              <Result label="Cobro al Cliente" value={f(cobroClienteH)} color="text-green-700" />
+              <CalcResult label="Cobro al Cliente" value={f(cobroClienteH)} color="text-green-700" />
             </div>
           </div>
         </div>
