@@ -559,16 +559,17 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
   if (traf) {
     const T = traf.totalTurnos;
-    const pctColoc = T > 0 ? (traf.colocacionesSI / T * 100) : 0;
-    const pctNoColoc = T > 0 ? (traf.colocacionesNO / T * 100) : 0;
+    const colocBase = (traf.colocacionesSI || 0) + (traf.colocacionesNO || 0); // solo turnos con valor SI/NO
+    const pctColoc = colocBase > 0 ? (traf.colocacionesSI / colocBase * 100) : 0;
+    const pctNoColoc = colocBase > 0 ? (traf.colocacionesNO / colocBase * 100) : 0;
     const PT = traf.puntualidadTurnos || 0;
     const pctPunt = PT > 0 ? (traf.puntualidadSI / PT * 100) : 0;
     const pctCancel = T > 0 ? (traf.cancelaciones / T * 100) : 0;
 
     // 1. Colocación general
-    if (pctColoc < umb.colocAlerta) alerts.push({ cat: "Colocación", icon: "🔴", text: `Colocación ${pctColoc.toFixed(1)}% (${traf.colocacionesSI.toLocaleString()} de ${T.toLocaleString()} turnos) — por debajo del objetivo ${umb.colocAlerta}%. Se pierden ${traf.colocacionesNO.toLocaleString()} oportunidades de colocación.` });
-    else if (pctColoc >= umb.colocExcelente) wins.push({ cat: "Colocación", icon: "🟢", text: `Colocación excelente: ${pctColoc.toFixed(1)}% — ${traf.colocacionesSI.toLocaleString()} turnos colocados de ${T.toLocaleString()}.` });
-    else wins.push({ cat: "Colocación", icon: "🟡", text: `Colocación en rango aceptable: ${pctColoc.toFixed(1)}% (${traf.colocacionesSI.toLocaleString()} de ${T.toLocaleString()}).` });
+    if (pctColoc < umb.colocAlerta) alerts.push({ cat: "Colocación", icon: "🔴", text: `Colocación ${pctColoc.toFixed(1)}% (${traf.colocacionesSI.toLocaleString()} de ${colocBase.toLocaleString()} turnos) — por debajo del objetivo ${umb.colocAlerta}%. Se pierden ${traf.colocacionesNO.toLocaleString()} oportunidades de colocación.` });
+    else if (pctColoc >= umb.colocExcelente) wins.push({ cat: "Colocación", icon: "🟢", text: `Colocación excelente: ${pctColoc.toFixed(1)}% — ${traf.colocacionesSI.toLocaleString()} turnos colocados de ${colocBase.toLocaleString()}.` });
+    else wins.push({ cat: "Colocación", icon: "🟡", text: `Colocación en rango aceptable: ${pctColoc.toFixed(1)}% (${traf.colocacionesSI.toLocaleString()} de ${colocBase.toLocaleString()}).` });
 
     // 2. Puntualidad general
     if (pctPunt < umb.puntAlerta) alerts.push({ cat: "Puntualidad", icon: "⏱️", text: `Puntualidad crítica: ${pctPunt.toFixed(1)}% — ${(T - traf.puntualidadSI).toLocaleString()} turnos con llegada tardía. Esto impacta la experiencia del cliente y la confiabilidad del servicio.` });
@@ -2816,14 +2817,14 @@ export default function InformeTada({ isAdmin }) {
                 icon="✅"
                 label="Colocaciones"
                 value={data.colocacionesSI.toLocaleString()}
-                sub={`${pct(data.colocacionesSI, efectiveTurnos)}%`}
+                sub={`${pct(data.colocacionesSI, data.colocacionesSI + data.colocacionesNO)}%`}
                 borderColor={SEM_VERDE}
               />
               <KpiCard
                 icon="❌"
                 label="No Colocaciones"
                 value={data.colocacionesNO.toLocaleString()}
-                sub={`${pct(data.colocacionesNO, efectiveTurnos)}%`}
+                sub={`${pct(data.colocacionesNO, data.colocacionesSI + data.colocacionesNO)}%`}
                 borderColor={SEM_ROJO}
               />
               <KpiCard
