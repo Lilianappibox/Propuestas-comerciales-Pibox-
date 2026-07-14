@@ -70,6 +70,7 @@ function DrillDown({ empresa, mesLabel }) {
           {icon:"❌",label:"Cancelación",val:fmtPct(empresa.tasa_cancelacion), col:SEM_ROJO},
           {icon:"⏱️",label:"Expirados",  val:fmtPct(empresa.tasa_expirado),    col:SEM_AMARILLO},
           {icon:"💰",label:"GMV",         val:fmtFull(empresa.gmv),            col:PIBOX_PURPLE},
+          {icon:"🕐",label:"On Time OD", val:empresa.onTimePct != null ? fmtPct(empresa.onTimePct) : "—", col:"#0d9488"},
         ].map(k=>(
           <div key={k.label} className="bg-gray-50 rounded-xl p-3 border border-gray-100"
                style={{borderLeft:`3px solid ${k.col}`}}>
@@ -349,7 +350,7 @@ export default function RankingRiesgo() {
           <table className="w-full text-xs">
             <thead>
               <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                {["Empresa","Semáforo","Score","Servicios","Ef. Operativa","Cancelación","Expirado","GMV","Ejecutivo","Factores"].map(h=>(
+                {["Empresa","Semáforo","Score","Servicios","Ef. Operativa","Cancelación","Expirado","GMV","On Time OD","Ejecutivo","Factores"].map(h=>(
                   <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -371,6 +372,7 @@ export default function RankingRiesgo() {
                   <td className="px-3 py-2 font-semibold" style={{color:SEM_ROJO}}>{fmtPct(e.tasa_cancelacion)}</td>
                   <td className="px-3 py-2">{fmtPct(e.tasa_expirado)}</td>
                   <td className="px-3 py-2 font-semibold text-gray-700">{fmtFull(e.gmv)}</td>
+                  <td className="px-3 py-2 font-semibold" style={{color:"#0d9488"}}>{e.onTimePct != null ? fmtPct(e.onTimePct) : "—"}</td>
                   <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate">{e.ejecutivo}</td>
                   <td className="px-3 py-2 text-gray-500 max-w-[200px]">
                     {e.factores.length > 0

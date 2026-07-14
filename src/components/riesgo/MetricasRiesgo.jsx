@@ -109,7 +109,7 @@ export default function MetricasRiesgo() {
       .filter(e => empresaMatchesOpType(e, filterOpType))
       .map(e => {
         const opData = getOpMetrics(e, filterOpType);
-        const eBase  = opData ? { ...e, gmv: opData.gmv, total: opData.total, completados: opData.completados, cancelados: opData.cancelados, paquetes: opData.paquetes } : e;
+        const eBase  = opData ? { ...e, gmv: opData.gmv, total: opData.total, completados: opData.completados, cancelados: opData.cancelados, paquetes: opData.paquetes, relanzamientos: opData.relanzamientos ?? e.relanzamientos, devueltos: opData.devueltos ?? e.devueltos, canceladosPax: opData.canceladosPax ?? e.canceladosPax, expirados: opData.expirados ?? e.expirados } : e;
         const prev   = dataPrev?.empresas?.find(p=>p.empresa===e.empresa);
         const prevOp = prev ? getOpMetrics(prev, filterOpType) : null;
         const prevBase = prevOp ? { ...prev, gmv: prevOp.gmv, total: prevOp.total, completados: prevOp.completados } : prev;
@@ -125,7 +125,6 @@ export default function MetricasRiesgo() {
   // Totales filtrados por tipo de operación — alimenta todos los charts cuando hay filtro activo
   const filteredTot = useMemo(() => {
     if (!filterOpType || !dataMes) return null;
-    console.log("[DEBUG vehiculo] filteredTot START — filterOpType:", filterOpType);
     const rawTot  = dataMes.totales;
     const totComp = empresasConScore.reduce((s, e) => s + e.completados, 0);
     const totCanc = empresasConScore.reduce((s, e) => s + e.cancelados,  0);
@@ -191,14 +190,10 @@ export default function MetricasRiesgo() {
 
     // Vehículo: buscar el op type en porVehiculoByOp
     const vhByOpMap = dataMes?.totales?.porVehiculoByOp || {};
-    console.log("[DEBUG vehiculo] filterOpType:", filterOpType);
-    console.log("[DEBUG vehiculo] porVehiculoByOp keys:", Object.keys(vhByOpMap));
-    console.log("[DEBUG vehiculo] porVehiculo global:", dataMes?.totales?.porVehiculo);
     const vhOpKey = Object.keys(vhByOpMap).find(k =>
       k.toLowerCase().includes(filterOpType.toLowerCase()) ||
       filterOpType.toLowerCase().includes(k.toLowerCase())
     );
-    console.log("[DEBUG vehiculo] vhOpKey encontrado:", vhOpKey);
     const porVehiculo = vhOpKey ? vhByOpMap[vhOpKey] : [];
 
     return { topCiudades, porTipoOp, porStatus, porVehiculo, driversPorTipoOp, totalDriversActivos, weekly, ...(daily ? { daily } : {}) };
@@ -250,6 +245,15 @@ export default function MetricasRiesgo() {
   const varServ    = totalServPrev > 0 ? (totalServicios - totalServPrev)/totalServPrev : null;
   const varPaq     = totalPaqPrev  > 0 ? (totalPaquetes - totalPaqPrev)/totalPaqPrev   : null;
   const varDrivers = totalDriversPrev > 0 ? (totalDrivers - totalDriversPrev)/totalDriversPrev : null;
+
+  // ── On Time (SLA On Demand) ──────────────────────────────────────────────
+  const onTimeTotal  = empresasConScore.reduce((s, e) => s + (e.onDemandCompletados || 0), 0);
+  const onTimeOnTime = empresasConScore.reduce((s, e) => s + (e.onDemandOnTime || 0), 0);
+  const onTimePctGlobal = onTimeTotal > 0 ? onTimeOnTime / onTimeTotal : null;
+  const onTimePrevTotal  = empPrevAll.reduce((s, e) => s + (e.onDemandCompletados || 0), 0);
+  const onTimePrevOnTime = empPrevAll.reduce((s, e) => s + (e.onDemandOnTime || 0), 0);
+  const onTimePctPrev = onTimePrevTotal > 0 ? onTimePrevOnTime / onTimePrevTotal : null;
+  const varOnTime = (onTimePctGlobal !== null && onTimePctPrev !== null) ? onTimePctGlobal - onTimePctPrev : null;
 
   // ── Efectividad Comercial y Operativa ────────────────────────────────────
   const getStatus = (porStatus, name) => (porStatus || []).find(d => d.name === name)?.total || 0;
@@ -336,17 +340,18 @@ export default function MetricasRiesgo() {
         </div>
       </div>
 
-      {/* KPIs globales — fila 1: operacionales */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+      {/* KPIs globales — 4 arriba + 4 abajo */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiCard icon="🏢" label="Empresas"       value={empresasConScore.length.toLocaleString()} borderColor={PIBOX_PURPLE} delta={varEmp}/>
         <KpiCard icon="💰" label="GMV Total"       value={fmtFull(gmvTotal)} borderColor={PIBOX_PURPLE} delta={varGmv}/>
         <KpiCard icon="📦" label="Servicios"       value={totalServicios.toLocaleString()} borderColor="#6366F1" delta={varServ}/>
         <KpiCard icon="📮" label="Paquetes"        value={totalPaquetes.toLocaleString()} borderColor="#0EA5E9" delta={varPaq}/>
         <KpiCard icon="🏍️" label="Drivers Activos" value={totalDrivers.toLocaleString()} borderColor="#F59E0B" delta={varDrivers}/>
-      </div>
-
-      {/* KPIs globales — fila 2: efectividad */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <KpiCard icon="⏱️" label="On Time OD"
+          value={onTimePctGlobal !== null ? fmtPct(onTimePctGlobal) : "N/A"}
+          borderColor="#0d9488"
+          delta={varOnTime}
+          deltaLabel={onTimeTotal === 0 ? "Sin datos On Demand" : undefined}/>
         <KpiCard
           icon="🎯"
           label="Efectividad Comercial"
@@ -877,7 +882,7 @@ export default function MetricasRiesgo() {
             if (!(k in distMap)) continue;
             if (typeof val === "number") { distMap[k] += val; continue; }
             distMap[k] += val.total || 0;
-            if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
+            if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0, otTotal: 0, otOnTime: 0, otNoAplica: 0 };
             distTimes[k].completados += val.completados || 0;
             distTimes[k].relanzamientos += val.relanzamientos || 0;
             distTimes[k].tAsig += val.tAsignacion || 0;
@@ -885,6 +890,9 @@ export default function MetricasRiesgo() {
             distTimes[k].tRuta += val.tRuta || 0;
             distTimes[k].tTotal += val.tTotal || 0;
             distTimes[k].n += val.nTiempos || 0;
+            distTimes[k].otTotal += val.otTotal || 0;
+            distTimes[k].otOnTime += val.otOnTime || 0;
+            distTimes[k].otNoAplica += val.otNoAplica || 0;
           }
         }
         const totalBookings = Object.values(distMap).reduce((s, v) => s + v, 0);
@@ -892,7 +900,7 @@ export default function MetricasRiesgo() {
         const distAgg = Object.entries(distMap).map(([rng, cnt]) => {
           const t = distTimes[rng] || {};
           const n = t.n || 1;
-          return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
+          return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n), otTotal: t.otTotal || 0, otOnTime: t.otOnTime || 0, otNoAplica: t.otNoAplica || 0, onTimePct: (t.otTotal || 0) > 0 ? (t.otOnTime || 0) / (t.otTotal || 0) : null };
         });
         const hasData = totalBookings > 0;
         const empWithRelaunch = empresasConScore.filter(e => (e.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0));
@@ -905,7 +913,7 @@ export default function MetricasRiesgo() {
                 <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
                   <thead>
                     <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                      {["Rango","Bookings","Relanzamientos","Efectividad","T. Asignacion","T. Llegada","T. Ruta","T. Total","% Bookings"].map(h=>(
+                      {["Rango","Bookings","Relanz.","Efectividad","T. Asig.","T. Llegada","T. Ruta","T. Total","On Time OD","Con SLA","Sin SLA","% Bookings"].map(h=>(
                         <th key={h} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -921,6 +929,9 @@ export default function MetricasRiesgo() {
                         <td className="px-3 py-2 text-center text-gray-500">{d.avgLleg}</td>
                         <td className="px-3 py-2 text-center text-gray-500">{d.avgRuta}</td>
                         <td className="px-3 py-2 text-center font-semibold text-gray-700">{d.avgTotal}</td>
+                        <td className="px-3 py-2 text-center font-semibold" style={{color: d.onTimePct != null ? (d.onTimePct >= 0.85 ? SEM_VERDE : d.onTimePct >= 0.70 ? SEM_AMARILLO : SEM_ROJO) : "#9ca3af"}}>{d.onTimePct != null ? fmtPct(d.onTimePct) : "—"}</td>
+                        <td className="px-3 py-2 text-center text-gray-700">{d.otTotal > 0 ? d.otTotal : "—"}</td>
+                        <td className="px-3 py-2 text-center text-gray-400">{d.otNoAplica > 0 ? d.otNoAplica : "—"}</td>
                         <td className="px-3 py-2 text-center" style={{color:PIBOX_PURPLE}}>{fmtPct(d.pct)}</td>
                       </tr>
                     ))}
@@ -930,7 +941,8 @@ export default function MetricasRiesgo() {
                       <td className="px-3 py-2 text-gray-800">Total</td>
                       <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.bookings,0).toLocaleString()}</td>
                       <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.relanzamientos,0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-center" colSpan={5}></td>
+                      <td className="px-3 py-2 text-center" colSpan={4}></td>
+                      {(() => { const totOT = distAgg.reduce((s,d)=>s+d.otTotal,0); const totOTon = distAgg.reduce((s,d)=>s+d.otOnTime,0); const totNoApl = distAgg.reduce((s,d)=>s+d.otNoAplica,0); const pct = totOT > 0 ? totOTon/totOT : null; return (<><td className="px-3 py-2 text-center" style={{color: pct!=null?(pct>=0.85?SEM_VERDE:pct>=0.70?SEM_AMARILLO:SEM_ROJO):"#9ca3af"}}>{pct!=null?fmtPct(pct):"—"}</td><td className="px-3 py-2 text-center">{totOT > 0 ? totOT : "—"}</td><td className="px-3 py-2 text-center text-gray-500">{totNoApl > 0 ? totNoApl : "—"}</td></>); })()}
                       <td className="px-3 py-2 text-center">100.0%</td>
                     </tr>
                   </tfoot>
@@ -1168,7 +1180,7 @@ export default function MetricasRiesgo() {
             {/* Devoluciones por empresa */}
             {(() => {
               const devolData = empresasConScore.filter(e => (e.devueltos||0) > 0)
-                .map(e => ({ empresa: e.empresa, paquetes: e.paquetes||0, devueltos: e.devueltos||0, tasa: (e.paquetes||0) > 0 ? (e.devueltos||0)/(e.paquetes||0) : 0, topOps: e.topOps }))
+                .map(e => ({ empresa: e.empresa, paquetes: e.paquetes||0, devueltos: e.devueltos||0, tasa: (e.paquetes||0) > 0 ? (e.devueltos||0)/(e.paquetes||0) : null, topOps: e.topOps }))
                 .sort((a,b) => b.devueltos - a.devueltos);
               if (!devolData.length) return null;
               const totPaq = devolData.reduce((s,d) => s+d.paquetes, 0);
@@ -1201,7 +1213,7 @@ export default function MetricasRiesgo() {
                             <td className="px-3 py-2 font-semibold text-gray-700">{d.empresa}</td>
                             <td className="px-3 py-2">{d.paquetes.toLocaleString()}</td>
                             <td className="px-3 py-2">{d.devueltos.toLocaleString()}</td>
-                            <td className="px-3 py-2 font-semibold" style={{color: d.tasa > 0.10 ? SEM_ROJO : d.tasa > 0.05 ? SEM_AMARILLO : SEM_VERDE}}>{fmtPct(d.tasa)}</td>
+                            <td className="px-3 py-2 font-semibold" style={{color: d.tasa === null ? "#9ca3af" : d.tasa > 0.10 ? SEM_ROJO : d.tasa > 0.05 ? SEM_AMARILLO : SEM_VERDE}}>{d.tasa === null ? <span title="Sin paquetes registrados — revisar datos fuente">s/d</span> : fmtPct(d.tasa)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1222,6 +1234,162 @@ export default function MetricasRiesgo() {
               );
             })()}
             </div>
+
+
+            {/* Cancelados por Pasajero y Expirados — side by side */}
+            {(() => {
+              const fmtMin = (m) => {
+                if (m === null || m === undefined) return "—";
+                const h = Math.floor(m / 60);
+                const min = Math.round(m % 60);
+                return h > 0 ? `${h}h ${min}m` : `${min}m`;
+              };
+
+              const cancelPaxData = empresasConScore
+                .filter(e => (e.canceladosPax || 0) > 0)
+                .map(e => ({
+                  empresa: e.empresa,
+                  cancelados: e.canceladosPax || 0,
+                  total: e.total,
+                  pct: e.total > 0 ? (e.canceladosPax || 0) / e.total : 0,
+                  avgTiempo: e.avgTiempoCancelPax,
+                  topOps: e.topOps,
+                  bookings: e.cancelPaxBookings || [],
+                }))
+                .sort((a, b) => b.cancelados - a.cancelados);
+
+              const expiradosData = empresasConScore
+                .filter(e => (e.expirados || 0) > 0)
+                .map(e => ({
+                  empresa: e.empresa,
+                  expirados: e.expirados || 0,
+                  total: e.total,
+                  pct: e.total > 0 ? (e.expirados || 0) / e.total : 0,
+                  avgTiempo: e.avgTiempoExpirado,
+                  topOps: e.topOps,
+                }))
+                .sort((a, b) => b.expirados - a.expirados);
+
+              if (!cancelPaxData.length && !expiradosData.length) return null;
+
+              const dlCSV = (data, filename, cols) => {
+                const csv = [cols.headers.join(","), ...data.map(r => cols.row(r))].join("\n");
+                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              };
+
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+
+                  {/* Tabla: Cancelados por Pasajero */}
+                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-gray-700 text-sm">🚶 Cancelados por Pasajero — Top empresas</h3>
+                      {cancelPaxData.length > 0 && (
+                        <button
+                          onClick={() => dlCSV(cancelPaxData, "cancelados_pasajero.csv", {
+                            headers: ["Empresa", "Tipo de Operacion", "Cancelados por Pasajero", "Total servicios", "% del total", "Tiempo promedio servicio", "Booking IDs cancelados"],
+                            row: r => `"${r.empresa}","${r.topOps?.[0]?.op||''}",${r.cancelados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)},"${r.bookings.join(' | ')}"`,
+                          })}
+                          className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                        >
+                          📥 Descargar ({cancelPaxData.length})
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Tiempo promedio del servicio al momento de la cancelación</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: SEM_ROJO }} className="text-white">
+                            {["Empresa", "Cancelados", "% del total", "Tiempo prom."].map(h => (
+                              <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cancelPaxData.length === 0 ? (
+                            <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin cancelaciones por pasajero.</td></tr>
+                          ) : cancelPaxData.slice(0, 15).map((d, i) => (
+                            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-red-50/30"}>
+                              <td className="px-3 py-2 font-semibold text-gray-700 max-w-[140px] truncate" title={d.empresa}>{d.empresa}</td>
+                              <td className="px-3 py-2 font-bold" style={{ color: SEM_ROJO }}>{d.cancelados.toLocaleString()}</td>
+                              <td className="px-3 py-2" style={{ color: d.pct > 0.15 ? SEM_ROJO : d.pct > 0.08 ? SEM_AMARILLO : "#374151" }}>{(d.pct * 100).toFixed(1)}%</td>
+                              <td className="px-3 py-2 text-gray-600">{fmtMin(d.avgTiempo)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-red-200 bg-red-50 font-bold">
+                            <td className="px-3 py-2 text-gray-800">Total</td>
+                            <td className="px-3 py-2" style={{ color: SEM_ROJO }}>{cancelPaxData.reduce((s, d) => s + d.cancelados, 0).toLocaleString()}</td>
+                            <td className="px-3 py-2">—</td>
+                            <td className="px-3 py-2">—</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    {cancelPaxData.length > 15 && (
+                      <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {cancelPaxData.length}. Descarga CSV para ver todos.</p>
+                    )}
+                  </div>
+
+                  {/* Tabla: Expirados */}
+                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-gray-700 text-sm">⏰ Expirados — Top empresas</h3>
+                      {expiradosData.length > 0 && (
+                        <button
+                          onClick={() => dlCSV(expiradosData, "expirados.csv", {
+                            headers: ["Empresa", "Tipo de Operacion", "Expirados", "Total servicios", "% del total", "Tiempo promedio servicio"],
+                            row: r => `"${r.empresa}","${r.topOps?.[0]?.op||''}",${r.expirados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
+                          })}
+                          className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                        >
+                          📥 Descargar ({expiradosData.length})
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Tiempo promedio del servicio al momento de expirar</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: SEM_AMARILLO }} className="text-white">
+                            {["Empresa", "Expirados", "% del total", "Tiempo prom."].map(h => (
+                              <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expiradosData.length === 0 ? (
+                            <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin servicios expirados.</td></tr>
+                          ) : expiradosData.slice(0, 15).map((d, i) => (
+                            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-yellow-50/30"}>
+                              <td className="px-3 py-2 font-semibold text-gray-700 max-w-[140px] truncate" title={d.empresa}>{d.empresa}</td>
+                              <td className="px-3 py-2 font-bold" style={{ color: SEM_AMARILLO }}>{d.expirados.toLocaleString()}</td>
+                              <td className="px-3 py-2" style={{ color: d.pct > 0.10 ? SEM_ROJO : d.pct > 0.05 ? SEM_AMARILLO : "#374151" }}>{(d.pct * 100).toFixed(1)}%</td>
+                              <td className="px-3 py-2 text-gray-600">{fmtMin(d.avgTiempo)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-yellow-300 bg-yellow-50 font-bold">
+                            <td className="px-3 py-2 text-gray-800">Total</td>
+                            <td className="px-3 py-2" style={{ color: SEM_AMARILLO }}>{expiradosData.reduce((s, d) => s + d.expirados, 0).toLocaleString()}</td>
+                            <td className="px-3 py-2">—</td>
+                            <td className="px-3 py-2">—</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    {expiradosData.length > 15 && (
+                      <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {expiradosData.length}. Descarga CSV para ver todos.</p>
+                    )}
+                  </div>
+
+                </div>
+              );
+            })()}
 
             {/* Proyección de Cierre */}
             {(() => {
@@ -1385,160 +1553,6 @@ export default function MetricasRiesgo() {
                     Proyección lineal sobre {diasConDatos} días transcurridos ({(pct*100).toFixed(1)}% del mes).
                     Rango ±{(halfRange*100).toFixed(0)}% estimado de la varianza de {histPrev.length} mes{histPrev.length !== 1 ? "es" : ""} anteriores.
                   </p>
-                </div>
-              );
-            })()}
-
-            {/* Cancelados por Pasajero y Expirados — side by side */}
-            {(() => {
-              const fmtMin = (m) => {
-                if (m === null || m === undefined) return "—";
-                const h = Math.floor(m / 60);
-                const min = Math.round(m % 60);
-                return h > 0 ? `${h}h ${min}m` : `${min}m`;
-              };
-
-              const cancelPaxData = empresasConScore
-                .filter(e => (e.canceladosPax || 0) > 0)
-                .map(e => ({
-                  empresa: e.empresa,
-                  cancelados: e.canceladosPax || 0,
-                  total: e.total,
-                  pct: e.total > 0 ? (e.canceladosPax || 0) / e.total : 0,
-                  avgTiempo: e.avgTiempoCancelPax,
-                  topOps: e.topOps,
-                }))
-                .sort((a, b) => b.cancelados - a.cancelados);
-
-              const expiradosData = empresasConScore
-                .filter(e => (e.expirados || 0) > 0)
-                .map(e => ({
-                  empresa: e.empresa,
-                  expirados: e.expirados || 0,
-                  total: e.total,
-                  pct: e.total > 0 ? (e.expirados || 0) / e.total : 0,
-                  avgTiempo: e.avgTiempoExpirado,
-                  topOps: e.topOps,
-                }))
-                .sort((a, b) => b.expirados - a.expirados);
-
-              if (!cancelPaxData.length && !expiradosData.length) return null;
-
-              const dlCSV = (data, filename, cols) => {
-                const csv = [cols.headers.join(","), ...data.map(r => cols.row(r))].join("\n");
-                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
-              };
-
-              return (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-
-                  {/* Tabla: Cancelados por Pasajero */}
-                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-bold text-gray-700 text-sm">🚶 Cancelados por Pasajero — Top empresas</h3>
-                      {cancelPaxData.length > 0 && (
-                        <button
-                          onClick={() => dlCSV(cancelPaxData, "cancelados_pasajero.csv", {
-                            headers: ["Empresa", "Tipo de Operacion", "Cancelados por Pasajero", "Total servicios", "% del total", "Tiempo promedio servicio"],
-                            row: r => `"${r.empresa}","${r.topOps?.[0]?.op||''}",${r.cancelados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
-                          })}
-                          className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
-                        >
-                          📥 Descargar ({cancelPaxData.length})
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400 mb-3">Tiempo promedio del servicio al momento de la cancelación</p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
-                        <thead>
-                          <tr style={{ background: SEM_ROJO }} className="text-white">
-                            {["Empresa", "Cancelados", "% del total", "Tiempo prom."].map(h => (
-                              <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cancelPaxData.length === 0 ? (
-                            <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin cancelaciones por pasajero.</td></tr>
-                          ) : cancelPaxData.slice(0, 15).map((d, i) => (
-                            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-red-50/30"}>
-                              <td className="px-3 py-2 font-semibold text-gray-700 max-w-[140px] truncate" title={d.empresa}>{d.empresa}</td>
-                              <td className="px-3 py-2 font-bold" style={{ color: SEM_ROJO }}>{d.cancelados.toLocaleString()}</td>
-                              <td className="px-3 py-2" style={{ color: d.pct > 0.15 ? SEM_ROJO : d.pct > 0.08 ? SEM_AMARILLO : "#374151" }}>{(d.pct * 100).toFixed(1)}%</td>
-                              <td className="px-3 py-2 text-gray-600">{fmtMin(d.avgTiempo)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t-2 border-red-200 bg-red-50 font-bold">
-                            <td className="px-3 py-2 text-gray-800">Total</td>
-                            <td className="px-3 py-2" style={{ color: SEM_ROJO }}>{cancelPaxData.reduce((s, d) => s + d.cancelados, 0).toLocaleString()}</td>
-                            <td className="px-3 py-2">—</td>
-                            <td className="px-3 py-2">—</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                    {cancelPaxData.length > 15 && (
-                      <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {cancelPaxData.length}. Descarga CSV para ver todos.</p>
-                    )}
-                  </div>
-
-                  {/* Tabla: Expirados */}
-                  <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-bold text-gray-700 text-sm">⏰ Expirados — Top empresas</h3>
-                      {expiradosData.length > 0 && (
-                        <button
-                          onClick={() => dlCSV(expiradosData, "expirados.csv", {
-                            headers: ["Empresa", "Tipo de Operacion", "Expirados", "Total servicios", "% del total", "Tiempo promedio servicio"],
-                            row: r => `"${r.empresa}","${r.topOps?.[0]?.op||''}",${r.expirados},${r.total},${(r.pct * 100).toFixed(1)}%,${fmtMin(r.avgTiempo)}`,
-                          })}
-                          className="px-2 py-1 rounded-lg text-[10px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200"
-                        >
-                          📥 Descargar ({expiradosData.length})
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400 mb-3">Tiempo promedio del servicio al momento de expirar</p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
-                        <thead>
-                          <tr style={{ background: SEM_AMARILLO }} className="text-white">
-                            {["Empresa", "Expirados", "% del total", "Tiempo prom."].map(h => (
-                              <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {expiradosData.length === 0 ? (
-                            <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">Sin servicios expirados.</td></tr>
-                          ) : expiradosData.slice(0, 15).map((d, i) => (
-                            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-yellow-50/30"}>
-                              <td className="px-3 py-2 font-semibold text-gray-700 max-w-[140px] truncate" title={d.empresa}>{d.empresa}</td>
-                              <td className="px-3 py-2 font-bold" style={{ color: SEM_AMARILLO }}>{d.expirados.toLocaleString()}</td>
-                              <td className="px-3 py-2" style={{ color: d.pct > 0.10 ? SEM_ROJO : d.pct > 0.05 ? SEM_AMARILLO : "#374151" }}>{(d.pct * 100).toFixed(1)}%</td>
-                              <td className="px-3 py-2 text-gray-600">{fmtMin(d.avgTiempo)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t-2 border-yellow-300 bg-yellow-50 font-bold">
-                            <td className="px-3 py-2 text-gray-800">Total</td>
-                            <td className="px-3 py-2" style={{ color: SEM_AMARILLO }}>{expiradosData.reduce((s, d) => s + d.expirados, 0).toLocaleString()}</td>
-                            <td className="px-3 py-2">—</td>
-                            <td className="px-3 py-2">—</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                    {expiradosData.length > 15 && (
-                      <p className="text-xs text-gray-400 mt-2 text-center">Mostrando 15 de {expiradosData.length}. Descarga CSV para ver todos.</p>
-                    )}
-                  </div>
-
                 </div>
               );
             })()}

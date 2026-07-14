@@ -487,7 +487,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   useEffect(() => {
     setInsRows(null);
     if (!mesSel) return;
-    if (isAdmin) {
+    if (isAdmin && !importedData) {
       idbLoadRows(SK_TRAF_MES(mesSel)).then(r => setInsRows(r || null));
     } else {
       const imp = importedData?.meses?.[`traf_${mesSel}`];
@@ -498,7 +498,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   useEffect(() => {
     setInsPrevRows(null);
     if (!insPrevKey) return;
-    if (isAdmin) {
+    if (isAdmin && !importedData) {
       idbLoadRows(SK_TRAF_MES(insPrevKey)).then(r => setInsPrevRows(r || null));
     } else {
       const imp = importedData?.meses?.[`traf_${insPrevKey}`];
@@ -509,7 +509,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
   useEffect(() => {
     setIns2PrevRows(null);
     if (!ins2PrevKey) return;
-    if (isAdmin) {
+    if (isAdmin && !importedData) {
       idbLoadRows(SK_TRAF_MES(ins2PrevKey)).then(r => setIns2PrevRows(r || null));
     } else {
       const imp = importedData?.meses?.[`traf_${ins2PrevKey}`];
@@ -1358,7 +1358,7 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
   useEffect(() => {
     setRows(null);
     if (!mesSel) return;
-    if (isAdmin) {
+    if (isAdmin && !importedData) {
       idbLoadRows(SK_TRAF_MES(mesSel)).then(r => setRows(r || null));
     } else {
       const imp = importedData?.meses?.[`traf_${mesSel}`];
@@ -1408,13 +1408,32 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
 
   // Rows con todos los filtros aplicados
   const filteredRows = useMemo(() => {
-    return rowsByCiudad.filter(r => {
+    const strict = rowsByCiudad.filter(r => {
       if (fechaInicio && r._fecha && r._fecha < fechaInicio) return false;
       if (fechaFin && r._fecha && r._fecha > fechaFin) return false;
       if (puntoSel && String(r["PUNTO"] || "").trim() !== puntoSel) return false;
       return true;
     });
+    // Si solo el filtro de fecha deja vacío pero hay datos del mes, mostrar mes completo
+    // (el archivo subido aún no cubre el rango seleccionado)
+    if (strict.length === 0 && (fechaInicio || fechaFin) && rowsByCiudad.length > 0) {
+      return rowsByCiudad.filter(r => {
+        if (puntoSel && String(r["PUNTO"] || "").trim() !== puntoSel) return false;
+        return true;
+      });
+    }
+    return strict;
   }, [rowsByCiudad, fechaInicio, fechaFin, puntoSel]);
+
+  // true cuando el rango de fechas no tiene cobertura en los datos subidos
+  const rangoFechaSinCobertura = useMemo(() => {
+    if (!rowsLoaded || !rowsByCiudad.length || !(fechaInicio || fechaFin)) return false;
+    return !rowsByCiudad.some(r => {
+      if (fechaInicio && r._fecha && r._fecha < fechaInicio) return false;
+      if (fechaFin && r._fecha && r._fecha > fechaFin) return false;
+      return true;
+    });
+  }, [rowsByCiudad, fechaInicio, fechaFin, rowsLoaded]);
 
   const filtroActivo = !!(fechaInicio || fechaFin || puntoSel);
   // Sin resultados con filtro activo (para mostrar mensaje en lugar de datos en cero)
@@ -1447,11 +1466,14 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
   // (no filtra por puntoSel para que siempre se vean todos los puntos)
   const cityPuntos = useMemo(() => {
     if (rowsLoaded) {
-      const source = rowsByCiudad.filter(r => {
+      const strictSource = rowsByCiudad.filter(r => {
         if (fechaInicio && r._fecha && r._fecha < fechaInicio) return false;
         if (fechaFin && r._fecha && r._fecha > fechaFin) return false;
         return true;
       });
+      // Si el rango de fechas no tiene cobertura, usar todos los rows del mes
+      const source = (strictSource.length === 0 && (fechaInicio || fechaFin) && rowsByCiudad.length > 0)
+        ? rowsByCiudad : strictSource;
       const map = {};
       for (const r of source) {
         const estado = String(r["ESTADO"] || "").trim().toLowerCase();
@@ -1580,6 +1602,20 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
     return Object.values(map);
   }, [filteredRows]);
 
+  // Distribución por estado del turno
+  const cityPorEstado = useMemo(() => {
+    if (!filteredRows.length) return [];
+    const map = {};
+    for (const r of filteredRows) {
+      const est = String(r["ESTADO"] || "").trim();
+      if (!est) continue;
+      map[est] = (map[est] || 0) + 1;
+    }
+    return Object.entries(map)
+      .map(([estado, count]) => ({ estado, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [filteredRows]);
+
   if (trafMeses.length === 0) return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="bg-purple-50 border border-purple-100 rounded-xl p-8 text-center text-purple-700">
@@ -1660,8 +1696,8 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
           )}
           {filtroActivo && (
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold flex-wrap"
-              style={{ background: "linear-gradient(135deg,#D97706 0%,#F59E0B 100%)" }}>
-              🔍 Filtro activo:
+              style={{ background: rangoFechaSinCobertura ? "linear-gradient(135deg,#9CA3AF 0%,#6B7280 100%)" : "linear-gradient(135deg,#D97706 0%,#F59E0B 100%)" }}>
+              {rangoFechaSinCobertura ? "⚠️ Rango sin datos · mostrando mes completo:" : "🔍 Filtro activo:"}
               {(fechaInicio || fechaFin) && <span>{fechaInicio || "..."} → {fechaFin || "..."}</span>}
               {puntoSel && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">📍 {puntoSel}</span>}
               {cityAgg && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">{cityAgg.turnos} turnos</span>}
@@ -1721,6 +1757,40 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
                   <Line yAxisId="right" type="monotone" dataKey="pctPunt" name="Puntualidad %" stroke={SEM_AMARILLO} strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 2" />
                 </ComposedChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Estado del Turno */}
+          {cityPorEstado.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+              <h3 className="text-sm font-bold text-gray-700 mb-4">📊 Estado del Turno</h3>
+              {(() => {
+                const COLOR_ESTADO = {
+                  "confirmado":              PIBOX_PURPLE,
+                  "reemplazo":               PIBOX_PINK,
+                  "adicional autorizado":    "#A855F7",
+                  "piloto cancela":          "#6366F1",
+                  "no programado":           "#EC4899",
+                  "adicional no autorizado": "#8B5CF6",
+                  "cliente cancela":         SEM_ROJO,
+                };
+                const getColor = (est) => COLOR_ESTADO[est.toLowerCase()] || "#9CA3AF";
+                return (
+                  <ResponsiveContainer width="100%" height={Math.max(160, cityPorEstado.length * 42)}>
+                    <BarChart data={cityPorEstado} layout="vertical" margin={{ left: 10, right: 20, top: 4, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 11 }} />
+                      <YAxis type="category" dataKey="estado" tick={{ fontSize: 11 }} width={160} />
+                      <Tooltip formatter={(v) => [`${v.toLocaleString()} turnos`]} />
+                      <Bar dataKey="count" name="Turnos" radius={[0, 4, 4, 0]}>
+                        {cityPorEstado.map((d, i) => (
+                          <Cell key={i} fill={getColor(d.estado)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                );
+              })()}
             </div>
           )}
 
@@ -1997,9 +2067,10 @@ export default function InformeTada({ isAdmin }) {
     return _loadTrafMes(trafPrevKey);
   }, [trafPrevKey, trafIndex, importedData]);
 
-  // No-admin: cargar snapshot publicado desde el servidor
+  // Cargar snapshot del servidor: no-admins siempre; admins solo si no tienen datos locales
   useEffect(() => {
-    if (isAdmin) return;
+    const tieneLocal = isAdmin && Object.keys(loadTrafIndex()).length > 0;
+    if (tieneLocal) return;
     setLoadingServer(true);
     fetchFromServer("tada").then((snap) => {
       if (!snap?.ok || !snap?.data?.trafIndex) { setLoadingServer(false); return; }
@@ -2024,7 +2095,7 @@ export default function InformeTada({ isAdmin }) {
   useEffect(() => {
     setTrafRows(null);
     if (!trafMesSel) return;
-    if (isAdmin) {
+    if (isAdmin && !importedData) {
       idbLoadRows(SK_TRAF_MES(trafMesSel)).then(r => setTrafRows(r || null));
     } else {
       const imported = importedData?.meses?.[`traf_${trafMesSel}`];
@@ -2035,7 +2106,7 @@ export default function InformeTada({ isAdmin }) {
   useEffect(() => {
     setTrafPrevRows(null);
     if (!trafPrevKey) return;
-    if (isAdmin) {
+    if (isAdmin && !importedData) {
       idbLoadRows(SK_TRAF_MES(trafPrevKey)).then(r => setTrafPrevRows(r || null));
     } else {
       const imported = importedData?.meses?.[`traf_${trafPrevKey}`];

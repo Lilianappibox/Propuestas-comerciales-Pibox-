@@ -56,9 +56,9 @@ function autoUpdateTendencias(formData, actualAgg, anteriorAgg) {
     const idx = tendencias.findIndex(t => { const p = parseM(t.mes); return p.mesIdx === mesIdx && p.anio === anio; });
     const serv = totalServ(agg);
     if (idx >= 0) {
-      tendencias[idx] = { ...tendencias[idx], gmv, ...(serv > 0 && { servicios: serv }) };
+      tendencias[idx] = { ...tendencias[idx], anio, gmv, ...(serv > 0 && { servicios: serv }) };
     } else {
-      tendencias.push({ mes: label, gmv, meta: 0, ...(serv > 0 && { servicios: serv }) });
+      tendencias.push({ mes: label, anio, gmv, meta: 0, ...(serv > 0 && { servicios: serv }) });
     }
   };
 
@@ -157,6 +157,7 @@ export default function Configuracion({ data, onSave }) {
   const aplicarComparativo = (actual, anterior) => {
     let nuevo = parseBasePlana(actual.agg, anterior?.agg || null, form);
     nuevo = autoUpdateTendencias(nuevo, actual.agg, anterior?.agg || null);
+    nuevo._basePlanaActiva = true;
     setForm(nuevo);
     const antInfo = anterior
       ? ` comparado con "${anterior.nombre}"`
@@ -193,7 +194,7 @@ export default function Configuracion({ data, onSave }) {
 
   const eliminarActual = () => {
     setBaseActual(null);
-    setForm(prev => ({ ...prev, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [] }));
+    setForm(prev => ({ ...prev, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [], _basePlanaActiva: false }));
     setMsgBase("");
   };
 
@@ -736,8 +737,8 @@ export default function Configuracion({ data, onSave }) {
       {tab === "tendencias" && (
         <EditableTable
           rows={form.tendencias}
-          columns={["mes", "gmv", "meta", "servicios"]}
-          columnLabels={{ mes: "Mes", gmv: "GMV", meta: "Meta", servicios: "Servicios" }}
+          columns={["mes", "anio", "gmv", "meta", "servicios"]}
+          columnLabels={{ mes: "Mes", anio: "Año", gmv: "GMV", meta: "Meta", servicios: "Servicios" }}
           onChange={(rows) => setForm((p) => ({ ...p, tendencias: rows }))}
         />
       )}
@@ -852,6 +853,7 @@ export default function Configuracion({ data, onSave }) {
                       <th className="text-left p-2">KAM</th>
                       <th className="text-right p-2">Meta ($)</th>
                       <th className="text-right p-2">GMV ($)</th>
+                      <th className="text-right p-2">GMV Extra ($)</th>
                       <th className="text-right p-2">Cumplimiento</th>
                       <th className="p-2 w-8"></th>
                     </tr>
@@ -860,7 +862,8 @@ export default function Configuracion({ data, onSave }) {
                     {(() => {
                       const allKams = proy.kams || form.kams.map(km => ({ nombre: km.nombre, meta: km.meta, gmv: km.gmv }));
                       return allKams.map((pk, i) => {
-                        const cumplK = pk.meta > 0 ? (pk.gmv / pk.meta * 100) : 0;
+                        const effectiveGmv = (Number(pk.gmv) || 0) + (Number(pk.gmvExtra) || 0);
+                        const cumplK = pk.meta > 0 ? (effectiveGmv / pk.meta * 100) : 0;
                         const updateKamField = (field, val) => {
                           const kams = [...allKams];
                           kams[i] = { ...kams[i], [field]: field === "nombre" ? val : (Number(val) || 0) };
@@ -885,6 +888,11 @@ export default function Configuracion({ data, onSave }) {
                               <input type="number" value={pk.gmv || ""} onChange={(e) => updateKamField("gmv", e.target.value)}
                                 className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
                             </td>
+                            <td className="p-1">
+                              <input type="number" value={pk.gmvExtra || ""} onChange={(e) => updateKamField("gmvExtra", e.target.value)}
+                                placeholder="0"
+                                className="w-full border border-orange-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-orange-400 bg-orange-50" />
+                            </td>
                             <td className="p-2 text-right">
                               <span className={`text-xs font-bold ${cumplK >= 95 ? "text-green-600" : cumplK >= 80 ? "text-yellow-600" : "text-red-500"}`}>
                                 {cumplK.toFixed(1)}%
@@ -904,6 +912,7 @@ export default function Configuracion({ data, onSave }) {
           </div>
         );
       })()}
+
     </section>
   );
 }

@@ -32,10 +32,11 @@ export function empresaMatchesOpType(empresa, filterOpType) {
   );
 }
 
-// Extrae métricas op-específicas de una empresa; fallback al total si no hay datos granulares
+// Extrae métricas op-específicas de una empresa; usa el mismo match case-insensitive que empresaMatchesOpType
 export function getOpMetrics(empresa, filterOpType) {
   if (!filterOpType || !empresa) return null;
-  const opData = empresa.ops?.[filterOpType];
+  const opKey = Object.keys(empresa.ops || {}).find(k => k.toLowerCase().includes(filterOpType.toLowerCase()));
+  const opData = opKey ? empresa.ops[opKey] : null;
   if (!opData || typeof opData !== "object") return null;
-  return opData; // { total, gmv, completados, cancelados, paquetes }
+  return opData;
 }

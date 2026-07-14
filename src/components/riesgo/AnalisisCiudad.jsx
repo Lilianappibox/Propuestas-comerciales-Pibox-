@@ -136,12 +136,14 @@ export default function AnalisisCiudad() {
     if (!selected.length) return null;
     if (selected.length === 1) return selected[0];
     // Merge múltiples ciudades
-    const merged = { city: ciudadesSeleccionadas.join(", "), total: 0, gmv: 0, paquetes: 0, completados: 0, cancelados: 0, expirados: 0, localidades: [], ops: [], estados: [], weekly: [], driversPorOp: [], totalDrivers: 0 };
+    const merged = { city: ciudadesSeleccionadas.join(", "), total: 0, gmv: 0, paquetes: 0, completados: 0, cancelados: 0, expirados: 0, localidades: [], ops: [], estados: [], weekly: [], driversPorOp: [], totalDrivers: 0, onDemandCompletados: 0, onDemandOnTime: 0 };
     const locMap = {}, opMap = {}, stMap = {}, weekMap = {}, drvMap = {};
     for (const c of selected) {
       merged.total += c.total; merged.gmv += c.gmv; merged.paquetes += c.paquetes;
       merged.completados += c.completados; merged.cancelados += c.cancelados; merged.expirados += c.expirados;
       merged.totalDrivers += c.totalDrivers || 0;
+      merged.onDemandCompletados += c.onDemandCompletados || 0;
+      merged.onDemandOnTime += c.onDemandOnTime || 0;
       for (const l of (c.localidades || [])) { if (!locMap[l.loc]) locMap[l.loc] = { ...l }; else { locMap[l.loc].total += l.total; locMap[l.loc].paquetes += l.paquetes; locMap[l.loc].gmv += l.gmv; locMap[l.loc].completados += l.completados; locMap[l.loc].cancelados += l.cancelados; } }
       for (const o of (c.ops || [])) { if (!opMap[o.op]) opMap[o.op] = { ...o }; else { opMap[o.op].total += o.total; opMap[o.op].paquetes += (o.paquetes||0); opMap[o.op].gmv += o.gmv; } }
       for (const s of (c.estados || [])) { if (!stMap[s.estado]) stMap[s.estado] = { ...s }; else { stMap[s.estado].total += s.total; stMap[s.estado].paquetes += (s.paquetes||0); } }
@@ -151,6 +153,7 @@ export default function AnalisisCiudad() {
     const denomEfOpCity = merged.completados + (merged.canceladosConductor||0) + (merged.expirados||0);
     merged.tasa_completado = denomEfOpCity > 0 ? merged.completados / denomEfOpCity : 0;
     merged.tasa_cancelacion = merged.total > 0 ? merged.cancelados / merged.total : 0;
+    merged.onTimePct = merged.onDemandCompletados > 0 ? merged.onDemandOnTime / merged.onDemandCompletados : null;
     merged.localidades = Object.values(locMap).sort((a, b) => b.paquetes - a.paquetes).slice(0, 20);
     merged.ops = Object.values(opMap).sort((a, b) => b.total - a.total);
     merged.estados = Object.values(stMap).sort((a, b) => b.total - a.total);
@@ -164,9 +167,11 @@ export default function AnalisisCiudad() {
     const selected = dataPrev.ciudades.filter(c => ciudadesSeleccionadas.includes(c.city));
     if (!selected.length) return null;
     if (selected.length === 1) return selected[0];
-    const m = { total: 0, gmv: 0, paquetes: 0, completados: 0, tasa_completado: 0 };
-    for (const c of selected) { m.total += c.total; m.gmv += c.gmv; m.paquetes += c.paquetes; m.completados += c.completados; }
+    const m = { total: 0, gmv: 0, paquetes: 0, completados: 0, tasa_completado: 0, tasa_cancelacion: 0, cancelados: 0, onDemandCompletados: 0, onDemandOnTime: 0 };
+    for (const c of selected) { m.total += c.total; m.gmv += c.gmv; m.paquetes += c.paquetes; m.completados += c.completados; m.cancelados += c.cancelados || 0; m.onDemandCompletados += c.onDemandCompletados || 0; m.onDemandOnTime += c.onDemandOnTime || 0; }
     m.tasa_completado = (m.completados + (m.canceladosConductor||0) + (m.expirados||0)) > 0 ? m.completados / (m.completados + (m.canceladosConductor||0) + (m.expirados||0)) : 0;
+    m.tasa_cancelacion = m.total > 0 ? m.cancelados / m.total : 0;
+    m.onTimePct = m.onDemandCompletados > 0 ? m.onDemandOnTime / m.onDemandCompletados : null;
     return m;
   }, [dataPrev, ciudadesSeleccionadas]);
 
@@ -194,6 +199,7 @@ export default function AnalisisCiudad() {
   const varSvc  = cityPrev?.total     > 0 ? (cityData?.total      - cityPrev.total)      / cityPrev.total      : null;
   const varGmv  = cityPrev?.gmv       > 0 ? (cityData?.gmv        - cityPrev.gmv)        / cityPrev.gmv        : null;
   const varTc   = cityPrev            ? (cityData?.tasa_completado||0) - (cityPrev.tasa_completado||0) : null;
+  const varOnTime = (cityData?.onTimePct != null && cityPrev?.onTimePct != null) ? cityData.onTimePct - cityPrev.onTimePct : null;
 
   if (!meses.length) return (
     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-800 text-sm">
@@ -278,6 +284,10 @@ export default function AnalisisCiudad() {
             <KpiCard icon="📦" label="Paquetes"    value={cityData.paquetes.toLocaleString()}   borderColor={PIBOX_PURPLE} delta={varPaq}/>
             <KpiCard icon="🚗" label="Servicios"   value={cityData.total.toLocaleString()}      borderColor={PIBOX_PINK}   delta={varSvc}/>
             <KpiCard icon="💰" label="GMV"         value={fmtFull(cityData.gmv)}               borderColor={PIBOX_PURPLE} delta={varGmv}/>
+            <KpiCard icon="⏱️" label="On Time OD"
+              value={cityData.onTimePct != null ? fmtPct(cityData.onTimePct) : "N/A"}
+              borderColor="#0d9488"
+              sub={cityData.onDemandCompletados > 0 ? `${cityData.onDemandCompletados} OD completados` : "Sin datos On Demand"}/>
             <KpiCard icon="✅" label="Ef. Operativa"  value={fmtPct(cityData.tasa_completado)}     borderColor={SEM_VERDE}
               delta={varTc}/>
           </div>
@@ -303,6 +313,7 @@ export default function AnalisisCiudad() {
                       {label:"🚗 Servicios",   curr:cityData.total.toLocaleString(),           prev:cityPrev.total.toLocaleString(),           delta:varSvc,  inv:false},
                       {label:"💰 GMV",         curr:fmtFull(cityData.gmv),                    prev:fmtFull(cityPrev.gmv),                    delta:varGmv,  inv:false},
                       {label:"✅ Ef. Operativa",  curr:fmtPct(cityData.tasa_completado),          prev:fmtPct(cityPrev.tasa_completado),          delta:varTc,   inv:false},
+                      {label:"⏱️ On Time OD",  curr:cityData.onTimePct!=null?fmtPct(cityData.onTimePct):"N/A", prev:cityPrev?.onTimePct!=null?fmtPct(cityPrev.onTimePct):"N/A", delta:varOnTime, inv:false},
                       {label:"❌ Cancelación", curr:fmtPct(cityData.tasa_cancelacion),         prev:fmtPct(cityPrev.tasa_cancelacion),         delta:(cityPrev?cityData.tasa_cancelacion-cityPrev.tasa_cancelacion:null), inv:true},
                     ].map((r,i)=>{
                       const isPos = r.inv ? r.delta < 0 : r.delta > 0;
@@ -595,20 +606,31 @@ export default function AnalisisCiudad() {
             });
             for (const e of matchingEmpresas) {
               totalRelaunch += e.relanzamientos || 0;
-              if (!e.distancias) continue;
-              for (const [rng, val] of Object.entries(e.distancias)) {
-                const k = rng === "Mas de 10 km" || rng === "Más de 10 km" ? "Mas de 10 km" : rng;
-                if (!(k in distMap)) continue;
-                if (typeof val === "number") { distMap[k] += val; continue; }
-                distMap[k] += val.total || 0;
-                if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
-                distTimes[k].completados += val.completados || 0;
-                distTimes[k].relanzamientos += val.relanzamientos || 0;
-                distTimes[k].tAsig += val.tAsignacion || 0;
-                distTimes[k].tLleg += val.tLlegada || 0;
-                distTimes[k].tRuta += val.tRuta || 0;
-                distTimes[k].tTotal += val.tTotal || 0;
-                distTimes[k].n += val.nTiempos || 0;
+              if (e.distancias) {
+                for (const [rng, val] of Object.entries(e.distancias)) {
+                  const k = rng === "Mas de 10 km" || rng === "Más de 10 km" ? "Mas de 10 km" : rng;
+                  if (!(k in distMap)) continue;
+                  if (typeof val === "number") { distMap[k] += val; continue; }
+                  distMap[k] += val.total || 0;
+                  if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0, otTotal: 0, otOnTime: 0, otNoAplica: 0 };
+                  distTimes[k].completados += val.completados || 0;
+                  distTimes[k].relanzamientos += val.relanzamientos || 0;
+                  distTimes[k].tAsig += val.tAsignacion || 0;
+                  distTimes[k].tLleg += val.tLlegada || 0;
+                  distTimes[k].tRuta += val.tRuta || 0;
+                  distTimes[k].tTotal += val.tTotal || 0;
+                  distTimes[k].n += val.nTiempos || 0;
+                }
+              }
+              if (e.distanciasOnDemand) {
+                for (const [rng, val] of Object.entries(e.distanciasOnDemand)) {
+                  const k = rng === "Mas de 10 km" || rng === "Más de 10 km" ? "Mas de 10 km" : rng;
+                  if (!(k in distMap) || typeof val !== "object") continue;
+                  if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0, otTotal: 0, otOnTime: 0, otNoAplica: 0 };
+                  distTimes[k].otTotal = (distTimes[k].otTotal || 0) + (val.otTotal || 0);
+                  distTimes[k].otOnTime = (distTimes[k].otOnTime || 0) + (val.otOnTime || 0);
+                  distTimes[k].otNoAplica = (distTimes[k].otNoAplica || 0) + (val.otNoAplica || 0);
+                }
               }
             }
             const totalBookings = Object.values(distMap).reduce((s, v) => s + v, 0);
@@ -616,7 +638,7 @@ export default function AnalisisCiudad() {
             const distAgg = Object.entries(distMap).map(([rng, cnt]) => {
               const t = distTimes[rng] || {};
               const n = t.n || 1;
-              return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
+              return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n), otTotal: t.otTotal || 0, otOnTime: t.otOnTime || 0, otNoAplica: t.otNoAplica || 0, onTimePct: (t.otTotal || 0) > 0 ? (t.otOnTime || 0) / (t.otTotal || 0) : null };
             });
             const empWithRelaunch = matchingEmpresas.filter(e => (e.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0));
 
@@ -628,7 +650,7 @@ export default function AnalisisCiudad() {
                     <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
                       <thead>
                         <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                          {["Rango","Bookings","Relanzamientos","Efectividad","T. Asignacion","T. Llegada","T. Ruta","T. Total","% Bookings"].map(h=>(
+                          {["Rango","Bookings","Relanzamientos","Efectividad","T. Asignacion","T. Llegada","T. Ruta","T. Total","On Time OD","Con SLA","Sin SLA","% Bookings"].map(h=>(
                             <th key={h} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -644,6 +666,9 @@ export default function AnalisisCiudad() {
                             <td className="px-3 py-2 text-center text-gray-500">{d.avgLleg}</td>
                             <td className="px-3 py-2 text-center text-gray-500">{d.avgRuta}</td>
                             <td className="px-3 py-2 text-center font-semibold text-gray-700">{d.avgTotal}</td>
+                            <td className="px-3 py-2 text-center font-semibold" style={{color:"#0d9488"}}>{d.onTimePct != null ? fmtPct(d.onTimePct) : "—"}</td>
+                            <td className="px-3 py-2 text-center text-gray-700">{d.otTotal.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-center text-gray-500">{d.otNoAplica.toLocaleString()}</td>
                             <td className="px-3 py-2 text-center" style={{color:PIBOX_PURPLE}}>{fmtPct(d.pct)}</td>
                           </tr>
                         ))}
@@ -654,6 +679,9 @@ export default function AnalisisCiudad() {
                           <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.bookings,0).toLocaleString()}</td>
                           <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.relanzamientos,0).toLocaleString()}</td>
                           <td className="px-3 py-2 text-center" colSpan={5}></td>
+                          <td className="px-3 py-2 text-center" style={{color:"#0d9488"}}>{(() => { const tot = distAgg.reduce((s,d)=>s+(d.otTotal||0),0); const on = distAgg.reduce((s,d)=>s+(d.otOnTime||0),0); return tot > 0 ? fmtPct(on/tot) : "—"; })()}</td>
+                          <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+(d.otTotal||0),0).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+(d.otNoAplica||0),0).toLocaleString()}</td>
                           <td className="px-3 py-2 text-center">100.0%</td>
                         </tr>
                       </tfoot>

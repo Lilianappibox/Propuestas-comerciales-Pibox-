@@ -195,10 +195,11 @@ export default function InformeEmpresa() {
     if (!selected.length) return null;
     if (selected.length === 1) return selected[0];
     // Merge múltiples empresas
-    const m = { empresa: empresasSel.join(", "), total: 0, completados: 0, cancelados: 0, expirados: 0, gmv: 0, paquetes: 0, service_cost: 0, ejecutivo: selected[0].ejecutivo, ciudad: selected.map(e => e.ciudad).filter((v, i, a) => a.indexOf(v) === i).join(", "), topCiudades: [], topOps: [], weekly: [], topUsuarios: [], topSedes: [], totalDrivers: 0, tasa_completado: 0, tasa_cancelacion: 0, tasa_expirado: 0 };
+    const m = { empresa: empresasSel.join(", "), total: 0, completados: 0, cancelados: 0, expirados: 0, gmv: 0, paquetes: 0, service_cost: 0, ejecutivo: selected[0].ejecutivo, ciudad: selected.map(e => e.ciudad).filter((v, i, a) => a.indexOf(v) === i).join(", "), topCiudades: [], topOps: [], weekly: [], topUsuarios: [], topSedes: [], totalDrivers: 0, tasa_completado: 0, tasa_cancelacion: 0, tasa_expirado: 0, cancelacionesTipo: {} };
     const cityMap = {}, opMap = {}, weekMap = {}, userMap = {}, sedeMap = {};
     for (const e of selected) {
       m.total += e.total; m.completados += e.completados; m.cancelados += e.cancelados; m.expirados += e.expirados; m.gmv += e.gmv; m.paquetes += e.paquetes; m.service_cost += e.service_cost; m.totalDrivers += e.totalDrivers || 0;
+      for (const [tipo, cnt] of Object.entries(e.cancelacionesTipo || {})) m.cancelacionesTipo[tipo] = (m.cancelacionesTipo[tipo]||0) + cnt;
       for (const c of (e.topCiudades || [])) { if (!cityMap[c.city]) cityMap[c.city] = { ...c }; else { cityMap[c.city].gmv += c.gmv; cityMap[c.city].count += c.count; } }
       for (const o of (e.topOps || [])) { if (!opMap[o.op]) opMap[o.op] = { ...o }; else { opMap[o.op].count += o.count; } }
       for (const w of (e.weekly || [])) { if (!weekMap[w.semana]) weekMap[w.semana] = { ...w }; else { weekMap[w.semana].gmv += w.gmv; weekMap[w.semana].servicios += w.servicios; weekMap[w.semana].completados += w.completados; weekMap[w.semana].cancelados += w.cancelados; } }
@@ -452,6 +453,14 @@ export default function InformeEmpresa() {
                         invert:false,
                       },
                       {
+                        label:"⏱️ On Time OD",
+                        curr: empData.onDemandCompletados > 0 ? fmtPct(empData.onTimePct) : "—",
+                        prev: prevData?.onDemandCompletados > 0 ? fmtPct(prevData.onTimePct) : "—",
+                        varN: (empData.onDemandCompletados > 0 && prevData?.onDemandCompletados > 0) ? empData.onTimePct - prevData.onTimePct : null,
+                        invert:false,
+                        isPill:true,
+                      },
+                      {
                         label:"❌ Tasa cancelación",
                         curr: fmtPct(empData.tasa_cancelacion),
                         prev: prevData ? fmtPct(prevData.tasa_cancelacion) : "—",
@@ -471,7 +480,7 @@ export default function InformeEmpresa() {
                     ].map((r,i)=>(
                       <tr key={i} className={i%2===0?"bg-white":"bg-purple-50/30"}>
                         <td className="px-4 py-2.5 font-medium text-gray-700">{r.label}</td>
-                        <td className="px-4 py-2.5 text-center font-bold text-gray-800">{r.curr}</td>
+                        <td className="px-4 py-2.5 text-center font-bold text-gray-800">{r.isPill ? <span style={{background:"#ede9fe",color:"#7c3aed",borderRadius:6,padding:"1px 7px"}}>{r.curr}</span> : r.curr}</td>
                         <td className="px-4 py-2.5 text-center text-gray-500">{r.prev}</td>
                         <td className="px-4 py-2.5 text-center">
                           {r.varN !== null ? (
@@ -634,6 +643,67 @@ export default function InformeEmpresa() {
               </div>
             )}
 
+            {/* Tipificación de cancelaciones */}
+            {empData.cancelados > 0 && empData.cancelacionesTipo && Object.keys(empData.cancelacionesTipo).length > 0 && (
+              <div className="px-6 py-4 border-t border-gray-100">
+                <h4 className="font-bold text-gray-700 text-sm mb-3">❌ Tipificación de cancelaciones</h4>
+                {(() => {
+                  const COLOR_TIPO = {
+                    "Canceled by Drive":     SEM_ROJO,
+                    "Canceled by Driver":    SEM_ROJO,
+                    "Canceled by Passenger": SEM_AMARILLO,
+                    "Canceled by Ops":       PIBOX_PURPLE,
+                  };
+                  const tipData = Object.entries(empData.cancelacionesTipo)
+                    .map(([tipo, count]) => ({ tipo, count }))
+                    .sort((a, b) => b.count - a.count);
+                  const totalCanc = tipData.reduce((s, d) => s + d.count, 0);
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <ResponsiveContainer width="100%" height={Math.max(120, tipData.length * 40)}>
+                          <BarChart data={tipData} layout="vertical" margin={{ left: 5, right: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
+                            <XAxis type="number" tick={{ fontSize: 9 }} />
+                            <YAxis type="category" dataKey="tipo" tick={{ fontSize: 9 }} width={130} />
+                            <Tooltip formatter={v => [`${v.toLocaleString()} servicios`]} />
+                            <Bar dataKey="count" name="Cancelaciones" radius={[0, 4, 4, 0]}>
+                              {tipData.map((d, i) => (
+                                <Cell key={i} fill={COLOR_TIPO[d.tipo] || "#9CA3AF"} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div>
+                        <ResponsiveContainer width="100%" height={Math.max(120, tipData.length * 40)}>
+                          <PieChart>
+                            <Pie data={tipData} dataKey="count" nameKey="tipo"
+                              cx="50%" cy="50%" innerRadius={30} outerRadius={60}
+                              label={({ tipo, percent }) => `${tipo.replace("Canceled by ", "")} ${(percent*100).toFixed(1)}%`}
+                              labelLine={false}>
+                              {tipData.map((d, i) => (
+                                <Cell key={i} fill={COLOR_TIPO[d.tipo] || COLORS[i % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(v, n) => [`${v.toLocaleString()} (${totalCanc > 0 ? ((v/totalCanc)*100).toFixed(1) : 0}%)`, n]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="flex flex-wrap justify-center gap-2 mt-1">
+                          {tipData.map((d, i) => (
+                            <span key={i} className="flex items-center gap-1 text-[10px] text-gray-500">
+                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: COLOR_TIPO[d.tipo] || "#9CA3AF" }} />
+                              {d.tipo.replace("Canceled by ", "")}: <b>{d.count}</b>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Gráficas semanales */}
             {empData.weekly?.length > 0 && (
               <div className="px-6 py-4 border-t border-gray-100">
@@ -688,31 +758,44 @@ export default function InformeEmpresa() {
               const selEmps = empresasSel.length > 1
                 ? (dataMes?.empresas || []).filter(e => empresasSel.includes(e.empresa))
                 : empData ? [empData] : [];
+              const otMap = {};
               let totalRelaunch = 0;
               for (const e of selEmps) {
                 totalRelaunch += e.relanzamientos || 0;
-                if (!e.distancias) continue;
-                for (const [rng, val] of Object.entries(e.distancias)) {
-                  const k = rng === "Más de 10 km" || rng === "Mas de 10 km" ? "Mas de 10 km" : rng;
-                  if (!(k in distMap)) continue;
-                  if (typeof val === "number") { distMap[k] += val; continue; }
-                  distMap[k] += val.total || 0;
-                  if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
-                  distTimes[k].completados += val.completados || 0;
-                  distTimes[k].relanzamientos += val.relanzamientos || 0;
-                  distTimes[k].tAsig += val.tAsignacion || 0;
-                  distTimes[k].tLleg += val.tLlegada || 0;
-                  distTimes[k].tRuta += val.tRuta || 0;
-                  distTimes[k].tTotal += val.tTotal || 0;
-                  distTimes[k].n += val.nTiempos || 0;
+                if (e.distancias) {
+                  for (const [rng, val] of Object.entries(e.distancias)) {
+                    const k = rng === "Más de 10 km" || rng === "Mas de 10 km" ? "Mas de 10 km" : rng;
+                    if (!(k in distMap)) continue;
+                    if (typeof val === "number") { distMap[k] += val; continue; }
+                    distMap[k] += val.total || 0;
+                    if (!distTimes[k]) distTimes[k] = { completados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
+                    distTimes[k].completados += val.completados || 0;
+                    distTimes[k].relanzamientos += val.relanzamientos || 0;
+                    distTimes[k].tAsig += val.tAsignacion || 0;
+                    distTimes[k].tLleg += val.tLlegada || 0;
+                    distTimes[k].tRuta += val.tRuta || 0;
+                    distTimes[k].tTotal += val.tTotal || 0;
+                    distTimes[k].n += val.nTiempos || 0;
+                  }
+                }
+                if (e.distanciasOnDemand) {
+                  for (const [rng, val] of Object.entries(e.distanciasOnDemand)) {
+                    const k = rng === "Más de 10 km" || rng === "Mas de 10 km" ? "Mas de 10 km" : rng;
+                    if (!(k in distMap)) continue;
+                    if (!otMap[k]) otMap[k] = { otTotal: 0, otOnTime: 0, otNoAplica: 0 };
+                    otMap[k].otTotal += val.otTotal || 0;
+                    otMap[k].otOnTime += val.otOnTime || 0;
+                    otMap[k].otNoAplica += val.otNoAplica || 0;
+                  }
                 }
               }
               const totalBookings = Object.values(distMap).reduce((s, v) => s + v, 0);
               const fmtTime = (mins) => { if (!mins) return "\u2014"; const h = Math.floor(mins/60); const m = Math.round(mins%60); return h > 0 ? `${h}h ${String(m).padStart(2,"0")}m` : `${m}m`; };
               const distAgg = Object.entries(distMap).map(([rng, cnt]) => {
                 const t = distTimes[rng] || {};
+                const ot = otMap[rng] || {};
                 const n = t.n || 1;
-                return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
+                return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: cnt > 0 ? (t.completados || 0) / cnt : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n), otTotal: ot.otTotal || 0, otOnTime: ot.otOnTime || 0, otNoAplica: ot.otNoAplica || 0, onTimePct: (ot.otTotal || 0) > 0 ? (ot.otOnTime || 0) / (ot.otTotal || 0) : null };
               });
               const empWithRelaunch = selEmps.filter(e => (e.relanzamientos || 0) > 0).sort((a, b) => (b.relanzamientos || 0) - (a.relanzamientos || 0));
 
@@ -724,7 +807,7 @@ export default function InformeEmpresa() {
                       <table className="w-full text-xs" style={{borderCollapse:"collapse"}}>
                         <thead>
                           <tr style={{background:PIBOX_PURPLE}} className="text-white">
-                            {["Rango","Bookings","Relanzamientos","Efectividad","T. Asignacion","T. Llegada","T. Ruta","T. Total","% Bookings"].map(h=>(
+                            {["Rango","Bookings","Relanzamientos","Efectividad","T. Asignacion","T. Llegada","T. Ruta","T. Total","On Time OD","Con SLA","Sin SLA","% Bookings"].map(h=>(
                               <th key={h} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
@@ -740,6 +823,9 @@ export default function InformeEmpresa() {
                               <td className="px-3 py-2 text-center text-gray-500">{d.avgLleg}</td>
                               <td className="px-3 py-2 text-center text-gray-500">{d.avgRuta}</td>
                               <td className="px-3 py-2 text-center font-semibold text-gray-700">{d.avgTotal}</td>
+                              <td className="px-3 py-2 text-center">{d.otTotal > 0 ? <span style={{fontWeight:600, color: d.onTimePct >= 0.9 ? SEM_VERDE : d.onTimePct >= 0.75 ? SEM_AMARILLO : SEM_ROJO}}>{fmtPct(d.onTimePct)}</span> : <span className="text-gray-400">\u2014</span>}</td>
+                              <td className="px-3 py-2 text-center text-gray-600">{d.otOnTime > 0 ? d.otOnTime.toLocaleString() : <span className="text-gray-400">\u2014</span>}</td>
+                              <td className="px-3 py-2 text-center text-gray-600">{(d.otTotal - d.otOnTime - d.otNoAplica) > 0 ? (d.otTotal - d.otOnTime - d.otNoAplica).toLocaleString() : <span className="text-gray-400">\u2014</span>}</td>
                               <td className="px-3 py-2 text-center" style={{color:PIBOX_PURPLE}}>{fmtPct(d.pct)}</td>
                             </tr>
                           ))}
@@ -749,12 +835,45 @@ export default function InformeEmpresa() {
                             <td className="px-3 py-2 text-gray-800">Total</td>
                             <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.bookings,0).toLocaleString()}</td>
                             <td className="px-3 py-2 text-center">{distAgg.reduce((s,d)=>s+d.relanzamientos,0).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-center" colSpan={5}></td>
+                            <td className="px-3 py-2 text-center" colSpan={4}></td>
+                            {(()=>{ const tOT=distAgg.reduce((s,d)=>s+d.otTotal,0); const tON=distAgg.reduce((s,d)=>s+d.otOnTime,0); const tSin=distAgg.reduce((s,d)=>s+(d.otTotal-d.otOnTime-d.otNoAplica),0); return (<><td className="px-3 py-2 text-center">{tOT>0?<span style={{color:tOT>0&&tON/tOT>=0.9?SEM_VERDE:tON/tOT>=0.75?SEM_AMARILLO:SEM_ROJO}}>{fmtPct(tON/tOT)}</span>:"\u2014"}</td><td className="px-3 py-2 text-center">{tON>0?tON.toLocaleString():"\u2014"}</td><td className="px-3 py-2 text-center">{tSin>0?tSin.toLocaleString():"\u2014"}</td></>); })()}
                             <td className="px-3 py-2 text-center">100.0%</td>
                           </tr>
                         </tfoot>
                       </table>
                     </div>
+                    {(() => {
+                      // Contar OD completados sin distancia desde datos existentes (funciona con caché)
+                      const sinDistCount = selEmps.reduce((s, e) => {
+                        const odKey = Object.keys(e.ops || {}).find(k => k.toLowerCase() === "on demand");
+                        const odCompleted = odKey ? (e.ops[odKey].completados || 0) : 0;
+                        const odConDist = Object.values(e.distanciasOnDemand || {}).reduce((a, v) => a + (v.completados || 0), 0);
+                        return s + Math.max(0, odCompleted - odConDist);
+                      }, 0);
+                      if (sinDistCount === 0) return null;
+                      // Para descarga: usar sinDistanciaOD si ya fue reprocesado
+                      const sinDistRows = selEmps.flatMap(e => e.sinDistanciaOD || []);
+                      const downloadCSV = () => {
+                        const headers = ["Fecha","Empresa","Ciudad","Sede","Operación","Estado","GMV","Costo","Paquetes","Usuario","Conductor","Ejecutivo","Relanzamientos"];
+                        const keys = ["fecha","empresa","ciudad","sede","operacion","estado","gmv","costo","paquetes","usuario","conductor","ejecutivo","relanzamientos"];
+                        const rows = [headers, ...sinDistRows.map(r => keys.map(k => r[k] ?? ""))];
+                        const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+                        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = "od_sin_distancia.csv"; a.click(); URL.revokeObjectURL(url);
+                      };
+                      return (
+                        <div className="mt-2 flex items-center gap-3 px-1">
+                          <span style={{fontSize:12,color:"#92400e",background:"#fef3c7",borderRadius:6,padding:"3px 10px",border:"1px solid #fcd34d"}}>
+                            ⚠️ {sinDistCount} servicios On Demand completados sin distancia registrada — excluidos de la tabla
+                          </span>
+                          {sinDistRows.length > 0
+                            ? <button onClick={downloadCSV} style={{fontSize:12,color:"#7c3aed",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:6,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>↓ Descargar datos</button>
+                            : <span style={{fontSize:11,color:"#9ca3af",fontStyle:"italic"}}>Re-sube el archivo para descargar el detalle</span>
+                          }
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Gráficas comparativas devoluciones + relanzamientos */}

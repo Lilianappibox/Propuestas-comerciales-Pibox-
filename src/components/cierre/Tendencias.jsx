@@ -32,6 +32,56 @@ function parseMes(label) {
 // Para generar labels siempre usamos el formato corto
 const MESES = MESES_CORTO;
 
+// Devuelve el año efectivo de una entrada: campo `anio` explícito > año en label > 0
+function efectiveAnio(t) {
+  const raw = Number(t.anio || 0);
+  if (raw >= 100) return raw;          // año completo como 2024
+  if (raw > 0)   return 2000 + raw;   // año corto como 24
+  const parsed = parseMes(t.mes).anio;
+  return parsed > 2000 ? parsed : 0;
+}
+
+// Normaliza labels del historial asignando año inferido cuando falta (e.g. "NOVIEMBRE" → "Nov 24")
+// Prioridad: campo `anio` explícito > año incluido en label > inferido por posición secuencial.
+function normalizarLabels(tendencias) {
+  if (!tendencias.length) return tendencias;
+
+  // Buscar la última entrada con año conocido
+  let anchorIdx = -1, anchorAnio = 0, anchorMesIdx = -1;
+  for (let i = tendencias.length - 1; i >= 0; i--) {
+    const anio = efectiveAnio(tendencias[i]);
+    const { mesIdx } = parseMes(tendencias[i].mes);
+    if (anio > 2000 && mesIdx >= 0) {
+      anchorIdx = i; anchorAnio = anio; anchorMesIdx = mesIdx;
+      break;
+    }
+  }
+
+  // Si ninguna entrada tiene año, inferir desde la fecha actual
+  if (anchorIdx < 0) {
+    const now = new Date();
+    anchorIdx = tendencias.length - 1;
+    anchorMesIdx = parseMes(tendencias[anchorIdx].mes).mesIdx;
+    if (anchorMesIdx < 0) return tendencias;
+    anchorAnio = now.getFullYear();
+    if (anchorMesIdx > now.getMonth()) anchorAnio--;
+  }
+
+  return tendencias.map((t, i) => {
+    const { mesIdx } = parseMes(t.mes);
+    if (mesIdx < 0) return t;
+
+    const anio = efectiveAnio(t);
+    if (anio > 2000) return { ...t, mes: `${MESES_CORTO[mesIdx]} ${String(anio).slice(-2)}` };
+
+    // Sin año: inferir contando meses desde el ancla (asume secuencia mensual)
+    const total = anchorMesIdx + (i - anchorIdx);
+    const y = anchorAnio + Math.floor(total / 12);
+    const m = ((total % 12) + 12) % 12;
+    return { ...t, mes: `${MESES_CORTO[m]} ${String(y).slice(-2)}` };
+  });
+}
+
 function calcEstacionalidad(tendencias) {
   // Índice estacional: promedio del GMV de cada mes / promedio general
   const porMes = Array.from({ length: 12 }, () => []);
@@ -114,8 +164,8 @@ function predecirSiguienteMes(tendencias) {
 }
 
 // ── Contexto del mercado — Última Milla Colombia ──────────────────────────
-// Actualizado: Julio 2026 · Fuentes: CCCE, Valora Analitik, Portafolio, Inexmoda
-const MERCADO_VERSION = "2026-07"; // año-mes en que se revisó este contenido
+// Actualizado: Jul 9 2026 · Fuentes: CCCE, eCommerce Day Colombia, La República, Mordor Intelligence, Portafolio, Valora Analitik
+const MERCADO_VERSION = "2026-07-09"; // fecha de última revisión
 
 const CONTEXTO_MERCADO = [
   {
@@ -123,39 +173,52 @@ const CONTEXTO_MERCADO = [
     icono: "🛒",
     color: "blue",
     datos: [
-      "Q1 2026: $39,7 billones COP (+14,5% YoY), 186,4M transacciones — mejor trimestre desde 2019.",
-      "Q2 2026 (estimado): +12–15% YoY impulsado por temporada de mitad de año y Día del Padre.",
-      "Cierre 2025: $145,4 billones COP, 684,6M operaciones — récord histórico (+19,9% en volumen).",
-      "Colombia crece al doble de la media global (14,5% vs 7,2%). CAGR 2022–2026: 27,9%.",
-      "Mobile commerce supera USD $12.000M en 2026; el 68% de compras se inician desde smartphone.",
+      "H1 2026: $54,2 billones COP, 272M transacciones — +48,7% en valor vs H1 2024; mejor primer semestre histórico.",
+      "Q2 2026: $26,9 billones COP (+3% YoY), 140,6M transacciones (+10,6% YoY); ticket promedio $191.850 COP.",
+      "Q2 a solo $0,6 billones del récord absoluto; e-commerce ya es canal estructural en la economía colombiana.",
+      "Black Friday 2026 (27 nov): sector proyecta tráfico digital +40–70% vs días normales; tecnología y moda lideran.",
+      "Oct–Dic concentra 20–30% del GMV anual: Hot Sale, Black Friday y Navidad como pico máximo del año.",
     ],
-    fuente: "CCCE / Americas Market Intelligence / MinComercio — Q1 2026",
+    fuente: "CCCE / eCommerce Day Colombia 2026 / Marketing4Ecommerce / El Tiempo — Jul 2026",
   },
   {
     titulo: "Mensajería y Última Milla Colombia",
     icono: "📦",
     color: "green",
     datos: [
-      "Mercado última milla Colombia: ~USD $800M estimado 2026, CAGR ~10% hasta 2030.",
-      "Densidad de envíos crece en ciudades intermedias: Bucaramanga, Manizales, Ibagué y Pasto aceleran +18% YoY.",
-      "Couriers tradicionales pierden participación: Servientrega -3,9%; operadores tech-enabled ganan +15% anual.",
-      "Entregas same-day y next-day ya representan el 34% del mercado B2C urbano.",
-      "Pibox: único operador postal tech autorizado por MinTIC; diferenciador clave en costos logísticos B2B.",
+      "Mercado logística Colombia: USD $23,55B en 2026, CAGR 6,18% proyectado hasta 2031 (Mordor Intelligence).",
+      "Inter Rapidísimo lidera con 13M envíos (Q4 2024), Servientrega 9,2M, Coordinadora 7,5M — 3 actores >70% del mercado.",
+      "Same-day delivery alcanza 18% de pedidos e-commerce urbano en Bogotá, Medellín y Cali.",
+      "CEP (courier, express, parcel) proyecta CAGR 7,02% 2026–2031; velocidad de entrega como diferenciador clave.",
+      "Operadores densifican puntos de recogida y migran a vans eléctricas para cumplir límites de emisiones urbanas 2026.",
     ],
-    fuente: "Valora Analitik / La República / Bonafide Research — Jun 2026",
+    fuente: "Mordor Intelligence / La República / America Retail & Malls / Multivende — Jul 2026",
   },
   {
     titulo: "Logística IA y Temporadas 2026",
     icono: "🚀",
     color: "purple",
     datos: [
-      "IA en rutas reduce costos operativos hasta 20% y mejora tasa de éxito de primera entrega al 91%.",
-      "Julio–Agosto: temporada baja; el sector proyecta -8% vs junio — ideal para optimizar cobertura.",
-      "Sep–Dic: pico estacional (Amor y Amistad, Halloween, Black Friday, Navidad) concentra ~38% del GMV anual.",
-      "Salario mínimo 2026 (+9,54%) presiona costos variables; operadores tech compensan con eficiencia algorítmica.",
-      "Regulación MinTransporte 2026: nuevas exigencias de trazabilidad aceleran adopción de plataformas digitales.",
+      "IA en ruteo reduce costos de transporte 25–35%; McKinsey estima ahorro total de 5–15% según madurez tecnológica.",
+      "Optimización de rutas con IA recorta consumo de combustible 10–30% y mejora tiempos de entrega hasta 25%.",
+      "Julio–agosto: temporada baja — ideal para ajustar cobertura y alistar capacidad para el pico sep–dic.",
+      "Día de la Madre 2026: Fenalco proyectó e-commerce >+15,4% YoY; IA de trazabilidad clave para cumplir SLAs en picos.",
+      "Colombia 2026: digitalización, IA y visibilidad operativa en tiempo real marcan la agenda de las empresas logísticas.",
     ],
-    fuente: "Portafolio / MinTransporte / Foro Económico Mundial — Jul 2026",
+    fuente: "Portafolio / Vanguardia / McKinsey / Cabify Logistics / El Tiempo — Jul 2026",
+  },
+  {
+    titulo: "Pibox — Marca & Percepción Digital",
+    icono: "📡",
+    color: "orange",
+    datos: [
+      "Único operador postal tech habilitado por MinTIC (Res. 2144, vigente hasta jul 2032) — diferenciador regulatorio que ningún courier urbano replica.",
+      "Cubierto por Portafolio, La República, El Tiempo y Marketing4Ecommerce; sin menciones de alto impacto en 2026 — brecha de visibilidad a cerrar.",
+      "Aparece en comparadores (Skydropx, EnvioTodo, Enviame) pero con tarifas y SLAs desactualizados — riesgo de percepción negativa en el punto de decisión.",
+      "App Shopify Pibox Mensajería: 2,0/5 ★ (muestra baja) — presencia débil en el canal digital más consultado por e-commerce B2C.",
+      "No figura en el top 9 del ranking de ingresos Valora Analitik 2025 — oportunidad de diferenciarse por eficiencia tech, no por volumen.",
+    ],
+    fuente: "Valora Analitik / Portafolio / La República / Shopify App Store / Skydropx — Jul 2026",
   },
 ];
 
@@ -192,7 +255,7 @@ export default function Tendencias({ data }) {
   );
   const cerrarBanner = () => { marcarActualizado(); setBannerVisible(false); };
 
-  const tendencias = data.tendencias || [];
+  const tendencias = normalizarLabels(data.tendencias || []);
   const indices = calcEstacionalidad(tendencias);
   const prediccion = predecirSiguienteMes(tendencias);
 
@@ -364,11 +427,11 @@ export default function Tendencias({ data }) {
             Actualizado: {MERCADO_VERSION}
           </span>
         </div>
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
           {CONTEXTO_MERCADO.map((ctx) => {
-            const bg = ctx.color === "blue" ? "#eff6ff" : ctx.color === "green" ? "#f0fdf4" : "#faf5ff";
-            const bd = ctx.color === "blue" ? "#bfdbfe" : ctx.color === "green" ? "#bbf7d0" : "#e9d5ff";
-            const cl = ctx.color === "blue" ? "#1d4ed8" : ctx.color === "green" ? "#15803d" : "#7c22d4";
+            const bg = ctx.color === "blue" ? "#eff6ff" : ctx.color === "green" ? "#f0fdf4" : ctx.color === "orange" ? "#fff7ed" : "#faf5ff";
+            const bd = ctx.color === "blue" ? "#bfdbfe" : ctx.color === "green" ? "#bbf7d0" : ctx.color === "orange" ? "#fed7aa" : "#e9d5ff";
+            const cl = ctx.color === "blue" ? "#1d4ed8" : ctx.color === "green" ? "#15803d" : ctx.color === "orange" ? "#c2410c" : "#7c22d4";
             return (
               <div key={ctx.titulo} className="rounded-xl p-4" style={{ backgroundColor: bg, border: `1px solid ${bd}` }}>
                 <p className="font-bold text-sm mb-2" style={{ color: cl }}>{ctx.icono} {ctx.titulo}</p>

@@ -22,6 +22,26 @@ export const UMBRALES_DEFAULT = {
   expirado_amarillo:   0.05,
 };
 
+export const SLA_DEFAULT = {
+  rangos: [
+    { label: "0–3 km",     maxKm: 3,  minutos: 35 },
+    { label: "3,1–5 km",   maxKm: 5,  minutos: 45 },
+    { label: "5,1–7 km",   maxKm: 7,  minutos: 50 },
+    { label: "7,1–10 km",  maxKm: 10, minutos: 65 },
+    { label: "10,1–17 km", maxKm: 17, minutos: 110 },
+  ],
+  nextDayHora: 18,
+};
+export function getSLAConfig() {
+  try {
+    const stored = JSON.parse(localStorage.getItem("pibox_sla_config") || "{}");
+    return { ...SLA_DEFAULT, ...stored, rangos: stored.rangos || SLA_DEFAULT.rangos };
+  } catch { return SLA_DEFAULT; }
+}
+export function saveSLAConfig(cfg) {
+  localStorage.setItem("pibox_sla_config", JSON.stringify(cfg));
+}
+
 export const mesKey = (anio, mes) => `${anio}-${String(mes).padStart(2,"0")}`;
 export const labelMes = (anio, mes) => `${MESES_ES[mes]} ${anio}`;
 
@@ -144,10 +164,12 @@ export function procesarDatos(rows) {
   const globalDaily  = {};
   const opDailyMap   = {}; // op → dateStr → { gmv, servicios, completados }
   const cityMap = {};
+  const sla = getSLAConfig();
 
   for (const row of rows) {
-    const empresa  = toStr(row["company"] || row["Company"] || "Sin empresa");
+    const empresa   = toStr(row["company"] || row["Company"] || "Sin empresa");
     const companyId = toStr(row["company_id"] || row["Company_id"] || "");
+    const bookingId = toStr(row["booking_id"] || row["BOOKING_ID"] || "");
     const city     = toStr(row["city"]    || row["City"]    || "Sin ciudad");
     const sede     = toStr(row["sede"]    || "Sin sede");
     const op       = toStr(row["operation_type"] || "Otro");
@@ -159,6 +181,11 @@ export function procesarDatos(rows) {
     const relaunched = toNum(row["num_total_relaunched_count"]);
     const distance = toNum(row["distance"]); // en metros
     const returnedPkgs = toNum(row["returned_packages"]);
+    const serviceType = toStr(row["service_type"] || row["SERVICE_TYPE"] || "");
+    const isNextDay = serviceType.toLowerCase().includes("next");
+    const dtTimeRaw = toStr(row["dt_time"] || "");
+    const dtHourMatch = dtTimeRaw.match(/^(\d{1,2}):/);
+    const dtHour = dtHourMatch ? parseInt(dtHourMatch[1]) : -1;
     // Tiempos (HH:MM:SS → minutos)
     const parseTime = (v) => { const m = String(v||"").match(/^(\d+):(\d+):(\d+)/); return m ? Number(m[1])*60+Number(m[2])+Number(m[3])/60 : 0; };
     const tAsignacion = parseTime(row["assignation_time"]);
@@ -216,20 +243,25 @@ export function procesarDatos(rows) {
       empMap[empresa] = {
         empresa, companyId: companyId, total:0, completados:0, cancelados:0, expirados:0,
         canceladosPax:0, canceladosConductor:0, tiempoCancelPax:0, nTiempoCancelPax:0,
+        cancelPaxBookings:[],
         tiempoExpirado:0, nTiempoExp:0,
         gmv:0, paquetes:0, service_cost:0, ejecutivo: exec,
         relanzamientos:0, devueltos:0, distancias:{}, distanciasOnDemand:{},
+        onDemandOTTotal:0, onDemandOTOnTime:0, onDemandOTNoAplica:0,
+        sinDistanciaOD: [],
         ciudades: {}, ops: {}, weekly: {}, usuarios: {}, sedes: {}, driversPorOp: {},
+        cancelacionesTipo: {},
       };
     }
     const e = empMap[empresa];
     if (companyId && !e.companyId) e.companyId = companyId;
     e.total++;
     if (esCompletado) e.completados++;
-    if (esCancelado)  e.cancelados++;
+    if (esCancelado)  { e.cancelados++; e.cancelacionesTipo[status] = (e.cancelacionesTipo[status]||0)+1; }
     if (esExpirado)   e.expirados++;
     if (esCancelPax) {
       e.canceladosPax++;
+      if (bookingId) e.cancelPaxBookings.push(bookingId);
       if (tTotal > 0) { e.tiempoCancelPax += tTotal; e.nTiempoCancelPax++; }
     }
     if (esCancelConductor) e.canceladosConductor++;
@@ -253,7 +285,7 @@ export function procesarDatos(rows) {
       if (tTotal > 0) { dr.tAsignacion += tAsignacion; dr.tLlegada += tLlegada; dr.tRecogida += tRecogida; dr.tRuta += tRuta; dr.tTotal += tTotal; dr.nTiempos++; }
       // Solo On Demand
       if (op.toLowerCase() === "on demand") {
-        if (!e.distanciasOnDemand[dRng]) e.distanciasOnDemand[dRng] = { total: 0, completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0 };
+        if (!e.distanciasOnDemand[dRng]) e.distanciasOnDemand[dRng] = { total: 0, completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsignacion: 0, tLlegada: 0, tRecogida: 0, tRuta: 0, tTotal: 0, nTiempos: 0, otTotal: 0, otOnTime: 0, otNoAplica: 0 };
         const dod = e.distanciasOnDemand[dRng];
         dod.total++;
         if (esCompletado)      dod.completados++;
@@ -261,7 +293,16 @@ export function procesarDatos(rows) {
         if (esExpirado)        dod.expirados++;
         dod.relanzamientos += relaunched;
         if (tTotal > 0) { dod.tAsignacion += tAsignacion; dod.tLlegada += tLlegada; dod.tRecogida += tRecogida; dod.tRuta += tRuta; dod.tTotal += tTotal; dod.nTiempos++; }
+        if (esCompletado) {
+          let dOt = false, dOtOn = false;
+          if (isNextDay) { if (dtHour >= 0) { dOt = true; dOtOn = dtHour < sla.nextDayHora; } }
+          else if (tTotal > 0) { const r = sla.rangos; if (distKm <= r[0].maxKm) { dOt=true; dOtOn=tTotal<=r[0].minutos; } else if (distKm <= r[1].maxKm) { dOt=true; dOtOn=tTotal<=r[1].minutos; } else if (distKm <= r[2].maxKm) { dOt=true; dOtOn=tTotal<=r[2].minutos; } else if (distKm <= r[3].maxKm) { dOt=true; dOtOn=tTotal<=r[3].minutos; } else if (distKm <= r[4].maxKm) { dOt=true; dOtOn=tTotal<=r[4].minutos; } }
+          if (dOt) { dod.otTotal++; if (dOtOn) dod.otOnTime++; } else dod.otNoAplica++;
+        }
       }
+    }
+    if (distKm === 0 && op.toLowerCase() === "on demand") {
+      e.sinDistanciaOD.push({ fecha: toStr(row["date"]), empresa, ciudad: city, sede, operacion: op, estado: status, gmv, costo: cost, paquetes: pkgs, usuario, conductor: driverName, ejecutivo: exec, relanzamientos: relaunched });
     }
     if (exec && exec !== "Sin asignar") e.ejecutivo = exec;
 
@@ -285,13 +326,17 @@ export function procesarDatos(rows) {
     e.ciudades[city].count++;
 
     // ops — almacena métricas por tipo de operación
-    if (!e.ops[op]) e.ops[op] = { total: 0, gmv: 0, completados: 0, cancelados: 0, paquetes: 0 };
-    if (typeof e.ops[op] === "number") e.ops[op] = { total: e.ops[op], gmv: 0, completados: 0, cancelados: 0, paquetes: 0 };
+    if (!e.ops[op]) e.ops[op] = { total: 0, gmv: 0, completados: 0, cancelados: 0, paquetes: 0, relanzamientos: 0, devueltos: 0, canceladosPax: 0, expirados: 0 };
+    if (typeof e.ops[op] === "number") e.ops[op] = { total: e.ops[op], gmv: 0, completados: 0, cancelados: 0, paquetes: 0, relanzamientos: 0, devueltos: 0, canceladosPax: 0, expirados: 0 };
     e.ops[op].total++;
     e.ops[op].gmv += gmv;
     e.ops[op].paquetes += pkgs;
-    if (esCompletado) e.ops[op].completados++;
-    if (esCancelado)  e.ops[op].cancelados++;
+    e.ops[op].relanzamientos += relaunched;
+    e.ops[op].devueltos += returnedPkgs;
+    if (esCompletado)  e.ops[op].completados++;
+    if (esCancelado)   e.ops[op].cancelados++;
+    if (esCancelPax)   e.ops[op].canceladosPax++;
+    if (esExpirado)    e.ops[op].expirados++;
 
     // drivers por operación en empresa
     const driverKeyEmp = driverId || driverName;
@@ -331,8 +376,31 @@ export function procesarDatos(rows) {
     if (!cityMap[city]) cityMap[city] = {
       city, total:0, gmv:0, paquetes:0, completados:0, cancelados:0, expirados:0, canceladosConductor:0,
       localidades:{}, ops:{}, estados:{}, weekly:{}, driversPorOp:{},
+      onDemandOTTotal:0, onDemandOTOnTime:0, onDemandOTNoAplica:0,
     };
     const cv = cityMap[city];
+
+    // On Time SLA — solo On Demand completados
+    if (op.toLowerCase().includes("on demand") && esCompletado) {
+      let applicable = false, onTime = false;
+      if (isNextDay) {
+        if (dtHour >= 0) { applicable = true; onTime = dtHour < sla.nextDayHora; }
+      } else if (distKm > 0 && tTotal > 0) {
+        const r = sla.rangos;
+        if      (distKm <= r[0].maxKm) { applicable = true; onTime = tTotal <= r[0].minutos; }
+        else if (distKm <= r[1].maxKm) { applicable = true; onTime = tTotal <= r[1].minutos; }
+        else if (distKm <= r[2].maxKm) { applicable = true; onTime = tTotal <= r[2].minutos; }
+        else if (distKm <= r[3].maxKm) { applicable = true; onTime = tTotal <= r[3].minutos; }
+        else if (distKm <= r[4].maxKm) { applicable = true; onTime = tTotal <= r[4].minutos; }
+      }
+      if (applicable) {
+        e.onDemandOTTotal++;  if (onTime) e.onDemandOTOnTime++;
+        cv.onDemandOTTotal++; if (onTime) cv.onDemandOTOnTime++;
+      } else {
+        e.onDemandOTNoAplica++;
+        cv.onDemandOTNoAplica++;
+      }
+    }
     cv.total++;  cv.gmv += gmv;  cv.paquetes += pkgs;
 
     // Drivers por tipo de operación en esta ciudad
@@ -421,15 +489,21 @@ export function procesarDatos(rows) {
       empresa: e.empresa, companyId: e.companyId, total: e.total,
       completados: e.completados, cancelados: e.cancelados, expirados: e.expirados,
       canceladosPax: e.canceladosPax, canceladosConductor: e.canceladosConductor||0,
+      cancelPaxBookings: e.cancelPaxBookings || [],
       avgTiempoCancelPax: e.nTiempoCancelPax > 0 ? e.tiempoCancelPax / e.nTiempoCancelPax : null,
       avgTiempoExpirado:  e.nTiempoExp       > 0 ? e.tiempoExpirado  / e.nTiempoExp       : null,
       gmv: e.gmv, service_cost: e.service_cost, paquetes: e.paquetes,
       ciudad: ciudadTop, ejecutivo: e.ejecutivo,
-      relanzamientos: e.relanzamientos, devueltos: e.devueltos, distancias: e.distancias, distanciasOnDemand: e.distanciasOnDemand,
+      relanzamientos: e.relanzamientos, devueltos: e.devueltos, distancias: e.distancias, distanciasOnDemand: e.distanciasOnDemand, sinDistanciaOD: e.sinDistanciaOD,
       tasa_completado: tc, tasa_cancelacion: tca, tasa_expirado: te,
+      onTimePct: e.onDemandOTTotal > 0 ? e.onDemandOTOnTime / e.onDemandOTTotal : null,
+      onDemandCompletados: e.onDemandOTTotal,
+      onDemandOnTime: e.onDemandOTOnTime,
+      onDemandNoAplica: e.onDemandOTNoAplica || 0,
       topCiudades, topOps, weekly, topUsuarios, topSedes,
       driversPorOp: empDriversPorOp, totalDrivers: empTotalDrivers.size,
       ops: e.ops,
+      cancelacionesTipo: e.cancelacionesTipo,
     };
   });
 
@@ -569,6 +643,10 @@ export function procesarDatos(rows) {
       tasa_cancelacion: cv.total>0?cv.cancelados/cv.total:0,
       localidades, ops, estados, weekly, driversPorOp,
       totalDrivers: totalDriversCiudad.size,
+      onTimePct: cv.onDemandOTTotal > 0 ? cv.onDemandOTOnTime / cv.onDemandOTTotal : null,
+      onDemandCompletados: cv.onDemandOTTotal,
+      onDemandOnTime: cv.onDemandOTOnTime,
+      onDemandNoAplica: cv.onDemandOTNoAplica || 0,
     };
   }).sort((a,b)=>b.paquetes-a.paquetes);
 

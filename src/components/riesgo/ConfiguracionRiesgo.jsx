@@ -4,6 +4,7 @@ import {
   procesarDatos, deleteMes, mesesDisponibles,
   saveIndex, loadIndex, mesKey, labelMes, MESES_ES, PIBOX_PURPLE, idbSaveDrivers, idbDeleteDrivers,
   saveMesData, idbSaveHorasRows, idbDeleteHorasRows, UMBRALES_DEFAULT,
+  SLA_DEFAULT, getSLAConfig, saveSLAConfig,
 } from "./utils";
 
 const MESES_NUM = Array.from({length:12},(_,i)=>i+1);
@@ -284,6 +285,9 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
 
       {/* Umbrales */}
       <UmbralesConfig />
+
+      {/* SLA */}
+      <SLAConfig />
     </div>
   );
 }
@@ -434,6 +438,98 @@ function UmbralesConfig() {
         style={{background:"linear-gradient(135deg,#5B17A8,#7C22D4,#C026D3)"}}>
         {saved ? "✅ Umbrales guardados" : "💾 Guardar umbrales"}
       </button>
+    </div>
+  );
+}
+
+function SLAConfig() {
+  const [sla, setSla] = useState(() => getSLAConfig());
+  const [saved, setSaved] = useState(false);
+
+  const setRango = (i, minutos) => {
+    setSla(prev => {
+      const rangos = prev.rangos.map((r, idx) => idx === i ? { ...r, minutos: Number(minutos) } : r);
+      return { ...prev, rangos };
+    });
+  };
+
+  const handleSave = () => {
+    saveSLAConfig(sla);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleReset = () => setSla(SLA_DEFAULT);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 mt-4">
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="font-bold text-gray-800 text-base flex items-center gap-2">
+          <span className="bg-teal-100 text-teal-700 rounded-lg p-1 text-sm">⚙️</span>
+          Configuración SLA
+        </h3>
+        <button onClick={handleReset}
+          className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
+          ↩ Restaurar valores
+        </button>
+      </div>
+
+      {/* Same Day */}
+      <div className="mb-5">
+        <p className="text-xs font-semibold text-gray-600 mb-3">Same Day — Rangos por distancia</p>
+        <div className="rounded-xl border border-gray-100 overflow-hidden">
+          <div className="grid grid-cols-2 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-700">
+            <span>Rango</span>
+            <span className="text-right">Tiempo perfecto (min)</span>
+          </div>
+          {sla.rangos.map((r, i) => (
+            <div key={r.label} className="grid grid-cols-2 items-center px-4 py-3 border-t border-gray-100">
+              <span className="text-sm text-gray-700">{r.label}</span>
+              <div className="flex justify-end">
+                <input
+                  type="number" min={1} max={999} value={r.minutos}
+                  onChange={e => setRango(i, e.target.value)}
+                  className="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              </div>
+            </div>
+          ))}
+          <div className="grid grid-cols-2 items-center px-4 py-3 border-t border-gray-100 bg-gray-50">
+            <span className="text-sm text-gray-400 italic">Superior a 17 km</span>
+            <span className="text-right text-xs text-gray-400 font-medium">N.A — No Aplica</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Next Day */}
+      <div className="mb-5">
+        <p className="text-xs font-semibold text-gray-600 mb-3">Next Day — Hora límite de entrega</p>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-600">Antes de las</span>
+          <input
+            type="number" min={0} max={23} value={sla.nextDayHora}
+            onChange={e => setSla(prev => ({ ...prev, nextDayHora: Number(e.target.value) }))}
+            className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-teal-400"
+          />
+          <span className="text-sm text-gray-600">:00</span>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-gray-400 mb-4">
+        Aplica solo a servicios On Demand completados. Requiere re-subir los datos de ClickHouse para recalcular.
+      </p>
+
+      <div className="flex gap-3">
+        <button onClick={handleSave}
+          className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          style={{background:"linear-gradient(135deg,#0d9488,#0891b2)"}}>
+          {saved ? "✅ SLA guardado" : "Guardar SLA"}
+        </button>
+        <button onClick={handleReset}
+          className="px-5 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50">
+          Restaurar valores
+        </button>
+      </div>
     </div>
   );
 }

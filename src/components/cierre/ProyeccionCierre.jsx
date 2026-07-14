@@ -170,23 +170,29 @@ export default function ProyeccionCierre({ data, printing = false }) {
         nombre: pk.nombre,
         meta: Number(pk.meta) || 0,
         gmv: Number(pk.gmv) || 0,
+        gmvExtra: Number(pk.gmvExtra) || 0,
       }))
-    : (data.kams || []).map(k => ({ nombre: k.nombre, meta: k.meta, gmv: k.gmv }));
+    : (data.kams || []).map(k => ({ nombre: k.nombre, meta: k.meta, gmv: k.gmv, gmvExtra: 0 }));
 
-  const kamsData = allKams.filter(k => k.nombre).map((k) => ({
-    nombre: k.nombre,
-    meta: k.meta,
-    gmv: k.gmv,
-    cumplimiento: k.meta > 0 ? (k.gmv / k.meta * 100) : 0,
-    falta: Math.max(0, k.meta - k.gmv),
-    promDiario: diasT > 0 ? k.gmv / diasT : 0,
-    proyFin: diasT > 0 ? (k.gmv / diasT) * diasTot : 0,
-  }));
+  const kamsData = allKams.filter(k => k.nombre).map((k) => {
+    const effectiveGmv = (k.gmv || 0) + (k.gmvExtra || 0);
+    return {
+      nombre: k.nombre,
+      meta: k.meta,
+      gmv: k.gmv,
+      gmvExtra: k.gmvExtra || 0,
+      effectiveGmv,
+      cumplimiento: k.meta > 0 ? (effectiveGmv / k.meta * 100) : 0,
+      falta: Math.max(0, k.meta - effectiveGmv),
+      promDiario: diasT > 0 ? effectiveGmv / diasT : 0,
+      proyFin: diasT > 0 ? (effectiveGmv / diasT) * diasTot : 0,
+    };
+  });
 
   const kamChartData = kamsData.map((k) => ({
     nombre: k.nombre,
     Meta: moneda === "USD" ? k.meta / trm : k.meta,
-    GMV: moneda === "USD" ? k.gmv / trm : k.gmv,
+    GMV: moneda === "USD" ? k.effectiveGmv / trm : k.effectiveGmv,
   }));
 
   const semaforoColor = calc.semaforo === "verde" ? GREEN : calc.semaforo === "amarillo" ? YELLOW : RED;
@@ -418,7 +424,7 @@ export default function ProyeccionCierre({ data, printing = false }) {
                     <tr key={k.nombre} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                       <td className="p-3 font-medium text-gray-800">{k.nombre}</td>
                       <td className="p-3 text-right text-gray-600">{M(k.meta)}</td>
-                      <td className="p-3 text-right text-gray-600">{M(k.gmv)}</td>
+                      <td className="p-3 text-right text-gray-600">{M(k.effectiveGmv)}</td>
                       <td className="p-3 text-right">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${
                           k.cumplimiento >= 95 ? "bg-green-100 text-green-700" : k.cumplimiento >= 80 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"

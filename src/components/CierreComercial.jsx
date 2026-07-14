@@ -49,17 +49,42 @@ function escribir(data) {
 // ── Secciones ──────────────────────────────────────────────────────────────
 const SECCIONES_ALL = [
   { id: "cumplimiento", label: "Cumplimiento", icon: "🎯" },
-  { id: "kams",         label: "KAMs",         icon: "👥" },
-  { id: "top10",        label: "Top 10",        icon: "🏆" },
   { id: "lineas",       label: "Líneas",        icon: "📦" },
+  { id: "mapa",         label: "Mapa",          icon: "🗺️" },
+  { id: "kams",         label: "KAMs",          icon: "👥" },
+  { id: "top10",        label: "Top 10",        icon: "🏆" },
   { id: "nuevos",       label: "Nuevos",        icon: "🌱" },
   { id: "perdidos",     label: "Perdidos",      icon: "⚠️" },
-  { id: "mapa",         label: "Mapa",          icon: "🗺️" },
-  { id: "tendencias",   label: "Tendencias",    icon: "📈" },
   { id: "proyeccion",   label: "Proyección",    icon: "🎯" },
+  { id: "tendencias",   label: "Tendencias",    icon: "📈" },
   { id: "insights",     label: "Insights",      icon: "💡" },
   { id: "config",       label: "Config",        icon: "⚙️", adminOnly: true },
 ];
+
+// Pestañas que requieren base plana activa para mostrar contenido
+const DATA_TABS = new Set(["cumplimiento","kams","top10","lineas","nuevos","perdidos","mapa","tendencias"]);
+
+function SinBasePlana({ isAdmin, onGoConfig }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-14 text-center max-w-lg mx-auto mt-8">
+      <p className="text-5xl mb-5">📊</p>
+      <h3 className="text-lg font-bold text-gray-700 mb-2">Sin datos cargados</h3>
+      <p className="text-sm text-gray-400 mb-7">
+        Sube la <strong>base plana mensual</strong> desde{" "}
+        <strong>⚙️ Config</strong> y haz clic en{" "}
+        <strong>Publicar para el equipo</strong> para activar esta pestaña.
+      </p>
+      {isAdmin && (
+        <button
+          onClick={onGoConfig}
+          className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition"
+        >
+          ⚙️ Ir a Configuración
+        </button>
+      )}
+    </div>
+  );
+}
 
 // ── App ─────────────────────────────────────────────────────────────────────
 export default function CierreComercial({ currentUser }) {
@@ -69,9 +94,11 @@ export default function CierreComercial({ currentUser }) {
   const [toast, setToast] = useState("");
   const [printing, setPrinting] = useState(false);
 
-  // KAMs: cargar datos publicados desde el servidor
+  // Cargar datos publicados desde el servidor
+  // KAMs: siempre desde servidor. Admins: solo si no tienen datos locales.
   useEffect(() => {
-    if (isAdmin) return;
+    const tieneLocal = isAdmin && !!localStorage.getItem(SK);
+    if (tieneLocal) return;
     const cargarDesdeServidor = async () => {
       const json = await fetchFromServer("cierre");
       if (json?.ok && json.data && typeof json.data === "object") {
@@ -79,8 +106,10 @@ export default function CierreComercial({ currentUser }) {
       }
     };
     cargarDesdeServidor();
-    window.addEventListener("focus", cargarDesdeServidor);
-    return () => window.removeEventListener("focus", cargarDesdeServidor);
+    if (!isAdmin) {
+      window.addEventListener("focus", cargarDesdeServidor);
+      return () => window.removeEventListener("focus", cargarDesdeServidor);
+    }
   }, [isAdmin]);
 
   const secciones = SECCIONES_ALL.filter((s) => !s.adminOnly || isAdmin);
@@ -188,33 +217,40 @@ export default function CierreComercial({ currentUser }) {
 
         {/* Contenido */}
         <div id="tablero-contenido" className="max-w-7xl mx-auto px-4 py-6 space-y-6 print:px-6 print:max-w-none">
-          {printing ? (
-            <>
-              <CumplimientoEquipo data={data} />
-              <CumplimientoKAM    data={data} printing={true} />
-              <FacturacionLinea   data={data} />
-              <MapaCiudades       data={data} />
-              <Tendencias         data={data} />
-              <ProyeccionCierre   data={data} printing={true} />
-              <Insights           data={data} />
-            </>
-          ) : (
-            <>
-              {seccion === "cumplimiento" && <CumplimientoEquipo data={data} />}
-              {seccion === "kams"         && <CumplimientoKAM    data={data} />}
-              {seccion === "top10"        && <Top10Clientes      data={data} />}
-              {seccion === "lineas"       && <FacturacionLinea   data={data} />}
-              {seccion === "nuevos"       && <ClientesNuevos     data={data} />}
-              {seccion === "perdidos"     && <ClientesPerdidos   data={data} />}
-              {seccion === "mapa"         && <MapaCiudades       data={data} />}
-              {seccion === "tendencias"   && <Tendencias         data={data} />}
-              {seccion === "proyeccion"   && <ProyeccionCierre    data={data} />}
-              {seccion === "insights"     && <Insights           data={data} />}
-              {seccion === "config" && isAdmin && (
-                <Configuracion data={data} onSave={handleSave} />
-              )}
-            </>
-          )}
+          {(() => {
+            const activa = data._basePlanaActiva === true;
+            const sinDatos = <SinBasePlana isAdmin={isAdmin} onGoConfig={() => setSeccion("config")} />;
+
+            if (printing) return activa ? (
+              <>
+                <CumplimientoEquipo data={data} />
+                <CumplimientoKAM    data={data} printing={true} />
+                <FacturacionLinea   data={data} />
+                <MapaCiudades       data={data} />
+                <Tendencias         data={data} />
+                <ProyeccionCierre   data={data} printing={true} />
+                <Insights           data={data} />
+              </>
+            ) : sinDatos;
+
+            return (
+              <>
+                {seccion === "cumplimiento" && (activa ? <CumplimientoEquipo data={data} /> : sinDatos)}
+                {seccion === "kams"         && (activa ? <CumplimientoKAM    data={data} /> : sinDatos)}
+                {seccion === "top10"        && (activa ? <Top10Clientes      data={data} /> : sinDatos)}
+                {seccion === "lineas"       && (activa ? <FacturacionLinea   data={data} /> : sinDatos)}
+                {seccion === "nuevos"       && (activa ? <ClientesNuevos     data={data} /> : sinDatos)}
+                {seccion === "perdidos"     && (activa ? <ClientesPerdidos   data={data} /> : sinDatos)}
+                {seccion === "mapa"         && (activa ? <MapaCiudades       data={data} /> : sinDatos)}
+                {seccion === "tendencias"   && (activa ? <Tendencias         data={data} /> : sinDatos)}
+                {seccion === "proyeccion"   && <ProyeccionCierre data={data} />}
+                {seccion === "insights"     && <Insights         data={data} />}
+                {seccion === "config" && isAdmin && (
+                  <Configuracion data={data} onSave={handleSave} />
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
     </MonedaProvider>

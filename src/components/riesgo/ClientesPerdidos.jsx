@@ -88,7 +88,7 @@ export default function ClientesPerdidos() {
           if (!(k in distMap)) continue;
           if (typeof val === "number") { distMap[k] += val; continue; }
           distMap[k] += val.total || 0;
-          if (!distTimes[k]) distTimes[k] = { completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0 };
+          if (!distTimes[k]) distTimes[k] = { completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0, otTotal: 0, otOnTime: 0, otNoAplica: 0 };
           distTimes[k].completados += val.completados || 0;
           distTimes[k].canceladosConductor += val.canceladosConductor || 0;
           distTimes[k].expirados += val.expirados || 0;
@@ -98,6 +98,16 @@ export default function ClientesPerdidos() {
           distTimes[k].tRuta += val.tRuta || 0;
           distTimes[k].tTotal += val.tTotal || 0;
           distTimes[k].n += val.nTiempos || 0;
+        }
+      }
+      if (c.distanciasOnDemand) {
+        for (const [rng, val] of Object.entries(c.distanciasOnDemand)) {
+          const k = rng === "Mas de 10 km" || rng === "Más de 10 km" ? "Mas de 10 km" : rng;
+          if (!(k in distMap) || typeof val !== "object") continue;
+          if (!distTimes[k]) distTimes[k] = { completados: 0, canceladosConductor: 0, expirados: 0, relanzamientos: 0, tAsig: 0, tLleg: 0, tRuta: 0, tTotal: 0, n: 0, otTotal: 0, otOnTime: 0, otNoAplica: 0 };
+          distTimes[k].otTotal = (distTimes[k].otTotal || 0) + (val.otTotal || 0);
+          distTimes[k].otOnTime = (distTimes[k].otOnTime || 0) + (val.otOnTime || 0);
+          distTimes[k].otNoAplica = (distTimes[k].otNoAplica || 0) + (val.otNoAplica || 0);
         }
       }
 
@@ -115,7 +125,7 @@ export default function ClientesPerdidos() {
       const t = distTimes[rng] || {};
       const n = t.n || 1;
       const denomEfOp = (t.completados||0) + (t.canceladosConductor||0) + (t.expirados||0);
-      return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: denomEfOp > 0 ? (t.completados||0) / denomEfOp : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n) };
+      return { rango: rng, bookings: cnt, pct: totalBookings > 0 ? cnt / totalBookings : 0, completados: t.completados || 0, relanzamientos: t.relanzamientos || 0, efectividad: denomEfOp > 0 ? (t.completados||0) / denomEfOp : 0, avgAsig: fmtTime(t.tAsig / n), avgLleg: fmtTime(t.tLleg / n), avgRuta: fmtTime(t.tRuta / n), avgTotal: fmtTime(t.tTotal / n), otTotal: t.otTotal || 0, otOnTime: t.otOnTime || 0, otNoAplica: t.otNoAplica || 0, onTimePct: (t.otTotal || 0) > 0 ? (t.otOnTime || 0) / (t.otTotal || 0) : null };
     });
 
     const t5 = [...lost].sort((a, b) => (b.gmv || 0) - (a.gmv || 0)).slice(0, 5);
@@ -259,14 +269,14 @@ export default function ClientesPerdidos() {
           <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", minWidth: 850 }}>
             <thead>
               <tr>
-                {["Empresa", "Ciudad", "Ejecutivo (KAM)", "Servicios (prev)", "GMV (prev)", "% Cancelacion (prev)", "Relanzamientos (prev)", "Devueltos (prev)"].map(h => (
+                {["Empresa", "Ciudad", "KAM", "Servicios", "GMV", "On Time OD", "Con SLA", "Sin SLA", "% Cancel.", "Relanz.", "Devueltos"].map(h => (
                   <th key={h} style={{ background: PIBOX_PURPLE, color: "#fff", padding: "8px 10px", textAlign: "left", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>No se encontraron clientes con los filtros aplicados.</td></tr>
+                <tr><td colSpan={11} style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>No se encontraron clientes con los filtros aplicados.</td></tr>
               ) : filtered.map((c, i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#faf5ff" }}>
                   <td style={{ padding: "6px 10px", fontWeight: 600, color: "#374151" }}>{c.empresa}</td>
@@ -274,6 +284,9 @@ export default function ClientesPerdidos() {
                   <td style={{ padding: "6px 10px", color: "#6b7280" }}>{c.ejecutivo}</td>
                   <td style={{ padding: "6px 10px", color: "#374151" }}>{c.total}</td>
                   <td style={{ padding: "6px 10px", fontWeight: 600, color: SEM_ROJO, whiteSpace: "nowrap" }}>{fmtFull(c.gmv)}</td>
+                  <td style={{ padding: "6px 10px", fontWeight: 600, color: "#0d9488" }}>{c.onTimePct != null ? fmtPct(c.onTimePct) : "—"}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "center", color: "#374151" }}>{c.onDemandCompletados || 0}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "center", color: "#6b7280" }}>{c.onDemandNoAplica || 0}</td>
                   <td style={{ padding: "6px 10px", color: c.total > 0 && c.cancelados / c.total > 0.20 ? SEM_ROJO : "#374151" }}>
                     {c.total > 0 ? fmtPct(c.cancelados / c.total) : "0.0%"}
                   </td>
@@ -297,7 +310,7 @@ export default function ClientesPerdidos() {
           <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {["Rango", "Bookings", "Relanzamientos", "Efectividad", "T. Asignación", "T. Llegada", "T. Ruta", "T. Total", "% Bookings"].map(h => (
+                {["Rango", "Bookings", "Relanzamientos", "Efectividad", "T. Asignación", "T. Llegada", "T. Ruta", "T. Total", "On Time OD", "Con SLA", "Sin SLA", "% Bookings"].map(h => (
                   <th key={h} style={{ background: PIBOX_PURPLE, color: "#fff", padding: "7px 8px", textAlign: "center", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -313,6 +326,9 @@ export default function ClientesPerdidos() {
                   <td style={{ padding: "5px 8px", textAlign: "center", color: "#6b7280" }}>{d.avgLleg}</td>
                   <td style={{ padding: "5px 8px", textAlign: "center", color: "#6b7280" }}>{d.avgRuta}</td>
                   <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 600, color: "#374151" }}>{d.avgTotal}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", fontWeight: 600, color: "#0d9488" }}>{d.onTimePct != null ? fmtPct(d.onTimePct) : "—"}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", color: "#374151" }}>{d.otTotal.toLocaleString()}</td>
+                  <td style={{ padding: "5px 8px", textAlign: "center", color: "#6b7280" }}>{d.otNoAplica.toLocaleString()}</td>
                   <td style={{ padding: "5px 8px", textAlign: "center", color: PIBOX_PURPLE }}>{fmtPct(d.pct)}</td>
                 </tr>
               ))}
@@ -323,6 +339,9 @@ export default function ClientesPerdidos() {
                 <td style={{ padding: "7px 8px", textAlign: "center" }}>{distAgg.reduce((s, d) => s + d.bookings, 0).toLocaleString()}</td>
                 <td style={{ padding: "7px 8px", textAlign: "center" }}>{distAgg.reduce((s, d) => s + d.relanzamientos, 0).toLocaleString()}</td>
                 <td style={{ padding: "7px 8px" }} colSpan={5}></td>
+                <td style={{ padding: "7px 8px", textAlign: "center", color: "#0d9488" }}>{(() => { const tot = distAgg.reduce((s,d)=>s+(d.otTotal||0),0); const on = distAgg.reduce((s,d)=>s+(d.otOnTime||0),0); return tot > 0 ? fmtPct(on/tot) : "—"; })()}</td>
+                <td style={{ padding: "7px 8px", textAlign: "center" }}>{distAgg.reduce((s,d)=>s+(d.otTotal||0),0).toLocaleString()}</td>
+                <td style={{ padding: "7px 8px", textAlign: "center" }}>{distAgg.reduce((s,d)=>s+(d.otNoAplica||0),0).toLocaleString()}</td>
                 <td style={{ padding: "7px 8px", textAlign: "center" }}>100.0%</td>
               </tr>
             </tfoot>

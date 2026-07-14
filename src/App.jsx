@@ -160,10 +160,13 @@ export default function App() {
     setView("welcome");
     setSubTab(SUB_BUILDER);
   };
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem(SK_SESSION);
     setCurrentUser(null);
     setView("welcome");
+    try {
+      await fetch("/logout", { method: "DELETE", headers: { "Accept": "application/json" } });
+    } catch { /* silencioso */ }
   };
 
   const handleSaveUsers = (updated) => {
@@ -255,7 +258,7 @@ export default function App() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  if (!currentUser) return <Login users={users} onLogin={handleLogin} />;
+  if (!currentUser) return <Login onLogin={handleLogin} />;
 
   const modulosActivos = MODULOS_CONFIG.filter((m) => modulos[m.id]).length;
 
