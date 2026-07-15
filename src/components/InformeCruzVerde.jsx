@@ -4569,8 +4569,8 @@ export default function InformeCruzVerde({ isAdmin }) {
           />
         )}
 
-        {/* ── Panel: ClickHouse — solo admin ── */}
-        {isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
+        {/* ── Panel: ClickHouse ── */}
+        {tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
           <div className="bg-white rounded-2xl shadow-md border border-teal-100 p-5">
             <h3 className="font-bold text-gray-700 text-sm mb-1">⚡ Cargar desde ClickHouse</h3>
             <p className="text-xs text-gray-400 mb-4">Ejecuta el reporte en tiempo real. Puede tardar hasta 3 minutos.</p>
