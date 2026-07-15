@@ -240,7 +240,7 @@ function processRows(rows) {
     totalTurnos++;
     if (isSI) colocacionesSI++;
     if (isNO) colocacionesNO++;
-    if (!esExcluidoPuntualidad) puntualidadTurnos++;
+    if (isPunt || isNoPunt) puntualidadTurnos++;
     if (isPunt) puntualidadSI++;
 
     // Hora de inicio de turno (decimal Excel → hora, o HH:MM:SS string)
@@ -254,9 +254,10 @@ function processRows(rows) {
       if (hm) horaLabel = `${hm[1].padStart(2,"0")}:00`;
     }
     if (horaLabel) {
-      if (!horaMap[horaLabel]) horaMap[horaLabel] = { turnos: 0, si: 0, punt: 0 };
+      if (!horaMap[horaLabel]) horaMap[horaLabel] = { turnos: 0, si: 0, no: 0, punt: 0 };
       horaMap[horaLabel].turnos++;
       if (isSI) horaMap[horaLabel].si++;
+      if (isNO) horaMap[horaLabel].no++;
       if (isPunt) horaMap[horaLabel].punt++;
 
       // Hora + Día cruzado
@@ -274,7 +275,7 @@ function processRows(rows) {
       ciudadMap[ciudad].turnos++;
       if (isSI) ciudadMap[ciudad].si++;
       if (isNO) ciudadMap[ciudad].no++;
-      if (!esExcluidoPuntualidad) ciudadMap[ciudad].puntTurnos++;
+      if (isPunt || isNoPunt) ciudadMap[ciudad].puntTurnos++;
       if (isPunt) ciudadMap[ciudad].punt++;
     }
 
@@ -284,7 +285,7 @@ function processRows(rows) {
       puntoMap[punto].turnos++;
       if (isSI) puntoMap[punto].si++;
       if (isNO) puntoMap[punto].no++;
-      if (!esExcluidoPuntualidad) puntoMap[punto].puntTurnos++;
+      if (isPunt || isNoPunt) puntoMap[punto].puntTurnos++;
       if (isPunt) puntoMap[punto].punt++;
     }
 
@@ -293,15 +294,16 @@ function processRows(rows) {
       if (!semanaMap[semana]) semanaMap[semana] = { turnos: 0, si: 0, punt: 0, puntTurnos: 0 };
       semanaMap[semana].turnos++;
       if (isSI) semanaMap[semana].si++;
-      if (!esExcluidoPuntualidad) semanaMap[semana].puntTurnos++;
+      if (isPunt || isNoPunt) semanaMap[semana].puntTurnos++;
       if (isPunt) semanaMap[semana].punt++;
     }
 
     // Día
     if (dia) {
-      if (!diaMap[dia]) diaMap[dia] = { turnos: 0, si: 0 };
+      if (!diaMap[dia]) diaMap[dia] = { turnos: 0, si: 0, no: 0 };
       diaMap[dia].turnos++;
       if (isSI) diaMap[dia].si++;
+      if (isNO) diaMap[dia].no++;
     }
 
     // Mes
@@ -309,7 +311,7 @@ function processRows(rows) {
       if (!mesMap[mes]) mesMap[mes] = { turnos: 0, si: 0, punt: 0, puntTurnos: 0 };
       mesMap[mes].turnos++;
       if (isSI) mesMap[mes].si++;
-      if (!esExcluidoPuntualidad) mesMap[mes].puntTurnos++;
+      if (isPunt || isNoPunt) mesMap[mes].puntTurnos++;
       if (isPunt) mesMap[mes].punt++;
     }
   }
@@ -348,7 +350,7 @@ function processRows(rows) {
     mesMap,
     pilotosImpuntuales,
     pilotosCanceladores,
-    porHora: Object.entries(horaMap).map(([h, v]) => ({ hora: h, ...v, pctColoc: v.turnos > 0 ? (v.si/v.turnos*100) : 0 })).sort((a,b) => a.hora.localeCompare(b.hora)),
+    porHora: Object.entries(horaMap).map(([h, v]) => ({ hora: h, ...v, pctColoc: (v.si + v.no) > 0 ? (v.si / (v.si + v.no) * 100) : 0 })).sort((a,b) => a.hora.localeCompare(b.hora)),
     porHoraDia: Object.values(horaDiaMap),
   };
 }
@@ -634,7 +636,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
       // Ciudades con problemas y ciudades destacadas
       Object.entries(traf.ciudadMap).forEach(([c, v]) => {
-        const pct = v.turnos > 0 ? (v.si / v.turnos * 100) : 0;
+        const pct = (v.si + v.no) > 0 ? (v.si / (v.si + v.no) * 100) : 0;
         const pctP = (v.puntTurnos || 0) > 0 ? (v.punt / v.puntTurnos * 100) : 0;
         if (v.turnos >= umb.minTurnosCiudad) {
           const color = pct < umb.ciudadColocAlerta ? "rojo" : pct >= umb.colocExcelente ? "verde" : "amarillo";
@@ -649,7 +651,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     if (traf.puntoMap) {
       const puntosProblema = [];
       Object.entries(traf.puntoMap).forEach(([p, v]) => {
-        const pct = v.turnos > 0 ? (v.si / v.turnos * 100) : 0;
+        const pct = (v.si + v.no) > 0 ? (v.si / (v.si + v.no) * 100) : 0;
         if (v.turnos >= umb.minTurnosPunto) {
           const color = pct < umb.puntoColocAlerta ? "rojo" : pct >= umb.colocExcelente ? "verde" : "amarillo";
           detallePuntos.push({ punto: p, ciudad: v.ciudad || "", turnos: v.turnos, coloc: pct, color });
@@ -1454,7 +1456,7 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
         turnos++;
         if (coloc === "SI") si++;
         if (coloc === "NO") no++;
-        if (!excluido) { puntTurnos++; if (puntVal === "SI CUMPLE") punt++; }
+        if (!excluido && (puntVal === "SI CUMPLE" || puntVal === "NO CUMPLE")) { puntTurnos++; if (puntVal === "SI CUMPLE") punt++; }
       }
       return { turnos, si, no, punt, puntTurnos, _fromRows: true };
     }
@@ -1488,17 +1490,17 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
         map[nombre].turnos++;
         if (coloc === "SI") map[nombre].si++;
         if (coloc === "NO") map[nombre].no++;
-        if (!excluido) { map[nombre].puntTurnos++; if (puntVal === "SI CUMPLE") map[nombre].punt++; }
+        if (!excluido && (puntVal === "SI CUMPLE" || puntVal === "NO CUMPLE")) { map[nombre].puntTurnos++; if (puntVal === "SI CUMPLE") map[nombre].punt++; }
       }
       return Object.values(map)
-        .map(p => ({ ...p, pctColoc: p.turnos > 0 ? (p.si / p.turnos * 100) : 0, pctPunt: p.puntTurnos > 0 ? (p.punt / p.puntTurnos * 100) : null }))
+        .map(p => ({ ...p, pctColoc: (p.si + p.no) > 0 ? (p.si / (p.si + p.no) * 100) : 0, pctPunt: p.puntTurnos > 0 ? (p.punt / p.puntTurnos * 100) : null }))
         .sort((a, b) => b.turnos - a.turnos);
     }
     // Sin rows: usa puntoMap agregado
     if (!ciudadSel || !trafData?.puntoMap) return [];
     return Object.entries(trafData.puntoMap)
       .filter(([, v]) => v.ciudad === ciudadSel)
-      .map(([nombre, v]) => ({ nombre, turnos: v.turnos, si: v.si, no: v.no, pctColoc: v.turnos > 0 ? (v.si / v.turnos * 100) : 0, pctPunt: (v.puntTurnos || 0) > 0 ? (v.punt / v.puntTurnos * 100) : null }))
+      .map(([nombre, v]) => ({ nombre, turnos: v.turnos, si: v.si, no: v.no, pctColoc: (v.si + v.no) > 0 ? (v.si / (v.si + v.no) * 100) : 0, pctPunt: (v.puntTurnos || 0) > 0 ? (v.punt / v.puntTurnos * 100) : null }))
       .sort((a, b) => b.turnos - a.turnos);
   }, [rowsLoaded, rowsByCiudad, fechaInicio, fechaFin, ciudadSel, trafData]);
 
@@ -1547,14 +1549,15 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
       const coloc = String(r["COLOCACION"] || "").trim().toUpperCase();
       const punt = String(r["PUNTUALIDAD"] || "").trim().toUpperCase();
       const excluido = ESTADOS_EXCLUIR_PUNTUALIDAD.some(e => estado === e);
-      if (!map[semana]) map[semana] = { semana, turnos: 0, si: 0, puntSI: 0, puntTotal: 0 };
+      if (!map[semana]) map[semana] = { semana, turnos: 0, si: 0, no: 0, puntSI: 0, puntTotal: 0 };
       map[semana].turnos++;
       if (coloc === "SI") map[semana].si++;
+      if (coloc === "NO") map[semana].no++;
       if (!excluido && punt === "SI CUMPLE") { map[semana].puntSI++; map[semana].puntTotal++; }
       if (!excluido && punt === "NO CUMPLE") map[semana].puntTotal++;
     }
     return Object.values(map)
-      .map(s => ({ ...s, pctColoc: s.turnos > 0 ? (s.si / s.turnos * 100) : 0, pctPunt: s.puntTotal > 0 ? (s.puntSI / s.puntTotal * 100) : 0 }))
+      .map(s => ({ ...s, pctColoc: (s.si + s.no) > 0 ? (s.si / (s.si + s.no) * 100) : 0, pctPunt: s.puntTotal > 0 ? (s.puntSI / s.puntTotal * 100) : 0 }))
       .sort((a, b) => Number(a.semana) - Number(b.semana) || String(a.semana).localeCompare(String(b.semana)));
   }, [filteredRows]);
 
@@ -1626,7 +1629,7 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
     </div>
   );
 
-  const pctColoc = cityAgg && cityAgg.turnos > 0 ? (cityAgg.si / cityAgg.turnos * 100) : null;
+  const pctColoc = cityAgg && (cityAgg.si + cityAgg.no) > 0 ? (cityAgg.si / (cityAgg.si + cityAgg.no) * 100) : null;
   const pctPunt = cityAgg && (cityAgg.puntTurnos || 0) > 0 ? (cityAgg.punt / cityAgg.puntTurnos * 100) : null;
   const SEM_C = { rojo: "#DC2626", amarillo: "#D97706", verde: "#16A34A" };
   const semColor = (v) => v >= 90 ? "verde" : v >= 70 ? "amarillo" : "rojo";
@@ -2262,7 +2265,7 @@ export default function InformeTada({ isAdmin }) {
       .map(([name, v]) => ({
         name,
         Turnos: v.turnos,
-        "Colocación %": v.turnos > 0 ? parseFloat((v.si / v.turnos * 100).toFixed(1)) : 0,
+        "Colocación %": (v.si + (v.no || 0)) > 0 ? parseFloat((v.si / (v.si + (v.no || 0)) * 100).toFixed(1)) : 0,
       }));
   }, [data]);
 
@@ -2282,7 +2285,7 @@ export default function InformeTada({ isAdmin }) {
         ciudad: v.ciudad,
         turnos: v.turnos,
         colocaciones: v.si,
-        pctColoc: pct(v.si, v.turnos),
+        pctColoc: pct(v.si, v.si + (v.no || 0)),
         pctPunt: pct(v.punt, v.puntTurnos || 0),
       }))
       .sort((a, b) => b.turnos - a.turnos)
