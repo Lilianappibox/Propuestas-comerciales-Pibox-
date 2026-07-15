@@ -4502,12 +4502,18 @@ export default function InformeCruzVerde({ isAdmin }) {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
         {/* Estado vacío */}
-        {rows.length === 0 && !loading && tab !== "admin" && tab !== "notas" && (
+        {rows.length === 0 && !loading && !loadingServer && tab !== "admin" && tab !== "notas" && (
           <div className="text-center py-16">
             <div className="text-6xl mb-4">🟢</div>
             <p className="text-lg font-bold text-gray-700 mb-2">Informe Cruz Verde</p>
-            <p className="text-gray-500 text-sm mb-2">Selecciona el año y mes, luego sube el archivo Excel de Cruz Verde.</p>
-            <p className="text-xs text-gray-400">Columnas requeridas: uuid_booking, estado, nombre_usuario, next_day, distancia_km, salio_de_origen, llego_donde_el_cliente</p>
+            {isAdmin ? (
+              <>
+                <p className="text-gray-500 text-sm mb-2">Selecciona el año y mes, luego sube el archivo Excel de Cruz Verde.</p>
+                <p className="text-xs text-gray-400">Columnas requeridas: uuid_booking, estado, nombre_usuario, next_day, distancia_km, salio_de_origen, llego_donde_el_cliente</p>
+              </>
+            ) : (
+              <p className="text-gray-500 text-sm">Los datos aún no han sido publicados. El equipo administrativo los cargará pronto.</p>
+            )}
           </div>
         )}
 
@@ -4549,8 +4555,8 @@ export default function InformeCruzVerde({ isAdmin }) {
           />
         )}
 
-        {/* ── Panel: ClickHouse ── */}
-        {tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
+        {/* ── Panel: ClickHouse — solo admin ── */}
+        {isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
           <div className="bg-white rounded-2xl shadow-md border border-teal-100 p-5">
             <h3 className="font-bold text-gray-700 text-sm mb-1">⚡ Cargar desde ClickHouse</h3>
             <p className="text-xs text-gray-400 mb-4">Ejecuta el reporte en tiempo real. Puede tardar hasta 3 minutos.</p>
