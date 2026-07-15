@@ -3963,7 +3963,8 @@ export default function InformeCruzVerde({ isAdmin }) {
     setLoadingServer(true);
     try {
       const snap = await fetchFromServer("cruz_verde");
-      if (!snap?.ok || !snap?.data?.index) return;
+      if (!snap) return; // error de red — silencioso, se reintenta en 2 min
+      if (!snap.ok || !snap.data?.index) return; // sin publicación — estado vacío es correcto
       const d = snap.data;
       const localIdx = loadIndex();
       const mergedIdx = { ...d.index };
@@ -4157,6 +4158,12 @@ export default function InformeCruzVerde({ isAdmin }) {
       }
       try {
         const r = await fetch(`/api/cruz_verde/status?${params}`, { headers: { Accept: "application/json" } });
+        if (r.status === 502 || r.status === 503) {
+          setChMsg(`⏳ Servidor reiniciando… ${attempts * 5}s — reintentando`);
+          const tid = setTimeout(() => poll(attempts + 1), 5000);
+          setChPollRef(tid);
+          return;
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         if (d.status === "done") {
@@ -4176,26 +4183,39 @@ export default function InformeCruzVerde({ isAdmin }) {
       }
     };
 
-    try {
-      const r = await fetch(`/api/cruz_verde/consulta?${params}`, {
-        headers: { "X-CSRF-Token": csrf, Accept: "application/json" },
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
-      if (d.status === "done") {
-        await handleDone(d);
-      } else if (d.status === "error") {
+    const startConsulta = async (retries = 0) => {
+      try {
+        const r = await fetch(`/api/cruz_verde/consulta?${params}`, {
+          headers: { "X-CSRF-Token": csrf, Accept: "application/json" },
+        });
+        if (r.status === 502 || r.status === 503) {
+          if (retries < 3) {
+            setChMsg(`⏳ El servidor está iniciando, reintentando en 5 segundos… (${retries + 1}/3)`);
+            const tid = setTimeout(() => startConsulta(retries + 1), 5000);
+            setChPollRef(tid);
+            return;
+          }
+          throw new Error("El servidor no está disponible. Espera un momento y vuelve a intentar.");
+        }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        if (d.status === "done") {
+          await handleDone(d);
+        } else if (d.status === "error") {
+          setChStatus("error");
+          setChError(d.error || "Error en ClickHouse");
+        } else {
+          setChMsg("⏳ Consultando ClickHouse… (puede tardar hasta 3 min)");
+          const tid = setTimeout(() => poll(1), 5000);
+          setChPollRef(tid);
+        }
+      } catch (e) {
         setChStatus("error");
-        setChError(d.error || "Error en ClickHouse");
-      } else {
-        setChMsg("⏳ Consultando ClickHouse… (puede tardar hasta 3 min)");
-        const tid = setTimeout(() => poll(1), 5000);
-        setChPollRef(tid);
+        setChError(e.message);
       }
-    } catch (e) {
-      setChStatus("error");
-      setChError(e.message);
-    }
+    };
+
+    startConsulta();
   };
 
   // Upload handler — usa año/mes del selector, no del archivo

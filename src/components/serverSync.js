@@ -15,8 +15,9 @@ export async function publishToServer(modulo, data) {
 export async function fetchFromServer(modulo) {
   try {
     const res = await fetch(`/api/snapshot/${modulo}`);
-    if (!res.ok) return null;
-    return res.json();
+    if (!res.ok) return null; // error de red / 502 / 401 → null señaliza "no conectó"
+    const json = await res.json();
+    return json; // puede ser { ok: true, data: ... } o { ok: false, data: null }
   } catch {
     return null;
   }
