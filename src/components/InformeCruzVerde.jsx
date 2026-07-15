@@ -2772,6 +2772,7 @@ function ProductividadPilotosPanel({ rows }) {
         ciudad:        d.ciudad,
         servicios:     svs,
         paquetes:      d.paquetes,
+        bookings:      [...d.serviciosSet].join(";"),
         slaMet:        d.slaMet,  slaDef:    d.slaDef,
         entregados:    d.entregados, total:   d.total,
         slaPct:        d.slaDef  > 0 ? d.slaMet    / d.slaDef  : null,
@@ -2863,18 +2864,23 @@ function ProductividadPilotosPanel({ rows }) {
     (val && val / max > 0.45) ? "#fff" : "#4c1d95";
 
   const descargarHeatmap = () => {
-    const { countMap, days } = heatmapData;
-    const headers = ["Día", ...HOUR_BUCKETS.map(b => b.label)];
-    const csvRows = days.map(d => [
-      DAY_LABELS[d],
-      ...HOUR_BUCKETS.map((_, i) => countMap[d]?.[i] ?? 0),
-    ]);
-    const esc = v => `"${String(v).replace(/"/g,'""')}"`;
+    const esc = v => `"${String(v ?? "").replace(/"/g,'""')}"`;
+    const headers = ["Booking ID","Piloto","Fecha","Día","Hora","Ciudad","Estado"];
+    const csvRows = filteredBase
+      .filter(r => r.horaAsignado != null)
+      .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.horaAsignado ?? 0) - (b.horaAsignado ?? 0))
+      .map(r => {
+        const h = Math.floor(r.horaAsignado / 60);
+        const m = r.horaAsignado % 60;
+        const horaStr = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+        const dia = DAY_LABELS[r.dayOfWeek ?? new Date((r.fecha || "") + "T12:00:00").getDay()] || "";
+        return [r.idServicio || r.uuid || "", r.nombrePiloto || "", r.fecha || "", dia, horaStr, r.ciudad || "", r.estado || ""];
+      });
     const csv = [headers, ...csvRows].map(row => row.map(esc).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
-    a.href = url; a.download = "heatmap-pilotos-dia-hora.csv"; a.click();
+    a.href = url; a.download = "servicios-dia-hora-detalle.csv"; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -2890,13 +2896,14 @@ function ProductividadPilotosPanel({ rows }) {
   const fmtKmVal  = (v) => v != null ? v.toFixed(1) + " km" : "—";
 
   const descargarDiario = () => {
-    const headers = ["Piloto","Fecha","Ciudad","Servicios","Paquetes","% SLA","% Efectividad","Km Prom."];
+    const headers = ["Piloto","Fecha","Ciudad","Servicios","Paquetes","% SLA","% Efectividad","Km Prom.","Bookings"];
     const csvRows = dailyData.map(d => [
       d.piloto, d.fecha, d.ciudad,
       d.servicios, d.paquetes,
       d.slaPct     != null ? (d.slaPct     * 100).toFixed(1) + "%" : "N/A",
       d.entregaPct != null ? (d.entregaPct * 100).toFixed(1) + "%" : "N/A",
       d.kmPromedio != null ? d.kmPromedio.toFixed(2) : "N/A",
+      d.bookings || "",
     ]);
     const esc = v => `"${String(v).replace(/"/g,'""')}"`;
     const csv = [headers, ...csvRows].map(row => row.map(esc).join(",")).join("\n");
@@ -3921,6 +3928,14 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [filtLinea,     setFiltLinea]     = useState("todas");
   const [filtFechaIni,  setFiltFechaIni]  = useState("");
   const [filtFechaFin,  setFiltFechaFin]  = useState("");
+  const [filtTiendas,   setFiltTiendas]   = useState([]);
+  const [tiendaDropOpen, setTiendaDropOpen] = useState(false);
+  const [tiendaBusq,    setTiendaBusq]    = useState("");
+  const tiendaRef = useRef(null);
+  const [filtDirecciones,  setFiltDirecciones]  = useState([]);
+  const [dirDropOpen,      setDirDropOpen]       = useState(false);
+  const [dirBusq,          setDirBusq]           = useState("");
+  const dirRef = useRef(null);
   // Upload year/month selectors
   const [upAnio,  setUpAnio]  = useState(now.getFullYear());
   const [upMesN,  setUpMesN]  = useState(now.getMonth() + 1);
@@ -4031,10 +4046,64 @@ export default function InformeCruzVerde({ isAdmin }) {
     if (filtCiudad !== "todas") r = r.filter(row => row.ciudad  === filtCiudad);
     if (filtFechaIni) r = r.filter(row => row.fecha >= filtFechaIni);
     if (filtFechaFin) r = r.filter(row => row.fecha <= filtFechaFin);
+    if (filtTiendas.length > 0) r = r.filter(row => filtTiendas.includes(row.sucursal || row.direccionOrigen));
+    if (filtDirecciones.length > 0) r = r.filter(row => filtDirecciones.includes(row.direccionOrigen));
     return r.map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
-  }, [rows, filtLinea, filtCiudad, filtFechaIni, filtFechaFin, slaConfig, horariosMap]);
+  }, [rows, filtLinea, filtCiudad, filtFechaIni, filtFechaFin, filtTiendas, filtDirecciones, slaConfig, horariosMap]);
 
   const ciudades = useMemo(() => [...new Set(rows.map(r => r.ciudad))].filter(Boolean).sort(), [rows]);
+
+  // Tiendas disponibles según Línea + Ciudad seleccionadas (sin filtro de tienda para no crear ciclo)
+  const tiendas = useMemo(() => {
+    let r = rows;
+    if (filtLinea  !== "todas") r = r.filter(row => row.linea  === filtLinea);
+    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad === filtCiudad);
+    return [...new Set(r.map(row => row.sucursal || row.direccionOrigen))].filter(Boolean).sort();
+  }, [rows, filtLinea, filtCiudad]);
+
+  const tiendasFiltradas = tiendas.filter(t => t.toLowerCase().includes(tiendaBusq.toLowerCase()));
+
+  // Direcciones de origen disponibles según Línea + Ciudad
+  const direcciones = useMemo(() => {
+    let r = rows;
+    if (filtLinea  !== "todas") r = r.filter(row => row.linea  === filtLinea);
+    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad === filtCiudad);
+    return [...new Set(r.map(row => row.direccionOrigen))].filter(Boolean).sort();
+  }, [rows, filtLinea, filtCiudad]);
+
+  const direccionesFiltradas = direcciones.filter(d => d.toLowerCase().includes(dirBusq.toLowerCase()));
+
+  // Limpiar tiendas seleccionadas que ya no existen al cambiar Línea o Ciudad
+  useEffect(() => {
+    if (filtTiendas.length > 0) {
+      const validas = filtTiendas.filter(t => tiendas.includes(t));
+      if (validas.length !== filtTiendas.length) setFiltTiendas(validas);
+    }
+  }, [tiendas]);
+
+  // Limpiar direcciones seleccionadas que ya no existen al cambiar Línea o Ciudad
+  useEffect(() => {
+    if (filtDirecciones.length > 0) {
+      const validas = filtDirecciones.filter(d => direcciones.includes(d));
+      if (validas.length !== filtDirecciones.length) setFiltDirecciones(validas);
+    }
+  }, [direcciones]);
+
+  useEffect(() => {
+    const handler = e => {
+      if (tiendaRef.current && !tiendaRef.current.contains(e.target)) setTiendaDropOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = e => {
+      if (dirRef.current && !dirRef.current.contains(e.target)) setDirDropOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // Todas las filas del mes enriquecidas con SLA (sin filtros de linea/ciudad) — para buscador por ID
   const allEnrichedRows = useMemo(() =>
@@ -4300,6 +4369,110 @@ export default function InformeCruzVerde({ isAdmin }) {
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">Hasta</label>
                 <input type="date" value={filtFechaFin} onChange={e => setFiltFechaFin(e.target.value)}
                   className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400" />
+              </div>
+              <div ref={tiendaRef} className="relative">
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Filtro por tienda</label>
+                  <button
+                    onClick={() => setTiendaDropOpen(v => !v)}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400 min-w-[150px] flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate max-w-[120px]">
+                      {filtTiendas.length === 0 ? "Todas" : `${filtTiendas.length} tienda${filtTiendas.length > 1 ? "s" : ""}`}
+                    </span>
+                    <span className="text-gray-400 text-xs">▾</span>
+                  </button>
+                  {tiendaDropOpen && (
+                    <div className="absolute z-50 top-full mt-1 left-0 bg-white border border-gray-200 rounded-xl shadow-xl w-80 max-h-72 flex flex-col">
+                      <div className="p-2 border-b border-gray-100">
+                        <input
+                          type="text"
+                          value={tiendaBusq}
+                          onChange={e => setTiendaBusq(e.target.value)}
+                          placeholder="Buscar tienda..."
+                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="overflow-y-auto flex-1">
+                        {filtTiendas.length > 0 && (
+                          <button
+                            onClick={() => setFiltTiendas([])}
+                            className="w-full text-left text-xs text-red-500 hover:bg-red-50 px-3 py-1.5 border-b border-gray-100"
+                          >
+                            ✕ Limpiar selección ({filtTiendas.length})
+                          </button>
+                        )}
+                        {tiendasFiltradas.map(t => (
+                          <label key={t} className="flex items-center gap-2 px-3 py-1.5 hover:bg-teal-50 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={filtTiendas.includes(t)}
+                              onChange={() => setFiltTiendas(prev =>
+                                prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
+                              )}
+                              className="accent-teal-600 flex-shrink-0"
+                            />
+                            <span className="truncate">{t}</span>
+                          </label>
+                        ))}
+                        {tiendasFiltradas.length === 0 && (
+                          <p className="text-xs text-gray-400 px-3 py-3 text-center">Sin resultados</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+              </div>
+              <div ref={dirRef} className="relative">
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Dirección origen</label>
+                <button
+                  onClick={() => setDirDropOpen(v => !v)}
+                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-teal-400 min-w-[150px] flex items-center justify-between gap-2"
+                >
+                  <span className="truncate max-w-[120px]">
+                    {filtDirecciones.length === 0 ? "Todas" : `${filtDirecciones.length} dirección${filtDirecciones.length > 1 ? "es" : ""}`}
+                  </span>
+                  <span className="text-gray-400 text-xs">▾</span>
+                </button>
+                {dirDropOpen && (
+                  <div className="absolute z-50 top-full mt-1 left-0 bg-white border border-gray-200 rounded-xl shadow-xl w-80 max-h-72 flex flex-col">
+                    <div className="p-2 border-b border-gray-100">
+                      <input
+                        type="text"
+                        value={dirBusq}
+                        onChange={e => setDirBusq(e.target.value)}
+                        placeholder="Buscar dirección..."
+                        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="overflow-y-auto flex-1">
+                      {filtDirecciones.length > 0 && (
+                        <button
+                          onClick={() => setFiltDirecciones([])}
+                          className="w-full text-left text-xs text-red-500 hover:bg-red-50 px-3 py-1.5 border-b border-gray-100"
+                        >
+                          ✕ Limpiar selección ({filtDirecciones.length})
+                        </button>
+                      )}
+                      {direccionesFiltradas.map(d => (
+                        <label key={d} className="flex items-center gap-2 px-3 py-1.5 hover:bg-teal-50 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={filtDirecciones.includes(d)}
+                            onChange={() => setFiltDirecciones(prev =>
+                              prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]
+                            )}
+                            className="accent-teal-600 flex-shrink-0"
+                          />
+                          <span className="truncate">{d}</span>
+                        </label>
+                      ))}
+                      {direccionesFiltradas.length === 0 && (
+                        <p className="text-xs text-gray-400 px-3 py-3 text-center">Sin resultados</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               {(filtFechaIni || filtFechaFin) && (
                 <div className="self-end pb-1">
