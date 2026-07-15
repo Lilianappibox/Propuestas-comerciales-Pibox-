@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import NotasTareasCruzVerde from "./NotasTareasCruzVerde";
 import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
 import {
@@ -3922,6 +3922,7 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [index,      setIndex]      = useState(() => loadIndex());
   const [mesSel,     setMesSel]     = useState("");
   const [rows,       setRows]       = useState([]);
+  const [syncVersion, setSyncVersion] = useState(0);
   const [loading,    setLoading]    = useState(false);
   const [uploadMsg,  setUploadMsg]  = useState(null);
   const [filtCiudad,    setFiltCiudad]    = useState("todas");
@@ -3956,31 +3957,28 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [chMsg,      setChMsg]      = useState(null);
   const [chPollRef,  setChPollRef]  = useState(null);
 
-  // No-admin: cargar snapshot publicado desde el servidor.
-  // Solo sobreescribe un mes en IDB si el servidor tiene datos más nuevos que
-  // los locales, para no pisar datos cargados localmente desde ClickHouse.
-  useEffect(() => {
+  // No-admin: sync snapshot desde el servidor. Se llama al montar y cada 2 min.
+  const syncFromServer = useCallback(async () => {
     if (isAdmin) return;
     setLoadingServer(true);
-    fetchFromServer("cruz_verde").then(async (snap) => {
-      if (!snap?.ok || !snap?.data?.index) { setLoadingServer(false); return; }
+    try {
+      const snap = await fetchFromServer("cruz_verde");
+      if (!snap?.ok || !snap?.data?.index) return;
       const d = snap.data;
-      // Merge índice: preservar entradas locales más nuevas
       const localIdx = loadIndex();
       const mergedIdx = { ...d.index };
       for (const [k, serverEntry] of Object.entries(d.index || {})) {
         const localEntry = localIdx[k];
         if (localEntry?.fecha && serverEntry?.fecha &&
             new Date(localEntry.fecha) > new Date(serverEntry.fecha)) {
-          mergedIdx[k] = localEntry; // conservar local más nuevo
+          mergedIdx[k] = localEntry;
         }
       }
       saveIndex(mergedIdx);
-      // Guardar filas: solo sobreescribir si servidor es más nuevo
       await Promise.all(Object.entries(d.meses || {}).map(async ([k, v]) => {
         const localData = await idbLoad(k);
-        const serverFecha  = new Date(v?.fecha || 0).getTime();
-        const localFecha   = new Date(localData?.fecha || 0).getTime();
+        const serverFecha = new Date(v?.fecha || 0).getTime();
+        const localFecha  = new Date(localData?.fecha || 0).getTime();
         if (!localData || serverFecha > localFecha) await idbSave(k, v);
       }));
       if (d.directorio) localStorage.setItem("pibox_cv_directorio", JSON.stringify(d.directorio));
@@ -3989,9 +3987,18 @@ export default function InformeCruzVerde({ isAdmin }) {
       if (d.umbrales) localStorage.setItem("pibox_cv_umbrales", JSON.stringify(d.umbrales));
       setIndex(mergedIdx);
       if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
+      setSyncVersion(v => v + 1); // fuerza reload de filas aunque mesSel no cambie
+    } finally {
       setLoadingServer(false);
-    }).catch(() => setLoadingServer(false));
+    }
   }, [isAdmin]);
+
+  useEffect(() => {
+    syncFromServer();
+    if (isAdmin) return;
+    const interval = setInterval(syncFromServer, 2 * 60 * 1000); // polling cada 2 min
+    return () => clearInterval(interval);
+  }, [syncFromServer]);
 
   // Load horarios on mount — prioriza el nuevo SK_HORARIOS_SD, cae al antiguo si no existe
   useEffect(() => {
@@ -4013,13 +4020,13 @@ export default function InformeCruzVerde({ isAdmin }) {
     if (!mesSel && meses.length) setMesSel(meses[0]);
   }, [index]);
 
-  // Cargar filas del mes seleccionado
+  // Cargar filas del mes seleccionado (también re-carga cuando llega sync del servidor)
   useEffect(() => {
     if (!mesSel) { setRows([]); return; }
     idbLoad(mesSel).then(data =>
       setRows((data?.rows || []).filter(r => !isEstadoExcluido(r.estado)))
     );
-  }, [mesSel]);
+  }, [mesSel, syncVersion]);
 
   // Mes anterior: el mes inmediatamente anterior al seleccionado en el índice
   const prevMesSel = useMemo(() => {
@@ -4268,7 +4275,14 @@ export default function InformeCruzVerde({ isAdmin }) {
               <p className="font-bold text-gray-800 text-sm leading-tight">Informe Cruz Verde</p>
             </div>
             {loadingServer && (
-              <span className="text-xs text-teal-600 font-medium animate-pulse shrink-0 ml-2">⏳ Sincronizando con el servidor…</span>
+              <span className="text-xs text-teal-600 font-medium animate-pulse shrink-0 ml-2">⏳ Sincronizando…</span>
+            )}
+            {!isAdmin && !loadingServer && (
+              <button onClick={syncFromServer}
+                className="text-xs text-teal-600 hover:text-teal-800 font-medium shrink-0 ml-2 flex items-center gap-1"
+                title="Actualizar datos del servidor">
+                🔄 Actualizar
+              </button>
             )}
             {isAdmin && (
               <div className="flex items-center gap-2 shrink-0 ml-auto">
