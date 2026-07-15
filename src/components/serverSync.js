@@ -23,6 +23,22 @@ export async function fetchFromServer(modulo) {
   }
 }
 
+// Publica UN solo mes, mergeando con el snapshot existente en el servidor.
+// Reduce el payload de ~20 MB (todos los meses) a ~7 MB (un mes).
+export async function publishMonthToServer(modulo, mesKey, mesData, metadata) {
+  const token = window.__RAILS_CSRF_TOKEN__;
+  const res = await fetch(`/api/snapshot/${modulo}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { "X-CSRF-Token": token } : {}),
+    },
+    body: JSON.stringify({ mes: mesKey, mes_data: mesData, ...metadata }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function clearFromServer(modulo) {
   const token = window.__RAILS_CSRF_TOKEN__;
   const res = await fetch(`/api/snapshot/${modulo}`, {

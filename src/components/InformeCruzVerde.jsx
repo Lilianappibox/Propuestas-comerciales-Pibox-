@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import NotasTareasCruzVerde from "./NotasTareasCruzVerde";
-import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
+import { publishMonthToServer, fetchFromServer, clearFromServer } from "./serverSync";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend, LineChart, Line,
@@ -4326,40 +4326,36 @@ export default function InformeCruzVerde({ isAdmin }) {
                 }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-gray-400" : "bg-gray-500 hover:bg-gray-600"}`}>
                   🗑️ Limpiar publicación
                 </button>
-                <button disabled={publishing} onClick={async () => {
+                <button disabled={publishing || !mesSel} onClick={async () => {
                   setPublishing(true); setPublishMsg(null);
                   try {
                     const idx = loadIndex();
-                    // Campos mínimos para gráficas y métricas — excluye strings largos
-                    // (descripcion, iniciadoRaw, finalizadoRaw, uuid, idPiloto, etc.)
-                    // que solo usa el admin para búsqueda interna y no caben en el payload.
                     const SLIM = new Set(['fecha','mes','linea','ciudad','sucursal','km',
                       'minutos','horaEntrega','esPerfecto','esDevolucion','estado','costo',
                       'dayOfWeek','localidadOrigen','localidadDestino','nombrePiloto',
                       'tsalida','direccionOrigen']);
                     const slimRow = (r) => { const s = {}; for (const k of SLIM) if (k in r) s[k] = r[k]; return s; };
-                    const allData = {
-                      index: idx,
-                      meses: {},
+                    const mesData = await idbLoad(mesSel);
+                    if (!mesData) throw new Error("No hay datos cargados para este mes");
+                    const mesSlim = { ...mesData, rows: (mesData.rows || []).map(slimRow) };
+                    // PATCH: el servidor mergea este mes con los meses ya publicados
+                    const result = await publishMonthToServer("cruz_verde", mesSel, mesSlim, {
+                      index:      idx,
                       directorio: JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null"),
                       horariosSd: JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null"),
-                      sla: JSON.parse(localStorage.getItem("pibox_cv_sla") || "{}"),
-                      umbrales: JSON.parse(localStorage.getItem("pibox_cv_umbrales") || "{}"),
-                    };
-                    await Promise.all(Object.keys(idx).map(async (key) => {
-                      const d = await idbLoad(key);
-                      if (d) allData.meses[key] = { ...d, rows: (d.rows || []).map(slimRow) };
-                    }));
-                    const result = await publishToServer("cruz_verde", allData);
-                    setPublishMsg({ ok: true, txt: `✅ Publicado – ${new Date(result.published_at).toLocaleString("es-CO")}` });
+                      sla:        JSON.parse(localStorage.getItem("pibox_cv_sla") || "{}"),
+                      umbrales:   JSON.parse(localStorage.getItem("pibox_cv_umbrales") || "{}"),
+                    });
+                    const rows = mesData.rows?.length || 0;
+                    setPublishMsg({ ok: true, txt: `✅ ${mesSel} publicado – ${rows.toLocaleString()} registros (${new Date(result.published_at).toLocaleString("es-CO")})` });
                   } catch (err) {
-                    setPublishMsg({ ok: false, txt: `❌ Error: ${err.message}` });
+                    setPublishMsg({ ok: false, txt: `❌ Error al publicar: ${err.message}` });
                   } finally {
                     setPublishing(false);
-                    setTimeout(() => setPublishMsg(null), 6000);
+                    setTimeout(() => setPublishMsg(null), 12000);
                   }
-                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-teal-400" : "bg-teal-600 hover:bg-teal-700"}`}>
-                  {publishing ? "⏳ Publicando…" : "🌐 Publicar para el equipo"}
+                }} className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0 ${publishing ? "opacity-60 cursor-not-allowed bg-teal-400" : !mesSel ? "opacity-50 cursor-not-allowed bg-gray-400" : "bg-teal-600 hover:bg-teal-700"}`}>
+                  {publishing ? "⏳ Publicando…" : `🌐 Publicar ${mesSel || "mes seleccionado"}`}
                 </button>
               </div>
             )}
