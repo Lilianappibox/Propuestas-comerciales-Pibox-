@@ -93,24 +93,30 @@ export default function CierreComercial({ currentUser }) {
   const [seccion, setSeccion] = useState("cumplimiento");
   const [toast, setToast] = useState("");
   const [printing, setPrinting] = useState(false);
+  const [loadingServer, setLoadingServer] = useState(false);
 
   // Cargar datos publicados desde el servidor
   // KAMs: siempre desde servidor. Admins: solo si no tienen datos locales.
-  useEffect(() => {
+  const syncFromServerCierre = useCallback(async () => {
     const tieneLocal = isAdmin && !!localStorage.getItem(SK);
     if (tieneLocal) return;
-    const cargarDesdeServidor = async () => {
+    setLoadingServer(true);
+    try {
       const json = await fetchFromServer("cierre");
       if (json?.ok && json.data && typeof json.data === "object") {
         setData(json.data);
       }
-    };
-    cargarDesdeServidor();
-    if (!isAdmin) {
-      window.addEventListener("focus", cargarDesdeServidor);
-      return () => window.removeEventListener("focus", cargarDesdeServidor);
+    } finally {
+      setLoadingServer(false);
     }
   }, [isAdmin]);
+
+  useEffect(() => {
+    syncFromServerCierre();
+    if (isAdmin) return;
+    const interval = setInterval(syncFromServerCierre, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [syncFromServerCierre]);
 
   const secciones = SECCIONES_ALL.filter((s) => !s.adminOnly || isAdmin);
 
@@ -176,6 +182,16 @@ export default function CierreComercial({ currentUser }) {
             </div>
             <BarraTRM />
             <div className="flex gap-2 items-center">
+              {!isAdmin && loadingServer && (
+                <span className="text-xs text-purple-600 font-medium animate-pulse">⏳ Sincronizando…</span>
+              )}
+              {!isAdmin && !loadingServer && (
+                <button onClick={syncFromServerCierre}
+                  className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
+                  title="Actualizar datos del servidor">
+                  🔄 Actualizar
+                </button>
+              )}
               {!isAdmin && (
                 <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">Solo lectura</span>
               )}

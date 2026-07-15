@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import XLSX from "../utils/xlsxHelper";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -2072,12 +2072,13 @@ export default function InformeTada({ isAdmin }) {
   }, [trafPrevKey, trafIndex, importedData]);
 
   // Cargar snapshot del servidor: no-admins siempre; admins solo si no tienen datos locales
-  useEffect(() => {
+  const syncFromServerTada = useCallback(async () => {
     const tieneLocal = isAdmin && Object.keys(loadTrafIndex()).length > 0;
     if (tieneLocal) return;
     setLoadingServer(true);
-    fetchFromServer("tada").then((snap) => {
-      if (!snap?.ok || !snap?.data?.trafIndex) { setLoadingServer(false); return; }
+    try {
+      const snap = await fetchFromServer("tada");
+      if (!snap?.ok || !snap?.data?.trafIndex) return;
       const d = snap.data;
       setImportedData(d);
       setTrafIndex(d.trafIndex || {});
@@ -2089,9 +2090,17 @@ export default function InformeTada({ isAdmin }) {
       if (d.notas) localStorage.setItem("pibox_tada_notas", JSON.stringify(d.notas));
       if (d.tareas) localStorage.setItem("pibox_tada_tareas", JSON.stringify(d.tareas));
       if (d.umbrales) localStorage.setItem("pibox_tada_umbrales", JSON.stringify(d.umbrales));
+    } finally {
       setLoadingServer(false);
-    }).catch(() => setLoadingServer(false));
+    }
   }, [isAdmin]);
+
+  useEffect(() => {
+    syncFromServerTada();
+    if (isAdmin) return;
+    const interval = setInterval(syncFromServerTada, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [syncFromServerTada]);
 
   // Cargar rows (IndexedDB para admin, importedData o tadaInicial para readonly)
   const [trafRows, setTrafRows] = useState(null);
@@ -2425,7 +2434,14 @@ export default function InformeTada({ isAdmin }) {
               <p className="text-xs text-gray-500">Tráfico de pilotos y facturación</p>
             </div>
             {!isAdmin && loadingServer && (
-              <span className="text-xs text-purple-600 font-medium animate-pulse shrink-0">⏳ Cargando datos del equipo…</span>
+              <span className="text-xs text-purple-600 font-medium animate-pulse shrink-0">⏳ Sincronizando…</span>
+            )}
+            {!isAdmin && !loadingServer && (
+              <button onClick={syncFromServerTada}
+                className="text-xs text-purple-600 hover:text-purple-800 font-medium shrink-0 flex items-center gap-1"
+                title="Actualizar datos del servidor">
+                🔄 Actualizar
+              </button>
             )}
             {isAdmin && (
               <div className="flex items-center gap-2 shrink-0 ml-auto">
