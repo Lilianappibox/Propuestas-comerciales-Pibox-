@@ -14,7 +14,9 @@ export async function publishToServer(modulo, data) {
 
 export async function fetchFromServer(modulo) {
   try {
-    const res = await fetch(`/api/snapshot/${modulo}`);
+    const res = await fetch(`/api/snapshot/${modulo}`, {
+      headers: { Accept: "application/json" },
+    });
     if (!res.ok) return null; // error de red / 502 / 401 → null señaliza "no conectó"
     const json = await res.json();
     return json; // puede ser { ok: true, data: ... } o { ok: false, data: null }
@@ -31,6 +33,7 @@ export async function publishMonthToServer(modulo, mesKey, mesData, metadata) {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
       ...(token ? { "X-CSRF-Token": token } : {}),
     },
     body: JSON.stringify({ mes: mesKey, mes_data: mesData, ...metadata }),
@@ -45,6 +48,7 @@ export async function clearFromServer(modulo) {
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
       ...(token ? { "X-CSRF-Token": token } : {}),
     },
   });
