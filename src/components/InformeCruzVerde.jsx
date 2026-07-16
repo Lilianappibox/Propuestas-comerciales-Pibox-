@@ -3959,19 +3959,19 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [chMsg,      setChMsg]      = useState(null);
   const [chPollRef,  setChPollRef]  = useState(null);
 
-  // No-admin: sync snapshot desde el servidor. Se llama al montar y cada 2 min.
+  // No-admin: sync snapshot desde el servidor. Retorna true si cargó datos, false si falló.
   const syncFromServer = useCallback(async () => {
-    if (isAdmin) return;
+    if (isAdmin) return true;
     setLoadingServer(true);
     try {
       const snap = await fetchFromServer("cruz_verde");
-      if (!snap) return; // error de red — silencioso, se reintenta en 2 min
-      if (!snap.ok || !snap.data?.index) return; // sin publicación — estado vacío es correcto
+      if (!snap) return false; // error de red — el caller reintentará
+      if (!snap.ok || !snap.data?.index) return true; // sin publicación aún — estado correcto, no reintentar
       const d = snap.data;
       // Guardar en memoria — no depende de IndexedDB para mostrar datos
       serverDataRef.current = d;
       saveIndex({ ...d.index });
-      // IDB como cache secundario (para flujo del admin con archivos planos)
+      // IDB como cache secundario
       await Promise.all(Object.entries(d.meses || {}).map(([k, v]) => idbSave(k, v)));
       if (d.directorio) localStorage.setItem("pibox_cv_directorio", JSON.stringify(d.directorio));
       if (d.horariosSd) localStorage.setItem(SK_HORARIOS_SD, JSON.stringify(d.horariosSd));
@@ -3980,16 +3980,22 @@ export default function InformeCruzVerde({ isAdmin }) {
       setIndex({ ...d.index });
       if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
       setSyncVersion(v => v + 1);
+      return true;
     } finally {
       setLoadingServer(false);
     }
   }, [isAdmin]);
 
   useEffect(() => {
-    syncFromServer();
     if (isAdmin) return;
-    const interval = setInterval(syncFromServer, 2 * 60 * 1000); // polling cada 2 min
-    return () => clearInterval(interval);
+    let retryTimer = null;
+    // Carga inicial; si falla (red), reintenta en 5 seg automáticamente
+    syncFromServer().then((ok) => {
+      if (!ok) retryTimer = setTimeout(syncFromServer, 5_000);
+    });
+    // Polling cada 30 seg para mantener datos frescos sin botón
+    const interval = setInterval(syncFromServer, 30_000);
+    return () => { clearInterval(interval); clearTimeout(retryTimer); };
   }, [syncFromServer]);
 
   // Load horarios on mount — prioriza el nuevo SK_HORARIOS_SD, cae al antiguo si no existe
