@@ -42,6 +42,22 @@ export async function publishMonthToServer(modulo, mesKey, mesData, metadata) {
   return res.json();
 }
 
+// Alias genérico — equivalente a publishToServer pero con nombre descriptivo
+export async function saveSnapshot(modulo, data) {
+  const token = window.__RAILS_CSRF_TOKEN__;
+  const res = await fetch(`/api/snapshot/${modulo}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(token ? { "X-CSRF-Token": token } : {}),
+    },
+    body: JSON.stringify({ data }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function clearFromServer(modulo) {
   const token = window.__RAILS_CSRF_TOKEN__;
   const res = await fetch(`/api/snapshot/${modulo}`, {

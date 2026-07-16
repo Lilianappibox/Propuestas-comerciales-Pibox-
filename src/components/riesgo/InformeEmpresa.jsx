@@ -156,16 +156,11 @@ function TablaUsuariosSedes({ empData, prevData, mesLabel, prevLabel }) {
   );
 }
 
-function getUmbrales() {
-  try { return {...UMBRALES_DEFAULT,...JSON.parse(localStorage.getItem("pibox_riesgo_umbrales")||"{}")}; }
-  catch { return UMBRALES_DEFAULT; }
-}
-
 const fmtDate = () => new Date().toLocaleDateString("es-CO",{day:"2-digit",month:"long",year:"numeric"});
 
-export default function InformeEmpresa() {
+export default function InformeEmpresa({ umbrales: umbralesProp }) {
   const meses   = mesesDisponibles();
-  const umb     = getUmbrales();
+  const umb     = { ...UMBRALES_DEFAULT, ...(umbralesProp || {}) };
 
   const [mesKey, setMesKey]     = useState(meses[meses.length-1]?.key||"");
   useEffect(() => {

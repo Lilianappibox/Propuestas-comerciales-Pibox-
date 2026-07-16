@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { TARIFAS_DEFAULT, MODULOS_CONFIG } from "./data/tarifas";
-import { loadUsers, saveUsers, getPermisos, ROLES, fetchCloudUsers, saveCloudUsers, DEFAULT_USERS } from "./data/users";
+import { loadUsers, getPermisos, ROLES, DEFAULT_USERS } from "./data/users";
 import { loadTemplate, saveTemplate, loadHistory, saveHistory, addHistoryEntry } from "./data/templateTexts";
 import PropuestaPreview from "./components/PropuestaPreview";
 import TarifasEditor from "./components/TarifasEditor";
@@ -20,7 +20,6 @@ import "./App.css";
 
 const SK_TARIFAS   = "pibox_tarifas";
 const SK_PROPUESTA = "pibox_propuesta_draft";
-const SK_SESSION   = "pibox_session";
 const SK_MODULOS   = "pibox_modulos_draft";
 
 // Sub-tabs dentro de Propuestas Comerciales
@@ -88,31 +87,17 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     if (window.__RAILS_USER__) {
       const railsUser = window.__RAILS_USER__;
-      // Merge DEFAULT_USERS (no localStorage) so code-level permission changes auto-apply
+      // Merge DEFAULT_USERS so code-level permission changes auto-apply
       const fromCode = DEFAULT_USERS.find(u => u.email.toLowerCase() === railsUser.email.toLowerCase());
-      const merged = {
+      return {
         ...railsUser,
         permisosCustom: {
           ...(fromCode?.permisosCustom || {}),  // defaults del código (base)
           ...(railsUser.permisosCustom || {}),   // Rails DB tiene la última palabra
         },
       };
-      try { localStorage.setItem(SK_SESSION, JSON.stringify(merged)); } catch {}
-      return merged;
     }
-    try {
-      const s = localStorage.getItem(SK_SESSION);
-      if (!s) return null;
-      const saved = JSON.parse(s);
-      // Actualizar permisos desde DEFAULT_USERS del código
-      const fromCode = loadUsers().find(u => u.email.toLowerCase() === saved.email.toLowerCase());
-      if (fromCode) {
-        const merged = { ...saved, permisosCustom: { ...(saved.permisosCustom || {}), ...(fromCode.permisosCustom || {}) } };
-        localStorage.setItem(SK_SESSION, JSON.stringify(merged));
-        return merged;
-      }
-      return saved;
-    } catch { return null; }
+    return null;
   });
   const [view, setView]             = useState(() => window.__RAILS_INITIAL_VIEW__ || "welcome");
   const [subTab, setSubTab]         = useState(SUB_BUILDER);
@@ -128,40 +113,18 @@ export default function App() {
 
   const permisos = currentUser ? getPermisos(currentUser) : {};
 
-  // Sincronizar usuarios desde la nube al iniciar
-  useEffect(() => {
-    fetchCloudUsers().then(cloud => {
-      if (cloud && cloud.length > 0) {
-        saveUsers(cloud);
-        // Aplicar restricciones de DEFAULT_USERS sobre los datos de la nube
-        const merged = loadUsers();
-        setUsers(merged);
-        if (currentUser) {
-          const updated = merged.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
-          if (updated && updated.activo) setCurrentUser(updated);
-        }
-      }
-    });
-  }, []);
-
   useEffect(() => { localStorage.setItem(SK_PROPUESTA, JSON.stringify(propuesta)); }, [propuesta]);
   useEffect(() => { localStorage.setItem(SK_TARIFAS, JSON.stringify(tarifas)); }, [tarifas]);
   useEffect(() => { localStorage.setItem(SK_MODULOS, JSON.stringify(modulos)); }, [modulos]);
-  useEffect(() => {
-    if (currentUser) localStorage.setItem(SK_SESSION, JSON.stringify(currentUser));
-    else localStorage.removeItem(SK_SESSION);
-  }, [currentUser]);
 
   const toast = (msg) => { setSavedMsg(msg); setTimeout(() => setSavedMsg(""), 3000); };
 
   const handleLogin = (user) => {
-    localStorage.setItem(SK_SESSION, JSON.stringify(user));
     setCurrentUser(user);
     setView("welcome");
     setSubTab(SUB_BUILDER);
   };
   const handleLogout = async () => {
-    localStorage.removeItem(SK_SESSION);
     setCurrentUser(null);
     setView("welcome");
     try {
@@ -170,14 +133,13 @@ export default function App() {
   };
 
   const handleSaveUsers = (updated) => {
-    setUsers(updated); saveUsers(updated);
-    saveCloudUsers(updated); // Sincronizar con la nube
+    setUsers(updated);
     if (currentUser) {
       const r = updated.find((u) => u.id === currentUser.id);
-      if (r && r.activo) { setCurrentUser(r); localStorage.setItem(SK_SESSION, JSON.stringify(r)); }
+      if (r && r.activo) setCurrentUser(r);
       else handleLogout();
     }
-    toast("✓ Usuarios guardados y sincronizados");
+    toast("✓ Usuarios guardados");
   };
 
   const handleSaveTemplate = (newTexts, camposDirty, oldTexts) => {

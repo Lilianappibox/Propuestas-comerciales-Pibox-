@@ -81,8 +81,6 @@ export default function ProyeccionClickhouse({ onDataLoaded }) {
 
   const guardarYNotificar = (data) => {
     const { gmvActual, evolucion, kamGmv, ciudades } = data;
-    // Guardar evolución en localStorage (mismo formato que UploadEvolucion)
-    try { localStorage.setItem("pibox_cierre_evolucion", JSON.stringify(evolucion)); } catch {}
     setResultado(data);
     setStatus("done");
     setMsg(`✅ ${evolucion.length} días · ${kamGmv.length} KAMs · ${ciudades.length} ciudades`);

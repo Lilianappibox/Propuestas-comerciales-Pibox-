@@ -783,7 +783,8 @@ export default function Configuracion({ data, onSave }) {
             const p = { ...(prev.proyeccion || {}) };
             // 1. GMV Actual en Sistema
             p.gmvActual = gmvActual;
-            // 2. Evolución diaria (cuenta de días)
+            // 2. Evolución diaria (datos + cuenta de días)
+            p.evolucion = evolucion;
             p.diasEvolucion = evolucion.length;
             p.archivoOps = `ClickHouse ${new Date().toLocaleDateString("es-CO")}`;
             // 3. GMV por KAM — matching bidireccional con KAM_MAP + fallback por palabras
@@ -1028,14 +1029,13 @@ function UploadEvolucion({ proy, setForm, setMsg, cargandoOps, setCargandoOps })
       let ac = 0;
       ev.forEach(d => { ac += d.gmv; d.gmvAcumulado = ac; });
 
-      localStorage.setItem("pibox_cierre_evolucion", JSON.stringify(ev));
-
       setForm(prev => ({
         ...prev,
         proyeccion: {
           ...(prev.proyeccion || {}),
           archivoOps: file.name,
           diasEvolucion: ev.length,
+          evolucion: ev,
         },
       }));
 
@@ -1048,11 +1048,11 @@ function UploadEvolucion({ proy, setForm, setMsg, cargandoOps, setCargandoOps })
   };
 
   const eliminar = () => {
-    localStorage.removeItem("pibox_cierre_evolucion");
     setForm(prev => {
       const p = { ...(prev.proyeccion || {}) };
       delete p.archivoOps;
       delete p.diasEvolucion;
+      delete p.evolucion;
       return { ...prev, proyeccion: p };
     });
     setMsg("🗑️ Eliminado. Guarda para confirmar.");

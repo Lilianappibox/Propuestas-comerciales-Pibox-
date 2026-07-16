@@ -2,9 +2,8 @@ import { useState, useRef } from "react";
 
 const BRAND = "linear-gradient(135deg,#7C22D4,#C026D3)";
 
-// Todas las claves de localStorage que maneja la app
+// Todas las claves de localStorage que maneja la app (borradores personales)
 const STORAGE_KEYS = [
-  "pibox_users",
   "pibox_tarifas",
   "pibox_template",
   "pibox_template_history",

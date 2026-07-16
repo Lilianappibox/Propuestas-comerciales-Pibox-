@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
-import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, idbSaveDrivers, idbSaveHorasRows, UMBRALES_DEFAULT, procesarDatos, mesKey, labelMes } from "./riesgo/utils";
+import { loadIndex, SK_MES, loadIndexReadonly, loadMesDataReadonly, saveIndex, saveMesData, loadMesDataAsync, idbLoadDrivers, idbLoadHorasRows, idbSaveDrivers, idbSaveHorasRows, UMBRALES_DEFAULT, SLA_DEFAULT, procesarDatos, mesKey, labelMes } from "./riesgo/utils";
 import { publishToServer, fetchFromServer, clearFromServer } from "./serverSync";
 import { RiesgoProvider } from "./riesgo/RiesgoContext";
 
@@ -39,9 +39,9 @@ function RiesgoComercialInner({ currentUser }) {
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState(null);
   const [loadingServer, setLoadingServer] = useState(false);
-  const [lastSyncAt, setLastSyncAt] = useState(() => {
-    try { return localStorage.getItem("pibox_riesgo_last_sync") || null; } catch { return null; }
-  });
+  const [lastSyncAt, setLastSyncAt] = useState(null);
+  const [riesgoUmbrales, setRiesgoUmbrales] = useState(UMBRALES_DEFAULT);
+  const [riesgoSlaConfig, setRiesgoSlaConfig] = useState(SLA_DEFAULT);
   const [chDesde, setChDesde] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
@@ -61,7 +61,7 @@ function RiesgoComercialInner({ currentUser }) {
     // Label muestra el rango exacto consultado en vez del nombre del mes
     const fmtD = (s) => s.split("-").reverse().join("/");
     const lbl  = `${fmtD(chDesde)} – ${fmtD(chHasta)}`;
-    const processed = procesarDatos(rawRows);
+    const processed = procesarDatos(rawRows, riesgoSlaConfig);
     const entry = {
       key, anio, mes,
       label:   lbl,
@@ -157,7 +157,7 @@ function RiesgoComercialInner({ currentUser }) {
         if (drs && drs.length > 0) return idbSaveDrivers(key, drs);
       }));
       if (data.umbrales && Object.keys(data.umbrales).length > 0) {
-        localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(data.umbrales));
+        setRiesgoUmbrales(data.umbrales);
       }
       const nMeses = Object.keys(data.meses).length;
       setImportMsg({ ok: true, txt: `✅ ${nMeses} mes${nMeses !== 1 ? "es" : ""} importados correctamente` });
@@ -183,8 +183,6 @@ function RiesgoComercialInner({ currentUser }) {
   // No-admin: cargar snapshot publicado y sondear actualizaciones automáticamente
   useEffect(() => {
     if (isAdmin) return;
-    const LS_TS = "pibox_riesgo_last_sync";
-
     const applySnap = async (d, serverTs) => {
       saveIndex({ ...loadIndex(), ...d.index });
       await Promise.all([
@@ -194,14 +192,13 @@ function RiesgoComercialInner({ currentUser }) {
           if (drs?.length) return idbSaveDrivers(k, drs);
         }).filter(Boolean),
       ]);
-      if (d.umbrales) localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(d.umbrales));
-      if (serverTs) {
-        localStorage.setItem(LS_TS, serverTs);
-        setLastSyncAt(serverTs);
-      }
+      if (d.umbrales) setRiesgoUmbrales(d.umbrales);
+      if (d.slaConfig) setRiesgoSlaConfig(d.slaConfig);
+      if (serverTs) setLastSyncAt(serverTs);
       forceRender(n => n + 1);
     };
 
+    let lastAppliedTs = null;
     const syncFromServer = async (skipIfSameTs = false) => {
       const snap = await fetchFromServer("riesgo").catch(() => null);
       if (!snap?.ok || !snap?.data?.index) {
@@ -226,11 +223,9 @@ function RiesgoComercialInner({ currentUser }) {
       }
       const serverTs = snap.published_at;
       // En sondeos periódicos, solo actualizar si hay nueva publicación
-      if (skipIfSameTs && serverTs) {
-        const localTs = localStorage.getItem(LS_TS);
-        if (localTs === serverTs) return false;
-      }
+      if (skipIfSameTs && serverTs && lastAppliedTs === serverTs) return false;
       await applySnap(snap.data, serverTs);
+      lastAppliedTs = serverTs;
       return true;
     };
 
@@ -300,7 +295,8 @@ function RiesgoComercialInner({ currentUser }) {
                       const d = await loadMesDataAsync(key);
                       if (d) allData.meses[key] = d;
                     }));
-                    try { allData.umbrales = JSON.parse(localStorage.getItem("pibox_riesgo_umbrales") || "{}"); } catch {}
+                    allData.umbrales = riesgoUmbrales;
+                    allData.slaConfig = riesgoSlaConfig;
                     const result = await publishToServer("riesgo", allData);
                     setPublishMsg({ ok: true, txt: `✅ Publicado – ${new Date(result.published_at).toLocaleString("es-CO")}` });
                     setTimeout(() => setPublishMsg(null), 8000);
@@ -335,17 +331,17 @@ function RiesgoComercialInner({ currentUser }) {
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <Suspense fallback={<div className="text-center py-10 text-purple-400 text-sm">Cargando...</div>}>
-          {tab === "metricas" && <MetricasRiesgo />}
-          {tab === "ranking"  && <RankingRiesgo />}
+          {tab === "metricas" && <MetricasRiesgo umbrales={riesgoUmbrales} />}
+          {tab === "ranking"  && <RankingRiesgo umbrales={riesgoUmbrales} />}
           {tab === "ciudad"   && <AnalisisCiudad />}
-          {tab === "informe"  && <InformeEmpresa />}
+          {tab === "informe"  && <InformeEmpresa umbrales={riesgoUmbrales} />}
           {tab === "pilotos"  && <AnalisisPilotos />}
           {tab === "nuevos"   && <ClientesNuevos />}
           {tab === "perdidos" && <ClientesPerdidos />}
           {tab === "informeCliente" && <InformeCliente currentUser={currentUser} />}
           {tab === "empresasHoras"  && <EmpresasHoras currentUser={currentUser} />}
           {tab === "proyeccion"     && <ProyeccionCliente />}
-          {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange}/>}
+          {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange} slaConfig={riesgoSlaConfig} onSlaChange={setRiesgoSlaConfig} umbralesConfig={riesgoUmbrales} onUmbralesChange={setRiesgoUmbrales} />}
         </Suspense>
 
         {/* Panel ClickHouse — al final, disponible para todos, no en config */}

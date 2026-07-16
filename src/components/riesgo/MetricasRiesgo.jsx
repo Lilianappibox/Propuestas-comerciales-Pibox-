@@ -14,10 +14,6 @@ import { empresaMatchesOpType, getOpMetrics, OP_TYPES } from "./RiesgoContext";
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const COLORS = [PIBOX_PURPLE, PIBOX_PINK, "#A855F7","#6366F1","#EC4899","#8B5CF6"];
 
-function getUmbrales() {
-  try { return {...UMBRALES_DEFAULT, ...JSON.parse(localStorage.getItem("pibox_riesgo_umbrales")||"{}")}; }
-  catch { return UMBRALES_DEFAULT; }
-}
 
 // ── Tooltip custom ────────────────────────────────────────────────────────────
 const TT = ({active,payload,label,fmt}) => {
@@ -62,9 +58,9 @@ function SemBadge({color,label}) {
   );
 }
 
-export default function MetricasRiesgo() {
+export default function MetricasRiesgo({ umbrales: umbralesProp }) {
   const meses       = mesesDisponibles();
-  const umb         = getUmbrales();
+  const umb         = { ...UMBRALES_DEFAULT, ...(umbralesProp || {}) };
 
   const [mesKey, setMesKey]             = useState(meses[meses.length-1]?.key || "");
   const [filterOpType, setFilterOpType] = useState("");

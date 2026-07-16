@@ -537,8 +537,7 @@ export default function ProyeccionCierre({ data, printing = false }) {
       <div>
         <h3 className="text-base font-semibold text-gray-700 mb-3">Evolución Diaria del GMV</h3>
         {(() => {
-          let evDiaria = null;
-          try { const s = localStorage.getItem("pibox_cierre_evolucion"); if (s) evDiaria = JSON.parse(s); } catch {}
+          const evDiaria = data?.proyeccion?.evolucion || null;
           if (!evDiaria || !evDiaria.length) return (
             <div className="flex items-center justify-center h-48 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
               <div className="text-center">

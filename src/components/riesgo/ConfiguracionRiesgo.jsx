@@ -10,7 +10,7 @@ import {
 const MESES_NUM = Array.from({length:12},(_,i)=>i+1);
 const ANIOS = [2024,2025,2026,2027];
 
-export default function ConfiguracionRiesgo({ onMesesChange }) {
+export default function ConfiguracionRiesgo({ onMesesChange, slaConfig, onSlaChange, umbralesConfig, onUmbralesChange }) {
   const [anio, setAnio]       = useState(2026);
   const [mes, setMes]         = useState(5);
   const [loading, setLoading] = useState(false);
@@ -37,7 +37,7 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
 
       if (!rows.length) throw new Error("El archivo está vacío.");
 
-      const processed = procesarDatos(rows);
+      const processed = procesarDatos(rows, slaConfig);
       const key       = mesKey(anio, mes);
       const entry     = {
         key, anio, mes,
@@ -123,7 +123,7 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
 
       // Restaurar umbrales de Configuración
       if (data.umbrales && Object.keys(data.umbrales).length > 0) {
-        localStorage.setItem("pibox_riesgo_umbrales", JSON.stringify(data.umbrales));
+        onUmbralesChange?.(data.umbrales);
       }
 
       const fresh = mesesDisponibles();
@@ -284,34 +284,27 @@ export default function ConfiguracionRiesgo({ onMesesChange }) {
       </div>
 
       {/* Umbrales */}
-      <UmbralesConfig />
+      <UmbralesConfig initialUmbrales={umbralesConfig} onSave={onUmbralesChange} />
 
       {/* SLA */}
-      <SLAConfig />
+      <SLAConfig initialSla={slaConfig} onSave={onSlaChange} />
     </div>
   );
 }
 
-function UmbralesConfig() {
-  const SK = "pibox_riesgo_umbrales";
-  const load = () => {
-    try { return { ...UMBRALES_DEFAULT, ...JSON.parse(localStorage.getItem(SK) || "{}") }; }
-    catch { return { ...UMBRALES_DEFAULT }; }
-  };
-  const [saved, setSaved] = useState(false);
-  const [vals, setVals]   = useState(() => {
-    const u = load();
-    return {
-      completado_rojo:     Math.round((u.completado_rojo     ?? 0.70) * 100),
-      completado_amarillo: Math.round((u.completado_amarillo ?? 0.85) * 100),
-      cancel_rojo:         Math.round((u.cancel_rojo         ?? 0.20) * 100),
-      cancel_amarillo:     Math.round((u.cancel_amarillo     ?? 0.10) * 100),
-      expirado_rojo:       Math.round((u.expirado_rojo       ?? 0.15) * 100),
-      expirado_amarillo:   Math.round((u.expirado_amarillo   ?? 0.05) * 100),
-      gmv_caida_rojo:      Math.round(Math.abs(u.gmv_caida_rojo     ?? 0.15) * 100),
-      gmv_caida_amarillo:  Math.round(Math.abs(u.gmv_caida_amarillo ?? 0.05) * 100),
-    };
+function UmbralesConfig({ initialUmbrales, onSave }) {
+  const toVals = (u = {}) => ({
+    completado_rojo:     Math.round((u.completado_rojo     ?? 0.70) * 100),
+    completado_amarillo: Math.round((u.completado_amarillo ?? 0.85) * 100),
+    cancel_rojo:         Math.round((u.cancel_rojo         ?? 0.20) * 100),
+    cancel_amarillo:     Math.round((u.cancel_amarillo     ?? 0.10) * 100),
+    expirado_rojo:       Math.round((u.expirado_rojo       ?? 0.15) * 100),
+    expirado_amarillo:   Math.round((u.expirado_amarillo   ?? 0.05) * 100),
+    gmv_caida_rojo:      Math.round(Math.abs(u.gmv_caida_rojo     ?? 0.15) * 100),
+    gmv_caida_amarillo:  Math.round(Math.abs(u.gmv_caida_amarillo ?? 0.05) * 100),
   });
+  const [saved, setSaved] = useState(false);
+  const [vals, setVals]   = useState(() => toVals({ ...UMBRALES_DEFAULT, ...(initialUmbrales || {}) }));
 
   const set = (k, v) => setVals(prev => ({ ...prev, [k]: Number(v) }));
 
@@ -326,24 +319,12 @@ function UmbralesConfig() {
       gmv_caida_rojo:      -(vals.gmv_caida_rojo     / 100),
       gmv_caida_amarillo:  -(vals.gmv_caida_amarillo / 100),
     };
-    localStorage.setItem(SK, JSON.stringify(u));
+    onSave?.(u);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const handleReset = () => {
-    localStorage.removeItem(SK);
-    setVals({
-      completado_rojo:     70,
-      completado_amarillo: 85,
-      cancel_rojo:         20,
-      cancel_amarillo:     10,
-      expirado_rojo:       15,
-      expirado_amarillo:   5,
-      gmv_caida_rojo:      15,
-      gmv_caida_amarillo:  5,
-    });
-  };
+  const handleReset = () => { setVals(toVals(UMBRALES_DEFAULT)); onSave?.(UMBRALES_DEFAULT); };
 
   const Input = ({ label, field, min=0, max=100 }) => (
     <div className="flex items-center justify-between gap-3">
@@ -442,8 +423,8 @@ function UmbralesConfig() {
   );
 }
 
-function SLAConfig() {
-  const [sla, setSla] = useState(() => getSLAConfig());
+function SLAConfig({ initialSla, onSave }) {
+  const [sla, setSla] = useState(() => ({ ...SLA_DEFAULT, ...(initialSla || {}), rangos: initialSla?.rangos || SLA_DEFAULT.rangos }));
   const [saved, setSaved] = useState(false);
 
   const setRango = (i, minutos) => {
@@ -454,12 +435,12 @@ function SLAConfig() {
   };
 
   const handleSave = () => {
-    saveSLAConfig(sla);
+    onSave?.(sla);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const handleReset = () => setSla(SLA_DEFAULT);
+  const handleReset = () => { setSla(SLA_DEFAULT); onSave?.(SLA_DEFAULT); };
 
   return (
     <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 mt-4">

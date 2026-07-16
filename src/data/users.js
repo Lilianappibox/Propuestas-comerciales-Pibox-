@@ -74,28 +74,6 @@ export function getPermisos(user) {
   };
 }
 
-export const USERS_STORAGE_KEY = "pibox_users";
-const CLOUD_URL = "https://jsonblob.com/api/jsonBlob/019ece00-2e0c-7418-95ca-af282305d9a4";
-
-// ── Sincronización con la nube ────────────────────────────────────────────
-export async function fetchCloudUsers() {
-  try {
-    const res = await fetch(CLOUD_URL);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return (data.users || []).map(u => ({ cargo: "", celular: "", telefono: "", permisosCustom: {}, ...u }));
-  } catch { return null; }
-}
-
-export async function saveCloudUsers(users) {
-  try {
-    await fetch(CLOUD_URL, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ users }),
-    });
-  } catch { /* silencioso */ }
-}
 
 export const DEFAULT_USERS = [
   {
@@ -185,34 +163,9 @@ export const DEFAULT_USERS = [
 ];
 
 export function loadUsers() {
-  try {
-    const base = JSON.parse(JSON.stringify(DEFAULT_USERS));
-    const saved = localStorage.getItem(USERS_STORAGE_KEY);
-    if (!saved) return base;
-    const local = JSON.parse(saved).map((u) => ({
-      cargo: "", celular: "", telefono: "", permisosCustom: {},
-      ...u,
-    }));
-    const merged = [...base];
-    for (const lu of local) {
-      const idx = merged.findIndex((m) => m.email.toLowerCase() === lu.email.toLowerCase());
-      if (idx >= 0) {
-        const basePermisos = merged[idx].permisosCustom || {};
-        const localPermisos = lu.permisosCustom || {};
-        merged[idx] = { ...merged[idx], ...lu, permisosCustom: { ...localPermisos, ...basePermisos } };
-      } else {
-        merged.push(lu);
-      }
-    }
-    return merged;
-  } catch {
-    return JSON.parse(JSON.stringify(DEFAULT_USERS));
-  }
+  return JSON.parse(JSON.stringify(DEFAULT_USERS));
 }
 
-export function saveUsers(users) {
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-}
 
 export function authenticate(users, email, password) {
   return users.find(

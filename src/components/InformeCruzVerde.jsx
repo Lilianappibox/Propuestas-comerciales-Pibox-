@@ -38,15 +38,6 @@ const UMBRALES_CV_DEFAULTS = {
   integ_nd:  { sla_rojo: 85, sla_amarillo: 92, noPerf_rojo: 15, noPerf_amarillo: 8 },
 };
 
-function getSlaConfig() {
-  try { return { ...SLA_DEFAULTS, ...JSON.parse(localStorage.getItem("pibox_cv_sla") || "{}") }; }
-  catch { return SLA_DEFAULTS; }
-}
-
-function getUmbrales() {
-  try { return { ...UMBRALES_CV_DEFAULTS, ...JSON.parse(localStorage.getItem("pibox_cv_umbrales") || "{}") }; }
-  catch { return UMBRALES_CV_DEFAULTS; }
-}
 
 const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 function toMesLabel(dateStr) {
@@ -1725,13 +1716,10 @@ function loadHorariosSd() {
   try { return JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null"); } catch { return null; }
 }
 
-function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
+function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows, directorio, setDirectorio, horariosSd, setHorariosSd, umbralesCV, setUmbralesCV }) {
   // ── Sección 1: Directorio Cruz Verde ──
   const [dirUploadMsg, setDirUploadMsg] = useState(null);
   const [dirLoading,   setDirLoading]   = useState(false);
-  const [directorio,   setDirectorio]   = useState(() => {
-    try { return JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null"); } catch { return null; }
-  });
   const [dirSearch, setDirSearch] = useState("");
 
   const handleDirectorioUpload = async (e) => {
@@ -1765,7 +1753,6 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
       })).filter(t => t.codigo || t.nombre);
 
       const newDir = { tiendas, horarios: directorio?.horarios || [], uploaded: new Date().toISOString() };
-      localStorage.setItem("pibox_cv_directorio", JSON.stringify(newDir));
       setDirectorio(newDir);
       setDirUploadMsg({ ok: true, txt: `✅ ${tiendas.length} sucursales cargadas correctamente.` });
     } catch (err) {
@@ -1790,7 +1777,7 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
     : tiendas;
 
   // ── Sección 2: Horarios Same Day ──
-  const [horariosSd, setHorariosSd] = useState(() => loadHorariosSd());
+  // horariosSd y setHorariosSd vienen del componente padre via props
   const [sdLoading, setSdLoading] = useState(false);
   const [sdMsg, setSdMsg] = useState(null);
   const [sdSearch, setSdSearch] = useState("");
@@ -1829,7 +1816,6 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
         fest_apertura:col(row, "Apertura Festivos","apertura fest"),
         fest_cierre:  col(row, "Cierre Festivos",  "cierre fest"),
       })).filter(h => h.direccion);
-      localStorage.setItem(SK_HORARIOS_SD, JSON.stringify({ horarios, uploaded: new Date().toISOString() }));
       setHorariosSd({ horarios, uploaded: new Date().toISOString() });
       setHorariosMap(buildHorariosMap(horarios));
       setSdMsg({ ok: true, txt: `✅ ${horarios.length} tiendas cargadas con horarios.` });
@@ -1869,7 +1855,7 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
     : horarios;
 
   // ── Sección 3: Configuración SLA ──
-  const [localSla, setLocalSla] = useState(() => getSlaConfig());
+  const [localSla, setLocalSla] = useState(() => ({ ...SLA_DEFAULTS, ...slaConfig }));
   const [slaMsg,   setSlaMsg]   = useState(null);
 
   const handleSlaRangeChange = (idx, val) => {
@@ -1881,37 +1867,32 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
   const handleSlaNextDay = (val) => setLocalSla(prev => ({ ...prev, nextDayHora: parseInt(val) || 18 }));
 
   const saveSla = () => {
-    localStorage.setItem("pibox_cv_sla", JSON.stringify(localSla));
     setSlaConfig(localSla);
     setSlaMsg({ ok: true, txt: "✅ Configuración SLA guardada." });
     setTimeout(() => setSlaMsg(null), 4000);
   };
   const restoreSla = () => {
     setLocalSla(SLA_DEFAULTS);
-    localStorage.setItem("pibox_cv_sla", JSON.stringify(SLA_DEFAULTS));
     setSlaConfig(SLA_DEFAULTS);
     setSlaMsg({ ok: true, txt: "↩️ Valores restaurados por defecto." });
     setTimeout(() => setSlaMsg(null), 4000);
   };
 
   // ── Sección 4: Umbrales de riesgo ──
-  const [umbrales,  setUmbrales]  = useState(() => getUmbrales());
-  const [umbMsg,    setUmbMsg]    = useState(null);
+  const [umbMsg, setUmbMsg] = useState(null);
 
   const handleUmbral = (linea, campo, val) => {
-    setUmbrales(prev => ({
+    setUmbralesCV(prev => ({
       ...prev,
       [linea]: { ...prev[linea], [campo]: parseInt(val) || 0 },
     }));
   };
   const saveUmbrales = () => {
-    localStorage.setItem("pibox_cv_umbrales", JSON.stringify(umbrales));
     setUmbMsg({ ok: true, txt: "✅ Umbrales guardados." });
     setTimeout(() => setUmbMsg(null), 4000);
   };
   const restoreUmbrales = () => {
-    setUmbrales(UMBRALES_CV_DEFAULTS);
-    localStorage.setItem("pibox_cv_umbrales", JSON.stringify(UMBRALES_CV_DEFAULTS));
+    setUmbralesCV(UMBRALES_CV_DEFAULTS);
     setUmbMsg({ ok: true, txt: "↩️ Umbrales restaurados por defecto." });
     setTimeout(() => setUmbMsg(null), 4000);
   };
@@ -1944,7 +1925,6 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
           {directorio && (
             <button
               onClick={() => {
-                localStorage.removeItem("pibox_cv_directorio");
                 setDirectorio(null);
                 setDirSearch("");
               }}
@@ -2060,7 +2040,6 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
           </label>
           {horariosSd && (
             <button onClick={() => {
-              localStorage.removeItem(SK_HORARIOS_SD);
               setHorariosSd(null);
               setHorariosMap({});
               setSdSearch("");
@@ -2263,7 +2242,7 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows }) {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
           {LINEAS_UMBRAL.map(({ key, label }) => {
-            const u = umbrales[key] || {};
+            const u = umbralesCV[key] || {};
             return (
               <div key={key} className="bg-gray-50 rounded-xl border border-gray-200 p-4">
                 <p className="text-xs font-bold text-teal-700 mb-3">{label}</p>
@@ -3944,8 +3923,11 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [upAnio,  setUpAnio]  = useState(now.getFullYear());
   const [upMesN,  setUpMesN]  = useState(now.getMonth() + 1);
 
-  // SLA config state
-  const [slaConfig,    setSlaConfig]    = useState(() => getSlaConfig());
+  // Config: inicializan en defaults; se actualizan desde el servidor al hacer sync
+  const [slaConfig,    setSlaConfig]    = useState(SLA_DEFAULTS);
+  const [cvDirectorio, setCvDirectorio] = useState(null);
+  const [cvHorariosSd, setCvHorariosSd] = useState(null);
+  const [cvUmbrales,   setCvUmbrales]   = useState(UMBRALES_CV_DEFAULTS);
   const [horariosMap,  setHorariosMap]  = useState({});
   const [prevRows,     setPrevRows]     = useState([]);
   const [publishing,   setPublishing]   = useState(false);
@@ -3972,12 +3954,13 @@ export default function InformeCruzVerde({ isAdmin }) {
       // Guardar en memoria — no depende de IndexedDB para mostrar datos
       serverDataRef.current = d;
       saveIndex({ ...d.index });
-      // IDB como cache secundario
+      // IDB como cache secundario (admin lo necesita para subir archivos planos)
       await Promise.all(Object.entries(d.meses || {}).map(([k, v]) => idbSave(k, v)));
-      if (d.directorio) localStorage.setItem("pibox_cv_directorio", JSON.stringify(d.directorio));
-      if (d.horariosSd) localStorage.setItem(SK_HORARIOS_SD, JSON.stringify(d.horariosSd));
-      if (d.sla) localStorage.setItem("pibox_cv_sla", JSON.stringify(d.sla));
-      if (d.umbrales) localStorage.setItem("pibox_cv_umbrales", JSON.stringify(d.umbrales));
+      // Actualizar estado React directamente — sin localStorage
+      if (d.directorio) setCvDirectorio(d.directorio);
+      if (d.horariosSd) setCvHorariosSd(d.horariosSd);
+      if (d.sla) setSlaConfig({ ...SLA_DEFAULTS, ...d.sla });
+      if (d.umbrales) setCvUmbrales(d.umbrales);
       setIndex({ ...d.index });
       if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
       setSyncVersion(v => v + 1);
@@ -3999,18 +3982,18 @@ export default function InformeCruzVerde({ isAdmin }) {
     return () => { clearInterval(interval); clearTimeout(retryTimer); };
   }, [syncFromServer]);
 
-  // Solo el admin carga horarios de localStorage al montar; no-admins esperan el sync del servidor
+  // Admin: carga config del último snapshot publicado al montar (config inicial)
   useEffect(() => {
     if (!isAdmin) return;
-    try {
-      const sd = JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null");
-      if (sd?.horarios?.length) {
-        setHorariosMap(buildHorariosMap(sd.horarios));
-        return;
-      }
-      const dir = JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null");
-      if (dir?.horarios?.length) setHorariosMap(buildHorariosMap(dir.horarios));
-    } catch { /* ignore */ }
+    fetchFromServer("cruz_verde").then(snap => {
+      if (!snap?.ok || !snap.data) return;
+      const d = snap.data;
+      if (d.directorio) setCvDirectorio(d.directorio);
+      if (d.horariosSd) { setCvHorariosSd(d.horariosSd); setHorariosMap(buildHorariosMap(d.horariosSd.horarios || [])); }
+      if (d.sla) setSlaConfig({ ...SLA_DEFAULTS, ...d.sla });
+      if (d.umbrales) setCvUmbrales(d.umbrales);
+      if (d.index) setIndex({ ...d.index });
+    }).catch(() => {});
   }, [isAdmin]);
 
   // Auto-seleccionar mes más reciente al cargar
@@ -4350,10 +4333,10 @@ export default function InformeCruzVerde({ isAdmin }) {
                     // PATCH: el servidor mergea este mes con los meses ya publicados
                     const result = await publishMonthToServer("cruz_verde", mesSel, mesSlim, {
                       index:      idx,
-                      directorio: JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null"),
-                      horariosSd: JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null"),
-                      sla:        JSON.parse(localStorage.getItem("pibox_cv_sla") || "{}"),
-                      umbrales:   JSON.parse(localStorage.getItem("pibox_cv_umbrales") || "{}"),
+                      directorio: cvDirectorio,
+                      horariosSd: cvHorariosSd,
+                      sla:        slaConfig,
+                      umbrales:   cvUmbrales,
                     });
                     const rows = mesData.rows?.length || 0;
                     setPublishMsg({ ok: true, txt: `✅ ${mesSel} publicado – ${rows.toLocaleString()} registros (${new Date(result.published_at).toLocaleString("es-CO")})` });
@@ -4591,6 +4574,12 @@ export default function InformeCruzVerde({ isAdmin }) {
             setSlaConfig={setSlaConfig}
             setHorariosMap={setHorariosMap}
             rows={rows}
+            directorio={cvDirectorio}
+            setDirectorio={setCvDirectorio}
+            horariosSd={cvHorariosSd}
+            setHorariosSd={setCvHorariosSd}
+            umbralesCV={cvUmbrales}
+            setUmbralesCV={setCvUmbrales}
           />
         )}
 

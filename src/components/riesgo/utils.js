@@ -32,15 +32,9 @@ export const SLA_DEFAULT = {
   ],
   nextDayHora: 18,
 };
-export function getSLAConfig() {
-  try {
-    const stored = JSON.parse(localStorage.getItem("pibox_sla_config") || "{}");
-    return { ...SLA_DEFAULT, ...stored, rangos: stored.rangos || SLA_DEFAULT.rangos };
-  } catch { return SLA_DEFAULT; }
-}
-export function saveSLAConfig(cfg) {
-  localStorage.setItem("pibox_sla_config", JSON.stringify(cfg));
-}
+// Legacy — conservadas para que buildear no rompa imports existentes; no usar localStorage
+export function getSLAConfig() { return { ...SLA_DEFAULT }; }
+export function saveSLAConfig(_cfg) { /* no-op: ahora la config vive en React state */ }
 
 export const mesKey = (anio, mes) => `${anio}-${String(mes).padStart(2,"0")}`;
 export const labelMes = (anio, mes) => `${MESES_ES[mes]} ${anio}`;
@@ -153,7 +147,7 @@ export function mesesDisponibles() {
 }
 
 // ── Procesamiento del Excel ───────────────────────────────────────────────────
-export function procesarDatos(rows) {
+export function procesarDatos(rows, slaConfig = null) {
   // Normaliza valores de filas
   const toNum = (v) => { const n = Number(String(v ?? "").replace(/[^0-9.-]/g,"")); return isNaN(n)?0:n; };
   const toStr = (v) => String(v ?? "").trim();
@@ -164,7 +158,7 @@ export function procesarDatos(rows) {
   const globalDaily  = {};
   const opDailyMap   = {}; // op → dateStr → { gmv, servicios, completados }
   const cityMap = {};
-  const sla = getSLAConfig();
+  const sla = slaConfig || SLA_DEFAULT;
 
   for (const row of rows) {
     const empresa   = toStr(row["company"] || row["Company"] || "Sin empresa");

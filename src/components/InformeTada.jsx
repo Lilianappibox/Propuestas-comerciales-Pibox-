@@ -448,7 +448,6 @@ function processFactExcel(wb) {
 }
 
 // ── Insights Tab Component ─────────────────────────────────────────────────
-const SK_TADA_UMB = "pibox_tada_umbrales";
 const UMB_DEFAULT = {
   colocAlerta: 80, colocExcelente: 95,
   puntAlerta: 70, puntExcelente: 90,
@@ -460,10 +459,21 @@ const UMB_DEFAULT = {
   minTurnosCiudad: 10, minTurnosPunto: 5, minGmvPunto: 50000,
 };
 
-function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin, importedData }) {
+function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin, importedData, serverUmbrales, onUmbralesChange }) {
   const pilotosNuevosPdfRef = useRef(null);
   const [showConfig, setShowConfig] = useState(false);
-  const [umb, setUmb] = useState(() => { try { return { ...UMB_DEFAULT, ...JSON.parse(localStorage.getItem(SK_TADA_UMB) || "{}") }; } catch { return UMB_DEFAULT; } });
+  const [umb, setUmb] = useState(() =>
+    serverUmbrales && Object.keys(serverUmbrales).length > 0
+      ? { ...UMB_DEFAULT, ...serverUmbrales }
+      : { ...UMB_DEFAULT }
+  );
+  // Cuando llega serverUmbrales (no-admin), sincronizar estado
+  useEffect(() => {
+    if (!isAdmin && serverUmbrales && Object.keys(serverUmbrales).length > 0) {
+      setUmb({ ...UMB_DEFAULT, ...serverUmbrales });
+    }
+  }, [serverUmbrales, isAdmin]);
+
   const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
   const [mesSel, setMesSel] = useState(insightsMeses[0] || "");
 
@@ -520,7 +530,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     }
   }, [ins2PrevKey, trafIndex, importedData]);
 
-  const saveUmb = (u) => { setUmb(u); localStorage.setItem(SK_TADA_UMB, JSON.stringify(u)); };
+  const saveUmb = (u) => { setUmb(u); onUmbralesChange?.(u); };
   const UmbField = ({ label, k, suffix = "%" }) => (
     <div>
       <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
@@ -2022,6 +2032,8 @@ export default function InformeTada({ isAdmin }) {
 
   // Datos importados por usuario no-admin (manual o desde servidor)
   const [importedData, setImportedData] = useState(null);
+  const [serverUmbrales, setServerUmbrales] = useState(null);
+  const [tadaUmbrales, setTadaUmbrales] = useState({});
   const [loadingServer, setLoadingServer] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState(null);
@@ -2089,7 +2101,7 @@ export default function InformeTada({ isAdmin }) {
       if (factKeys[0]) setFactMesSel(factKeys[0]);
       if (d.notas) localStorage.setItem("pibox_tada_notas", JSON.stringify(d.notas));
       if (d.tareas) localStorage.setItem("pibox_tada_tareas", JSON.stringify(d.tareas));
-      if (d.umbrales) localStorage.setItem("pibox_tada_umbrales", JSON.stringify(d.umbrales));
+      if (d.umbrales) { setServerUmbrales(d.umbrales); setTadaUmbrales(d.umbrales); }
     } finally {
       setLoadingServer(false);
     }
@@ -2474,7 +2486,7 @@ export default function InformeTada({ isAdmin }) {
                       meses: {},
                       notas: JSON.parse(localStorage.getItem("pibox_tada_notas") || "[]"),
                       tareas: JSON.parse(localStorage.getItem("pibox_tada_tareas") || "[]"),
-                      umbrales: JSON.parse(localStorage.getItem("pibox_tada_umbrales") || "{}"),
+                      umbrales: tadaUmbrales,
                     };
                     for (const key of Object.keys(allData.trafIndex)) {
                       const d = loadTrafMes(key);
@@ -2716,7 +2728,7 @@ export default function InformeTada({ isAdmin }) {
       )}
 
       {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
-      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} importedData={importedData} />}
+      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} importedData={importedData} serverUmbrales={serverUmbrales} onUmbralesChange={setTadaUmbrales} />}
 
       {/* ── TAB: POR CIUDAD ─────────────────────────────────────────── */}
       {tab === "ciudad" && <CiudadTab trafIndex={trafIndex} isAdmin={isAdmin} importedData={importedData} loadTrafMes={_loadTrafMes} />}
