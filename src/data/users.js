@@ -180,7 +180,7 @@ export const DEFAULT_USERS = [
     cargo: "",
     celular: "",
     telefono: "",
-    permisosCustom: { verInformeTada: true, verRiesgoComercial: true, verTarifario: true },
+    permisosCustom: { verInformeTada: true, verRiesgoComercial: true, verTarifario: true, verInformeCruzVerde: true },
   },
 ];
 

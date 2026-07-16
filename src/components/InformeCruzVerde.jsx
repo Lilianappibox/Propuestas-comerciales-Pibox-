@@ -3924,6 +3924,8 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [rows,       setRows]       = useState([]);
   const [syncVersion, setSyncVersion] = useState(0);
   const [loading,    setLoading]    = useState(false);
+  // Datos del servidor en memoria — evita depender de IndexedDB para mostrar
+  const serverDataRef = useRef(null);
   const [uploadMsg,  setUploadMsg]  = useState(null);
   const [filtCiudad,    setFiltCiudad]    = useState("todas");
   const [filtLinea,     setFiltLinea]     = useState("todas");
@@ -3966,29 +3968,18 @@ export default function InformeCruzVerde({ isAdmin }) {
       if (!snap) return; // error de red — silencioso, se reintenta en 2 min
       if (!snap.ok || !snap.data?.index) return; // sin publicación — estado vacío es correcto
       const d = snap.data;
-      const localIdx = loadIndex();
-      const mergedIdx = { ...d.index };
-      for (const [k, serverEntry] of Object.entries(d.index || {})) {
-        const localEntry = localIdx[k];
-        if (localEntry?.fecha && serverEntry?.fecha &&
-            new Date(localEntry.fecha) > new Date(serverEntry.fecha)) {
-          mergedIdx[k] = localEntry;
-        }
-      }
-      saveIndex(mergedIdx);
-      await Promise.all(Object.entries(d.meses || {}).map(async ([k, v]) => {
-        const localData = await idbLoad(k);
-        const serverFecha = new Date(v?.fecha || 0).getTime();
-        const localFecha  = new Date(localData?.fecha || 0).getTime();
-        if (!localData || serverFecha > localFecha) await idbSave(k, v);
-      }));
+      // Guardar en memoria — no depende de IndexedDB para mostrar datos
+      serverDataRef.current = d;
+      saveIndex({ ...d.index });
+      // IDB como cache secundario (para flujo del admin con archivos planos)
+      await Promise.all(Object.entries(d.meses || {}).map(([k, v]) => idbSave(k, v)));
       if (d.directorio) localStorage.setItem("pibox_cv_directorio", JSON.stringify(d.directorio));
       if (d.horariosSd) localStorage.setItem(SK_HORARIOS_SD, JSON.stringify(d.horariosSd));
       if (d.sla) localStorage.setItem("pibox_cv_sla", JSON.stringify(d.sla));
       if (d.umbrales) localStorage.setItem("pibox_cv_umbrales", JSON.stringify(d.umbrales));
-      setIndex(mergedIdx);
+      setIndex({ ...d.index });
       if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
-      setSyncVersion(v => v + 1); // fuerza reload de filas aunque mesSel no cambie
+      setSyncVersion(v => v + 1);
     } finally {
       setLoadingServer(false);
     }
@@ -4021,13 +4012,18 @@ export default function InformeCruzVerde({ isAdmin }) {
     if (!mesSel && meses.length) setMesSel(meses[0]);
   }, [index]);
 
-  // Cargar filas del mes seleccionado (también re-carga cuando llega sync del servidor)
+  // Cargar filas del mes seleccionado — usa datos en memoria del servidor si existen (no IDB)
   useEffect(() => {
     if (!mesSel) { setRows([]); return; }
-    idbLoad(mesSel).then(data =>
-      setRows((data?.rows || []).filter(r => !isEstadoExcluido(r.estado)))
-    );
-  }, [mesSel, syncVersion]);
+    const serverMes = !isAdmin ? serverDataRef.current?.meses?.[mesSel] : null;
+    if (serverMes) {
+      setRows((serverMes.rows || []).filter(r => !isEstadoExcluido(r.estado)));
+    } else {
+      idbLoad(mesSel).then(data =>
+        setRows((data?.rows || []).filter(r => !isEstadoExcluido(r.estado)))
+      );
+    }
+  }, [mesSel, syncVersion, isAdmin]);
 
   // Mes anterior: el mes inmediatamente anterior al seleccionado en el índice
   const prevMesSel = useMemo(() => {
@@ -4036,16 +4032,22 @@ export default function InformeCruzVerde({ isAdmin }) {
     return idx > 0 ? sorted[idx - 1] : null;
   }, [index, mesSel]);
 
-  // Cargar y enriquecer filas del mes anterior
+  // Cargar y enriquecer filas del mes anterior — usa datos en memoria si existen
   useEffect(() => {
     if (!prevMesSel) { setPrevRows([]); return; }
-    idbLoad(prevMesSel).then(data => {
-      const enriched = (data?.rows || [])
+    const process = (rawRows) => {
+      const enriched = (rawRows || [])
         .filter(r => !isEstadoExcluido(r.estado))
         .map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
       setPrevRows(enriched);
-    });
-  }, [prevMesSel, slaConfig, horariosMap]);
+    };
+    const serverPrev = !isAdmin ? serverDataRef.current?.meses?.[prevMesSel] : null;
+    if (serverPrev) {
+      process(serverPrev.rows);
+    } else {
+      idbLoad(prevMesSel).then(data => process(data?.rows));
+    }
+  }, [prevMesSel, slaConfig, horariosMap, syncVersion, isAdmin]);
 
   // Filtros derivados con SLA computado dinámicamente
   const filteredRows = useMemo(() => {
