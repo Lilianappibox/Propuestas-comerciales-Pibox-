@@ -3919,7 +3919,8 @@ const TABS = [
 export default function InformeCruzVerde({ isAdmin }) {
   const now = new Date();
   const [tab,        setTab]        = useState("resumen");
-  const [index,      setIndex]      = useState(() => loadIndex());
+  // No-admin: siempre arranca vacío; el index viene solo del servidor (no del caché local)
+  const [index,      setIndex]      = useState(() => isAdmin ? loadIndex() : {});
   const [mesSel,     setMesSel]     = useState("");
   const [rows,       setRows]       = useState([]);
   const [syncVersion, setSyncVersion] = useState(0);
@@ -3998,19 +3999,19 @@ export default function InformeCruzVerde({ isAdmin }) {
     return () => { clearInterval(interval); clearTimeout(retryTimer); };
   }, [syncFromServer]);
 
-  // Load horarios on mount — prioriza el nuevo SK_HORARIOS_SD, cae al antiguo si no existe
+  // Solo el admin carga horarios de localStorage al montar; no-admins esperan el sync del servidor
   useEffect(() => {
+    if (!isAdmin) return;
     try {
       const sd = JSON.parse(localStorage.getItem(SK_HORARIOS_SD) || "null");
       if (sd?.horarios?.length) {
         setHorariosMap(buildHorariosMap(sd.horarios));
         return;
       }
-      // Fallback: antiguo directorio.horarios
       const dir = JSON.parse(localStorage.getItem("pibox_cv_directorio") || "null");
       if (dir?.horarios?.length) setHorariosMap(buildHorariosMap(dir.horarios));
     } catch { /* ignore */ }
-  }, []);
+  }, [isAdmin]);
 
   // Auto-seleccionar mes más reciente al cargar
   useEffect(() => {
@@ -4018,12 +4019,13 @@ export default function InformeCruzVerde({ isAdmin }) {
     if (!mesSel && meses.length) setMesSel(meses[0]);
   }, [index]);
 
-  // Cargar filas del mes seleccionado — usa datos en memoria del servidor si existen (no IDB)
+  // Cargar filas del mes seleccionado
+  // No-admin: SOLO datos del servidor (serverDataRef); nunca IDB — evita caché de otra sesión
+  // Admin: lee de IDB (carga archivos planos y ClickHouse localmente)
   useEffect(() => {
     if (!mesSel) { setRows([]); return; }
-    const serverMes = !isAdmin ? serverDataRef.current?.meses?.[mesSel] : null;
-    if (serverMes) {
-      setRows((serverMes.rows || []).filter(r => !isEstadoExcluido(r.estado)));
+    if (!isAdmin) {
+      setRows((serverDataRef.current?.meses?.[mesSel]?.rows || []).filter(r => !isEstadoExcluido(r.estado)));
     } else {
       idbLoad(mesSel).then(data =>
         setRows((data?.rows || []).filter(r => !isEstadoExcluido(r.estado)))
@@ -4038,7 +4040,7 @@ export default function InformeCruzVerde({ isAdmin }) {
     return idx > 0 ? sorted[idx - 1] : null;
   }, [index, mesSel]);
 
-  // Cargar y enriquecer filas del mes anterior — usa datos en memoria si existen
+  // Cargar mes anterior — no-admin: SOLO servidor; admin: IDB
   useEffect(() => {
     if (!prevMesSel) { setPrevRows([]); return; }
     const process = (rawRows) => {
@@ -4047,9 +4049,8 @@ export default function InformeCruzVerde({ isAdmin }) {
         .map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
       setPrevRows(enriched);
     };
-    const serverPrev = !isAdmin ? serverDataRef.current?.meses?.[prevMesSel] : null;
-    if (serverPrev) {
-      process(serverPrev.rows);
+    if (!isAdmin) {
+      process(serverDataRef.current?.meses?.[prevMesSel]?.rows);
     } else {
       idbLoad(prevMesSel).then(data => process(data?.rows));
     }
