@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ROLES, generateId, PERMISOS_CONFIGURABLES, PERMISOS_BASE, getPermisos } from "../data/users";
+import { ROLES, PERMISOS_CONFIGURABLES, PERMISOS_BASE, getPermisos } from "../data/users";
 
 const BRAND = "linear-gradient(135deg,#7C22D4,#C026D3)";
 const PURPLE = "#7C22D4";
@@ -22,11 +22,12 @@ const Field = ({ label, required, children }) => (
 
 const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-gray-50 focus:bg-white transition-colors";
 
-export default function UserManager({ users, onSave }) {
+export default function UserManager({ users, currentUserId, onUserCreate, onUserUpdate, onUserDelete }) {
   const [editing, setEditing] = useState(null);   // null | "new" | user.id
   const [form, setForm]       = useState({});
   const [showPass, setShowPass] = useState(false);
   const [error, setError]      = useState("");
+  const [saving, setSaving]    = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const blank = { nombre: "", email: "", password: "", rol: ROLES.OPERATIVO, activo: true, cargo: "", celular: "", telefono: "", permisosCustom: {} };
@@ -41,27 +42,46 @@ export default function UserManager({ users, onSave }) {
     setForm((f) => ({ ...f, permisosCustom: { ...(f.permisosCustom || {}), [id]: !current } }));
   };
 
-  const handleSave = () => {
-    if (!form.nombre.trim() || !form.email.trim() || !form.password.trim()) {
-      setError("Nombre, correo y contraseña son obligatorios.");
+  const handleSave = async () => {
+    if (!form.nombre.trim() || !form.email.trim()) {
+      setError("Nombre y correo son obligatorios.");
+      return;
+    }
+    if (editing === "new" && !form.password?.trim()) {
+      setError("La contraseña es obligatoria para nuevos usuarios.");
       return;
     }
     const dup = users.find((u) => u.email.toLowerCase() === form.email.toLowerCase() && u.id !== editing);
     if (dup) { setError("Ya existe un usuario con ese correo."); return; }
-    const updated = editing === "new"
-      ? [...users, { ...form, id: generateId() }]
-      : users.map((u) => (u.id === editing ? { ...form } : u));
-    onSave(updated);
-    cancel();
+    setSaving(true);
+    try {
+      if (editing === "new") {
+        await onUserCreate(form);
+      } else {
+        await onUserUpdate(editing, form);
+      }
+      cancel();
+    } catch (e) {
+      setError(e.message || "Error al guardar usuario.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleToggleActive = (id) => {
-    onSave(users.map((u) => u.id === id ? { ...u, activo: !u.activo } : u));
+  const handleToggleActive = async (id) => {
+    const user = users.find((u) => u.id === id);
+    if (!user) return;
+    try {
+      await onUserUpdate(id, { ...user, activo: !user.activo });
+    } catch { /* ignorar */ }
   };
 
-  const handleDelete = (id) => {
-    onSave(users.filter((u) => u.id !== id));
-    setConfirmDelete(null);
+  const handleDelete = async (id) => {
+    try {
+      await onUserDelete(id);
+      setConfirmDelete(null);
+      if (editing === id) cancel();
+    } catch { /* ignorar */ }
   };
 
   const isEditing = editing !== null;
@@ -369,10 +389,10 @@ export default function UserManager({ users, onSave }) {
                   className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleSave}
-                  className="flex-1 text-white rounded-lg px-4 py-2.5 text-sm font-bold hover:opacity-90 transition-opacity shadow"
+                <button onClick={handleSave} disabled={saving}
+                  className="flex-1 text-white rounded-lg px-4 py-2.5 text-sm font-bold hover:opacity-90 transition-opacity shadow disabled:opacity-60"
                   style={{ background: BRAND }}>
-                  {editing === "new" ? "✓ Crear usuario" : "✓ Guardar cambios"}
+                  {saving ? "Guardando…" : (editing === "new" ? "✓ Crear usuario" : "✓ Guardar cambios")}
                 </button>
               </div>
             </div>

@@ -64,23 +64,38 @@ const SECCIONES_ALL = [
 // Pestañas que requieren base plana activa para mostrar contenido
 const DATA_TABS = new Set(["cumplimiento","kams","top10","lineas","nuevos","perdidos","mapa","tendencias"]);
 
-function SinBasePlana({ isAdmin, onGoConfig }) {
+function SinBasePlana({ isAdmin, onGoConfig, onSync }) {
   return (
     <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-14 text-center max-w-lg mx-auto mt-8">
       <p className="text-5xl mb-5">📊</p>
       <h3 className="text-lg font-bold text-gray-700 mb-2">Sin datos cargados</h3>
-      <p className="text-sm text-gray-400 mb-7">
-        Sube la <strong>base plana mensual</strong> desde{" "}
-        <strong>⚙️ Config</strong> y haz clic en{" "}
-        <strong>Publicar para el equipo</strong> para activar esta pestaña.
-      </p>
-      {isAdmin && (
-        <button
-          onClick={onGoConfig}
-          className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition"
-        >
-          ⚙️ Ir a Configuración
-        </button>
+      {isAdmin ? (
+        <>
+          <p className="text-sm text-gray-400 mb-7">
+            Sube la <strong>base plana mensual</strong> desde{" "}
+            <strong>⚙️ Config</strong> y haz clic en{" "}
+            <strong>Publicar para el equipo</strong> para activar esta pestaña.
+          </p>
+          <button
+            onClick={onGoConfig}
+            className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition"
+          >
+            ⚙️ Ir a Configuración
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-gray-400 mb-7">
+            El administrador aún no ha publicado los datos del cierre mensual.
+            Se actualizará automáticamente en unos segundos.
+          </p>
+          <button
+            onClick={onSync}
+            className="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition"
+          >
+            🔄 Verificar ahora
+          </button>
+        </>
       )}
     </div>
   );
@@ -98,7 +113,8 @@ export default function CierreComercial({ currentUser }) {
   // Cargar datos publicados desde el servidor
   // KAMs: siempre desde servidor. Admins: solo si no tienen datos locales.
   const syncFromServerCierre = useCallback(async () => {
-    const tieneLocal = isAdmin && !!localStorage.getItem(SK);
+    const tieneLocal = isAdmin && !!localStorage.getItem(SK) &&
+      JSON.parse(localStorage.getItem(SK) || "{}")?._basePlanaActiva === true;
     if (tieneLocal) return;
     setLoadingServer(true);
     try {
@@ -114,7 +130,7 @@ export default function CierreComercial({ currentUser }) {
   useEffect(() => {
     syncFromServerCierre();
     if (isAdmin) return;
-    const interval = setInterval(syncFromServerCierre, 2 * 60 * 1000);
+    const interval = setInterval(syncFromServerCierre, 30 * 1000);
     return () => clearInterval(interval);
   }, [syncFromServerCierre]);
 
@@ -235,7 +251,7 @@ export default function CierreComercial({ currentUser }) {
         <div id="tablero-contenido" className="max-w-7xl mx-auto px-4 py-6 space-y-6 print:px-6 print:max-w-none">
           {(() => {
             const activa = data._basePlanaActiva === true;
-            const sinDatos = <SinBasePlana isAdmin={isAdmin} onGoConfig={() => setSeccion("config")} />;
+            const sinDatos = <SinBasePlana isAdmin={isAdmin} onGoConfig={() => setSeccion("config")} onSync={syncFromServerCierre} />;
 
             if (printing) return activa ? (
               <>

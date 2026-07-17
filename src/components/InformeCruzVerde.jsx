@@ -191,6 +191,8 @@ function procesarRows(rawRows) {
       horaEntrega:       horaMin(fechaEntrega),
       horaAsignado:      horaMin(r.asignado),
       esDevolucion:      /^si$/i.test(String(r["finalizado fallido"] ?? r.finalizado_fallido ?? "").trim()),
+      finalizadoFallido: String(r["finalizado fallido"] ?? r.finalizado_fallido ?? "").trim(),
+      fechaPaqueteNoRecibido: r.fecha_paquete_no_recibido ? String(r.fecha_paquete_no_recibido) : "",
       esPerfecto:        estado === "Finalizado",
       esNoCompletado:    isNoCompletado(estado),
       esCancelado:       isCancelado(estado),
@@ -826,6 +828,31 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
     XLSX.writeFile(wb, `no-perfectos-${lineaLabel}.xlsx`);
   }
 
+  function descargarDevoluciones() {
+    const devRows = rows.filter(r => r.esDevolucion);
+    const data = devRows.map(r => ({
+      "Fecha":                       r.fechaCancelacion ? fmtDatetime(r.fechaCancelacion) : fmtDatetime(r.iniciadoRaw),
+      "Booking ID":                  r.idServicio || r.uuid || "—",
+      "Ciudad":                      r.ciudad || "—",
+      "ID Piloto":                   r.idPiloto || "—",
+      "Nombre Piloto":               r.nombrePiloto || "—",
+      "Dirección de Origen":         r.direccionOrigen || "—",
+      "Estado":                      r.estado || "—",
+      "Descripción":                 r.descripcion || "—",
+      "Fecha Paquete No Recibido":   r.fechaPaqueteNoRecibido ? fmtDatetime(r.fechaPaqueteNoRecibido) : "—",
+      "Finalizado Fallido":          r.finalizadoFallido || (r.esDevolucion ? "SI" : "—"),
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [
+      { wch: 22 }, { wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 28 },
+      { wch: 50 }, { wch: 30 }, { wch: 40 }, { wch: 26 }, { wch: 18 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Devoluciones");
+    const lineaLabel = linea === "mostrador" ? "mostrador" : linea === "integ_sd" ? "integ-sd" : "integ-nd";
+    XLSX.writeFile(wb, `devoluciones-${lineaLabel}.xlsx`);
+  }
+
   return (
     <div className="space-y-6">
       {/* KPIs */}
@@ -843,16 +870,27 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
         <KpiCard icon="📊" label="Servicios c/SLA" value={fmtNum(m.slaDef)} color={C_GRAY} />
       </div>
 
-      {/* Descarga No Perfectos */}
-      {m.noPerfectos > 0 && (
-        <div className="flex justify-end">
-          <button
-            onClick={descargarNoPerfectos}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90"
-            style={{ background: C_RED }}
-          >
-            ⬇ Descargar No Perfectos ({fmtNum(m.noPerfectos)})
-          </button>
+      {/* Descargas */}
+      {(m.noPerfectos > 0 || m.devol > 0) && (
+        <div className="flex justify-end gap-2 flex-wrap">
+          {m.devol > 0 && (
+            <button
+              onClick={descargarDevoluciones}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90"
+              style={{ background: C_AMB }}
+            >
+              ⬇ Descargar Devoluciones ({fmtNum(m.devol)})
+            </button>
+          )}
+          {m.noPerfectos > 0 && (
+            <button
+              onClick={descargarNoPerfectos}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90"
+              style={{ background: C_RED }}
+            >
+              ⬇ Descargar No Perfectos ({fmtNum(m.noPerfectos)})
+            </button>
+          )}
         </div>
       )}
 

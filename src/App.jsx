@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { TARIFAS_DEFAULT, MODULOS_CONFIG } from "./data/tarifas";
-import { loadUsers, getPermisos, ROLES, DEFAULT_USERS } from "./data/users";
+import { getPermisos, ROLES } from "./data/users";
 import { loadTemplate, saveTemplate, loadHistory, saveHistory, addHistoryEntry } from "./data/templateTexts";
 import PropuestaPreview from "./components/PropuestaPreview";
 import TarifasEditor from "./components/TarifasEditor";
@@ -83,20 +83,9 @@ function loadModulos() {
 }
 
 export default function App() {
-  const [users, setUsers]             = useState(loadUsers);
+  const [users, setUsers]             = useState([]);
   const [currentUser, setCurrentUser] = useState(() => {
-    if (window.__RAILS_USER__) {
-      const railsUser = window.__RAILS_USER__;
-      // Merge DEFAULT_USERS so code-level permission changes auto-apply
-      const fromCode = DEFAULT_USERS.find(u => u.email.toLowerCase() === railsUser.email.toLowerCase());
-      return {
-        ...railsUser,
-        permisosCustom: {
-          ...(fromCode?.permisosCustom || {}),  // defaults del código (base)
-          ...(railsUser.permisosCustom || {}),   // Rails DB tiene la última palabra
-        },
-      };
-    }
+    if (window.__RAILS_USER__) return { ...window.__RAILS_USER__ };
     return null;
   });
   const [view, setView]             = useState(() => window.__RAILS_INITIAL_VIEW__ || "welcome");
@@ -117,29 +106,121 @@ export default function App() {
   useEffect(() => { localStorage.setItem(SK_TARIFAS, JSON.stringify(tarifas)); }, [tarifas]);
   useEffect(() => { localStorage.setItem(SK_MODULOS, JSON.stringify(modulos)); }, [modulos]);
 
+  useEffect(() => {
+    if (!window.__RAILS_USER__) return;
+    fetch("/api/users", { headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setUsers)
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresca currentUser desde la DB para capturar cambios de rol/permisos en tiempo real.
+  // Corre al montar, cada 90 segundos, y al volver a enfocar la pestaña.
+  useEffect(() => {
+    if (!window.__RAILS_USER__) return; // solo en modo Rails
+    const refreshMe = async () => {
+      try {
+        const res = await fetch("/api/me", { headers: { Accept: "application/json" } });
+        if (!res.ok) return; // sesión expirada → el siguiente request redirigirá a login
+        const fresh = await res.json();
+        setCurrentUser(prev => {
+          if (!prev) return prev;
+          // Protección: si el servidor retorna un usuario diferente (sesión residual de
+          // otro usuario), ignorar — evita que datos de Liliana sobreescriban a Andrea.
+          if (fresh.id && prev.id && fresh.id !== prev.id) return prev;
+          const sameRol   = prev.rol   === fresh.rol;
+          const samePerms = JSON.stringify(prev.permisosCustom) === JSON.stringify(fresh.permisosCustom || {});
+          const sameActivo = prev.activo === fresh.activo;
+          if (sameRol && samePerms && sameActivo) return prev; // sin cambios — no re-render
+          return { ...prev, ...fresh }; // aplica cambios desde DB
+        });
+      } catch { /* red no disponible — intentará en el próximo ciclo */ }
+    };
+
+    refreshMe(); // verificación inicial
+    const interval = setInterval(refreshMe, 90_000);
+    const onFocus = () => { if (document.visibilityState === "visible") refreshMe(); };
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onFocus); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toast = (msg) => { setSavedMsg(msg); setTimeout(() => setSavedMsg(""), 3000); };
 
   const handleLogin = (user) => {
     setCurrentUser(user);
     setView("welcome");
     setSubTab(SUB_BUILDER);
+    fetch("/api/users", { headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setUsers)
+      .catch(() => {});
   };
   const handleLogout = async () => {
     setCurrentUser(null);
+    setUsers([]);
     setView("welcome");
     try {
       await fetch("/logout", { method: "DELETE", headers: { "Accept": "application/json" } });
     } catch { /* silencioso */ }
   };
 
-  const handleSaveUsers = (updated) => {
-    setUsers(updated);
-    if (currentUser) {
-      const r = updated.find((u) => u.id === currentUser.id);
-      if (r && r.activo) setCurrentUser(r);
+  const apiUserPayload = (form) => {
+    const p = {
+      nombre:          form.nombre,
+      email:           form.email,
+      rol:             form.rol,
+      activo:          form.activo ?? true,
+      cargo:           form.cargo  || "",
+      celular:         form.celular || "",
+      telefono:        form.telefono || "",
+      permisos_custom: form.permisosCustom || {},
+    };
+    if (form.password) p.password = form.password;
+    return p;
+  };
+
+  const handleUserCreate = async (form) => {
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ user: apiUserPayload(form) }),
+    });
+    if (!res.ok) {
+      const j = await res.json();
+      throw new Error(j.errors?.join(", ") || "Error al crear usuario");
+    }
+    const created = await res.json();
+    setUsers((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    toast("✓ Usuario creado");
+  };
+
+  const handleUserUpdate = async (id, form) => {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ user: apiUserPayload(form) }),
+    });
+    if (!res.ok) {
+      const j = await res.json();
+      throw new Error(j.errors?.join(", ") || "Error al actualizar usuario");
+    }
+    const updated = await res.json();
+    setUsers((prev) => prev.map((u) => u.id === id ? updated : u));
+    if (currentUser?.id === id) {
+      if (updated.activo) setCurrentUser((prev) => ({ ...prev, ...updated }));
       else handleLogout();
     }
-    toast("✓ Usuarios guardados");
+    toast("✓ Usuario actualizado");
+  };
+
+  const handleUserDelete = async (id) => {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return;
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+    toast("🗑️ Usuario eliminado");
   };
 
   const handleSaveTemplate = (newTexts, camposDirty, oldTexts) => {
@@ -572,7 +653,13 @@ export default function App() {
          ══════════════════════════════════════════════════════════════════════ */}
       {view === VIEW_USUARIOS && permisos.gestionarUsuarios && (
         <main className="max-w-7xl mx-auto px-4 py-6">
-          <UserManager users={users} onSave={handleSaveUsers} />
+          <UserManager
+                users={users}
+                currentUserId={currentUser?.id}
+                onUserCreate={handleUserCreate}
+                onUserUpdate={handleUserUpdate}
+                onUserDelete={handleUserDelete}
+              />
         </main>
       )}
 
