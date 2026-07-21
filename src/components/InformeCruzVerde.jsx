@@ -39,6 +39,13 @@ const UMBRALES_CV_DEFAULTS = {
 };
 
 
+const DESC_ESTADOS = [
+  { key: "paquete_devuelto",       label: "Paquete devuelto",        color: C_RED,     pattern: /paquete devuelto/i       },
+  { key: "paquete_cancelado",      label: "Paquete cancelado",       color: C_AMB,     pattern: /paquete cancelado/i      },
+  { key: "paquete_no_entregado",   label: "Paquete no entregado",    color: "#EC4899", pattern: /paquete no entregado/i   },
+  { key: "paquete_no_recolectado", label: "Paquete no recolectado",  color: "#6366F1", pattern: /paquete no recolectado/i },
+];
+
 const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 function toMesLabel(dateStr) {
   if (!dateStr) return "Sin fecha";
@@ -133,8 +140,10 @@ function procesarRows(rawRows) {
     const km = parseFloat(r.distancia_km) || 0;
     let minutos = null;
 
-    // Tiempo: desde "asignado" hasta "fecha de entrega" para todos los servicios Finalizado
-    const fechaEntrega = r["fecha de entrega"] || r.fecha_de_entrega || r.llego_donde_el_cliente || "";
+    // Tiempo: desde "asignado" hasta la entrega real.
+    // Para ClickHouse: finalizo_servicio = tms_dropped_off (paquete entregado al cliente).
+    // Para Excel: fecha de entrega / fecha_de_entrega. fallback: llego_donde_el_cliente (llegada al destino).
+    const fechaEntrega = r["fecha de entrega"] || r.fecha_de_entrega || r.finalizo_servicio || r.llego_donde_el_cliente || "";
     if (r.asignado && fechaEntrega) {
       const t0 = new Date(r.asignado);
       const t1 = new Date(fechaEntrega);
@@ -175,6 +184,8 @@ function procesarRows(rawRows) {
       }
     }
 
+    const descripcion = (r.descripcion || r["descripción"] || r.description || r.detalle || r.observacion || r.observaciones || "").trim();
+
     return {
       uuid:              r.uuid_booking || idServicio,
       idServicio,
@@ -190,10 +201,12 @@ function procesarRows(rawRows) {
       minutos,
       horaEntrega:       horaMin(fechaEntrega),
       horaAsignado:      horaMin(r.asignado),
-      esDevolucion:      /^si$/i.test(String(r["finalizado fallido"] ?? r.finalizado_fallido ?? "").trim()),
+      esDevolucion:      /paquete devuelto/i.test(descripcion) || Boolean(r.fecha_devolucion_paquete),
       finalizadoFallido: String(r["finalizado fallido"] ?? r.finalizado_fallido ?? "").trim(),
       fechaPaqueteNoRecibido: r.fecha_paquete_no_recibido ? String(r.fecha_paquete_no_recibido) : "",
-      esPerfecto:        estado === "Finalizado",
+      // Para datos de ClickHouse, estado="Finalizado" abarca tanto entregas exitosas como fallidas.
+      // Se excluye finalizado_fallido="SI" para no inflar el KPI de entregados perfectos.
+      esPerfecto:        estado === "Finalizado" && !/^si$/i.test(String(r["finalizado fallido"] ?? r.finalizado_fallido ?? "").trim()),
       esNoCompletado:    isNoCompletado(estado),
       esCancelado:       isCancelado(estado),
       tsalida,
@@ -201,10 +214,14 @@ function procesarRows(rawRows) {
       direccionOrigen:   (r.direccion_origen || "").trim(),
       localidadOrigen:   (r.localidad_origen  || r["localidad origen"]  || r.barrio_origen  || r.localidad_recogida  || "").trim(),
       localidadDestino:  (r.localidad_destino || r["localidad destino"] || r.barrio_destino || r.localidad_entrega   || "").trim(),
-      descripcion:       (r.descripcion || r["descripción"] || r.description || r.detalle || r.observacion || r.observaciones || "").trim(),
+      descripcion,
+      descEstado:        getDescEstado(descripcion),
       // Campos para tarjeta de detalle de servicio
-      iniciadoRaw:       r.asignado    ? String(r.asignado)    : "",
-      finalizadoRaw:     fechaEntrega  ? String(fechaEntrega)  : "",
+      iniciadoRaw:       r.asignado              ? String(r.asignado)              : "",
+      llegadaOrigenRaw:  r.llego_al_origen       ? String(r.llego_al_origen)       : "",
+      salidaOrigenRaw:   r.salio_de_origen        ? String(r.salio_de_origen)        : "",
+      finalizadoRaw:     fechaEntrega             ? String(fechaEntrega)             : "",
+      entregadoRaw:      r.finalizo_servicio      ? String(r.finalizo_servicio)      : (r.fecha_entrega_paquete ? String(r.fecha_entrega_paquete) : ""),
       fechaCancelacion:  r.fecha_devolucion_paquete ? String(r.fecha_devolucion_paquete) : "",
       nombrePiloto:      String(r.nombre_piloto ?? r.piloto ?? r.driver ?? "").trim(),
       idPiloto:          String(r.id_piloto ?? r.piloto_id ?? r.driver_id ?? "").trim(),
@@ -248,6 +265,12 @@ function isNoCompletado(estado) {
 }
 function isCancelado(estado) {
   return /cancel/i.test((estado || "").trim());
+}
+function getDescEstado(desc) {
+  for (const { key, pattern } of DESC_ESTADOS) {
+    if (pattern.test(desc)) return key;
+  }
+  return null;
 }
 
 // ── computeRowSla ──────────────────────────────────────────────────────────
@@ -364,6 +387,129 @@ function fmtMCV(n) {
   if (v >= 1e6) return `$${(n/1e6).toFixed(1)}M`;
   if (v >= 1e3) return `$${(n/1e3).toFixed(0)}K`;
   return `$${Math.round(n)}`;
+}
+
+function PaquetesDescripcionChart({ rows }) {
+  const data = useMemo(() => {
+    const total = rows.length;
+    return DESC_ESTADOS
+      .map(({ key, label, color }) => {
+        const count = rows.filter(r => r.descEstado === key).length;
+        return { label, key, count, pct: total > 0 ? count / total : 0, color };
+      })
+      .filter(d => d.count > 0);
+  }, [rows]);
+
+  if (!data.length) return null;
+
+  const totalMarcados = data.reduce((s, d) => s + d.count, 0);
+
+  function descargar() {
+    const lineaLabel = { mostrador: "Mostrador", integ_sd: "Integ. Same Day", integ_nd: "Integ. Next Day" };
+    const marcados = rows.filter(r => r.descEstado != null);
+    const sheetData = marcados.map(r => {
+      const row = {
+        "Estado descripción": DESC_ESTADOS.find(e => e.key === r.descEstado)?.label || r.descEstado,
+        "Fecha":              r.fecha        || "—",
+        "Ciudad":             r.ciudad       || "—",
+        "Línea":              lineaLabel[r.linea] || r.linea || "—",
+        "Sede / Usuario":     r.sucursal     || "—",
+        "Dirección origen":   r.direccionOrigen || "—",
+        "Estado servicio":    r.estado       || "—",
+      };
+      if (r.idServicio)    row["ID Servicio"]     = r.idServicio;
+      if (r.numeroPaquete) row["N° Paquete"]      = r.numeroPaquete;
+      if (r.descripcion)   row["Descripción"]     = r.descripcion;
+      if (r.nombrePiloto)  row["Piloto"]          = r.nombrePiloto;
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    ws["!cols"] = [26, 12, 18, 18, 30, 45, 30, 28, 40, 28].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Estados Descripción");
+    XLSX.writeFile(wb, "paquetes-estado-descripcion.xlsx");
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+      <div className="flex items-start justify-between mb-3 gap-3">
+        <div>
+          <p className="text-sm font-bold text-gray-700">📦 Paquetes por estado de descripción</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {totalMarcados.toLocaleString("es-CO")} paquetes identificados · de {rows.length.toLocaleString("es-CO")} total ({fmtPct(pct(totalMarcados, rows.length))} del período)
+          </p>
+        </div>
+        <button
+          onClick={descargar}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
+          style={{ background: C_TEAL }}>
+          ⬇ Descargar ({totalMarcados.toLocaleString("es-CO")})
+        </button>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-center">
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="count"
+              cx="50%"
+              cy="50%"
+              outerRadius={78}
+              label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+              labelLine={false}
+            >
+              {data.map((d, i) => <Cell key={i} fill={d.color} />)}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const d = payload[0]?.payload;
+                return (
+                  <div className="bg-white border rounded-xl shadow-lg px-3 py-2.5 text-xs space-y-1 min-w-[190px]" style={{ borderColor: d.color + "44" }}>
+                    <p className="font-bold mb-1" style={{ color: d.color }}>{d.label}</p>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">Cantidad</span>
+                      <span className="font-bold">{d.count.toLocaleString("es-CO")}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">% del total</span>
+                      <span className="font-bold">{fmtPct(d.pct)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">% de marcados</span>
+                      <span className="font-bold">{totalMarcados > 0 ? fmtPct(pct(d.count, totalMarcados)) : "—"}</span>
+                    </div>
+                  </div>
+                );
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="space-y-3">
+          {data.map(d => (
+            <div key={d.key}>
+              <div className="flex justify-between items-center text-xs mb-1">
+                <span className="font-semibold text-gray-700">{d.label}</span>
+                <div className="text-right">
+                  <span className="font-extrabold" style={{ color: d.color }}>{d.count.toLocaleString("es-CO")}</span>
+                  <span className="text-gray-400 ml-1">· {fmtPct(d.pct)}</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-2 rounded-full transition-all"
+                  style={{ width: `${Math.min(100, d.pct * 100).toFixed(1)}%`, background: d.color }}
+                />
+              </div>
+            </div>
+          ))}
+          <p className="text-[10px] text-gray-400 pt-1">
+            % calculado sobre el total de servicios del período
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function GmvDiarioCV({ rows }) {
@@ -515,7 +661,17 @@ function groupBy(rows, key) {
 function topN(rows, key, n = 12) {
   const grp = groupBy(rows, key);
   return Object.entries(grp)
-    .map(([k, v]) => ({ name: k, total: v.length, entregados: v.filter(r=>r.esPerfecto && !r.fueraHorario).length, slaMet: v.filter(r=>r.slaCumplido).length, slaDef: v.filter(r=>r.slaCumplido!==null).length, incumplidos: v.filter(r=>r.slaCumplido===false).length, cancelados: v.filter(r=>!r.esPerfecto).length }))
+    .map(([k, v]) => {
+      const entregados = v.filter(r => r.esPerfecto && !r.fueraHorario);
+      const conTiempo  = entregados.filter(r => r.minutos != null);
+      const avgMin     = conTiempo.length ? conTiempo.reduce((a, b) => a + b.minutos, 0) / conTiempo.length : null;
+      return {
+        name: k, total: v.length, entregados: entregados.length,
+        slaMet: v.filter(r=>r.slaCumplido).length, slaDef: v.filter(r=>r.slaCumplido!==null).length,
+        incumplidos: v.filter(r=>r.slaCumplido===false).length, cancelados: v.filter(r=>!r.esPerfecto).length,
+        avgMin,
+      };
+    })
     .sort((a, b) => b.total - a.total)
     .slice(0, n);
 }
@@ -619,6 +775,7 @@ function TablaRanking({ rows, groupKey, title, showSla }) {
             {showSla && <th className="text-right p-2 font-semibold">Incumplidos</th>}
             {showSla && <th className="text-right p-2 font-semibold">Cancelados / Exp.</th>}
             {showSla && <th className="text-right p-2 font-semibold">% SLA</th>}
+            <th className="text-right p-2 font-semibold">Prom. Entrega</th>
           </tr>
         </thead>
         <tbody>
@@ -646,6 +803,7 @@ function TablaRanking({ rows, groupKey, title, showSla }) {
                   {d.slaDef > 0 ? fmtPct(pct(d.slaMet, d.slaDef)) : "—"}
                 </td>
               )}
+              <td className="p-2 text-right text-gray-600">{fmtMin(d.avgMin)}</td>
             </tr>
           ))}
         </tbody>
@@ -813,15 +971,17 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
     const noPerfectos = rows.filter(r => r.slaCumplido === false);
     const data = noPerfectos.map(r => ({
       "Booking ID":          r.idServicio || r.uuid || "—",
+      "N° Paquete":          r.numeroPaquete || "—",
       "Estado":              r.estado || "—",
       "Hora Asignado":       fmtDatetime(r.iniciadoRaw),
       "Tiempo efectivo":     r.minutos != null ? fmtMin(r.minutos) : "—",
       "Ciudad":              r.ciudad || "—",
       "Dirección de Origen": r.direccionOrigen || "—",
       "Sede":                r.sucursal || "—",
+      "Piloto":              r.nombrePiloto || "—",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [{ wch: 28 }, { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 45 }, { wch: 30 }];
+    ws["!cols"] = [{ wch: 28 }, { wch: 22 }, { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 45 }, { wch: 30 }, { wch: 26 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "No Perfectos");
     const lineaLabel = linea === "mostrador" ? "mostrador" : linea === "integ_sd" ? "integ-sd" : "integ-nd";
@@ -833,6 +993,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
     const data = devRows.map(r => ({
       "Fecha":                       r.fechaCancelacion ? fmtDatetime(r.fechaCancelacion) : fmtDatetime(r.iniciadoRaw),
       "Booking ID":                  r.idServicio || r.uuid || "—",
+      "N° Paquete":                  r.numeroPaquete || "—",
       "Ciudad":                      r.ciudad || "—",
       "ID Piloto":                   r.idPiloto || "—",
       "Nombre Piloto":               r.nombrePiloto || "—",
@@ -844,13 +1005,63 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     ws["!cols"] = [
-      { wch: 22 }, { wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 28 },
+      { wch: 22 }, { wch: 28 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 28 },
       { wch: 50 }, { wch: 30 }, { wch: 40 }, { wch: 26 }, { wch: 18 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Devoluciones");
     const lineaLabel = linea === "mostrador" ? "mostrador" : linea === "integ_sd" ? "integ-sd" : "integ-nd";
     XLSX.writeFile(wb, `devoluciones-${lineaLabel}.xlsx`);
+  }
+
+  function descargarTiemposEtapas() {
+    function diffMin(a, b) {
+      if (!a || !b) return null;
+      const d = Math.round((new Date(b) - new Date(a)) / 60000);
+      return d > 0 ? d : null;
+    }
+    const cfg = SLA_DEFAULTS.ranges;
+    const lastMax = cfg[cfg.length - 1]?.maxKm || 17;
+    const data = rows
+      .filter(r => r.km > 0)
+      .map(r => {
+        let rango = `> ${lastMax} km`;
+        for (const rng of cfg) { if (r.km <= rng.maxKm) { rango = rng.label; break; } }
+        const t1    = diffMin(r.iniciadoRaw,      r.llegadaOrigenRaw);
+        const t2    = diffMin(r.llegadaOrigenRaw, r.salidaOrigenRaw);
+        const t3    = diffMin(r.salidaOrigenRaw,  r.finalizadoRaw);
+        const t4    = diffMin(r.finalizadoRaw,    r.entregadoRaw);
+        const total = r.minutos != null
+          ? Math.round(r.minutos)
+          : diffMin(r.iniciadoRaw, r.entregadoRaw || r.finalizadoRaw);
+        return {
+          "Fecha":               r.fecha || "—",
+          "Booking ID":          r.idServicio || r.uuid || "—",
+          "Ciudad":              r.ciudad || "—",
+          "ID Piloto":           r.idPiloto || "—",
+          "Nombre Piloto":       r.nombrePiloto || "—",
+          "Dirección de Origen": r.direccionOrigen || "—",
+          "N° Paquete":          r.numeroPaquete || "—",
+          "Rango KM":            rango,
+          "Distancia (km)":      r.km ? r.km.toFixed(1) : "—",
+          "Asig→Origen (min)":   t1 ?? "—",
+          "En Origen (min)":     t2 ?? "—",
+          "Tránsito (min)":      t3 ?? "—",
+          "Entrega Final (min)": t4 ?? "—",
+          "Total (min)":         total ?? "—",
+          "Estado":              r.estado || "—",
+        };
+      });
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [
+      { wch: 12 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 26 },
+      { wch: 45 }, { wch: 22 }, { wch: 14 }, { wch: 14 },
+      { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 20 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Tiempos por Etapa");
+    const lineaLabel = linea === "mostrador" ? "mostrador" : linea === "integ_sd" ? "integ-sd" : "integ-nd";
+    XLSX.writeFile(wb, `tiempos-etapas-${lineaLabel}.xlsx`);
   }
 
   return (
@@ -895,6 +1106,8 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
       )}
 
       <GmvDiarioCV rows={rows} />
+
+      <PaquetesDescripcionChart rows={rows} />
 
       {/* Tendencia diaria */}
       {tendencia.length > 1 && (
@@ -1070,7 +1283,14 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
       {/* SLA por rango de distancia (solo same day) */}
       {!isNextDay && slaRanges.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <p className="text-sm font-bold text-gray-700 mb-3">📏 SLA por rango de distancia</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-bold text-gray-700">📏 SLA por rango de distancia</p>
+            <button onClick={descargarTiemposEtapas}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
+              style={{ background: C_TEAL }}>
+              ⬇ Descargar detalle
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
@@ -1643,6 +1863,8 @@ function ResumenPanel({ rows, allRows }) {
       </div>
 
       <GmvDiarioCV rows={rows} />
+
+      <PaquetesDescripcionChart rows={rows} />
 
       {/* Composición por línea */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -4188,7 +4410,7 @@ export default function InformeCruzVerde({ isAdmin }) {
       }
       try {
         const r = await fetch(`/api/cruz_verde/status?${params}`, { headers: { Accept: "application/json" } });
-        if (r.status === 502 || r.status === 503) {
+        if (r.status === 502 || r.status === 503 || r.status === 404) {
           setChMsg(`⏳ Servidor reiniciando… ${attempts * 5}s — reintentando`);
           const tid = setTimeout(() => poll(attempts + 1), 5000);
           setChPollRef(tid);
@@ -4363,7 +4585,9 @@ export default function InformeCruzVerde({ isAdmin }) {
                     const SLIM = new Set(['fecha','mes','linea','ciudad','sucursal','km',
                       'minutos','horaEntrega','esPerfecto','esDevolucion','estado','costo',
                       'dayOfWeek','localidadOrigen','localidadDestino','nombrePiloto',
-                      'tsalida','direccionOrigen']);
+                      'tsalida','direccionOrigen','descEstado','numeroPaquete',
+                      // Campos para descargas de Devoluciones y No Perfectos:
+                      'idServicio','iniciadoRaw','idPiloto','descripcion','fechaCancelacion']);
                     const slimRow = (r) => { const s = {}; for (const k of SLIM) if (k in r) s[k] = r[k]; return s; };
                     const mesData = await idbLoad(mesSel);
                     if (!mesData) throw new Error("No hay datos cargados para este mes");
