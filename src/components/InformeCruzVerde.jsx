@@ -641,7 +641,7 @@ function calcMetricas(rows) {
   const slaDefined = rows.filter(r => r.slaCumplido !== null);
   const slaMet   = slaDefined.filter(r => r.slaCumplido).length;
   const devol    = rows.filter(r => r.esDevolucion).length;
-  const noPerfectos = rows.filter(r => r.slaCumplido === false).length;
+  const noPerfectos = rows.filter(r => r.slaCumplido === false || /^si$/i.test(r.finalizadoFallido)).length;
   const tiempos  = rows.filter(r => r.minutos != null).map(r => r.minutos);
   const avgMin   = tiempos.length ? tiempos.reduce((a,b)=>a+b,0)/tiempos.length : null;
   const ciudades = new Set(rows.map(r => r.ciudad)).size;
@@ -968,7 +968,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
   const isNextDay  = linea === "integ_nd";
 
   function descargarNoPerfectos() {
-    const noPerfectos = rows.filter(r => r.slaCumplido === false);
+    const noPerfectos = rows.filter(r => r.slaCumplido === false || /^si$/i.test(r.finalizadoFallido));
     const data = noPerfectos.map(r => ({
       "Booking ID":          r.idServicio || r.uuid || "—",
       "N° Paquete":          r.numeroPaquete || "—",
