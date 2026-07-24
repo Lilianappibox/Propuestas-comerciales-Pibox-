@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import NotasTareasCruzVerde from "./NotasTareasCruzVerde";
-import { publishMonthToServer, fetchFromServer, clearFromServer } from "./serverSync";
+import { publishMonthToServer, fetchFromServer, clearFromServer, saveConfigToServer } from "./serverSync";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend, LineChart, Line,
@@ -134,7 +134,13 @@ function buildHorariosMap(horarios) {
 
 // ── procesarRows ───────────────────────────────────────────────────────────
 function procesarRows(rawRows) {
-  return rawRows.map((r) => {
+  return rawRows.map((rawR) => {
+    // Normaliza claves del Excel a lowercase_snake_case para búsquedas insensibles
+    const r = {};
+    for (const [k, v] of Object.entries(rawR)) {
+      r[k.toLowerCase().replace(/\s+/g, "_")] = v;
+      r[k] = v; // también mantiene la clave original
+    }
     const linea = getLinea(r);
     const estado = (r.estado || "").trim();
     const km = parseFloat(r.distancia_km) || 0;
@@ -225,6 +231,7 @@ function procesarRows(rawRows) {
       fechaCancelacion:  r.fecha_devolucion_paquete ? String(r.fecha_devolucion_paquete) : "",
       nombrePiloto:      String(r.nombre_piloto ?? r.piloto ?? r.driver ?? "").trim(),
       idPiloto:          String(r.id_piloto ?? r.piloto_id ?? r.driver_id ?? "").trim(),
+      razonNoEntrega:    String(r.razon_de_la_no_entrega ?? r.razon_no_entrega ?? "Ninguna").trim(),
       // GMV — intenta múltiples nombres de columna posibles
       costo: parseFloat(
         r.costo_servicio ?? r.costo ?? r.gmv ?? r.valor_servicio ?? r.valor ??
@@ -346,7 +353,7 @@ async function idbSave(key, data) {
   const db = await idbOpen();
   const tx = db.transaction(IDB_STORE, "readwrite");
   tx.objectStore(IDB_STORE).put(data, key);
-  return new Promise((r) => { tx.oncomplete = r; });
+  return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(new Error("IDB aborted")); });
 }
 async function idbLoad(key) {
   const db = await idbOpen();
@@ -1845,6 +1852,29 @@ function ResumenPanel({ rows, allRows }) {
   const mTotal = calcMetricas(rows);
   const byLinea = lineas.map(l => ({ ...l, rows: rows.filter(r=>r.linea===l.key), m: calcMetricas(rows.filter(r=>r.linea===l.key)) }));
 
+  const descCards = (() => {
+    const total = rows.length;
+    const map = {};
+    for (const r of rows) {
+      const d = (r.descripcion || "").trim() || "Sin descripción";
+      map[d] = (map[d] || 0) + 1;
+    }
+    const colorOf = (d) => {
+      const l = d.toLowerCase();
+      if (/^paquete entregado$/.test(l))      return { bg:"#DCFCE7", text:"#15803D", border:"#BBF7D0" };
+      if (/^paquete recolectado$/.test(l))    return { bg:"#D1FAE5", text:"#065F46", border:"#A7F3D0" };
+      if (/no entregado/.test(l))             return { bg:"#FEE2E2", text:"#DC2626", border:"#FECACA" };
+      if (/devuelto/.test(l))                 return { bg:"#FEE2E2", text:"#B91C1C", border:"#FECACA" };
+      if (/cancelado/.test(l))                return { bg:"#FEF3C7", text:"#B45309", border:"#FDE68A" };
+      if (/no recolectado/.test(l))           return { bg:"#EDE9FE", text:"#5B21B6", border:"#DDD6FE" };
+      if (/no visitado/.test(l))              return { bg:"#F1F5F9", text:"#475569", border:"#E2E8F0" };
+      return { bg:"#F0FDFA", text:"#0F766E", border:"#CCFBF1" };
+    };
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .map(([desc, count]) => ({ desc, count, pct: total > 0 ? count / total : 0, ...colorOf(desc) }));
+  })();
+
   const pieData = byLinea.map(l => ({ name: l.label, value: l.m.total, color: l.color })).filter(d=>d.value>0);
   const byCiudad = topN(rows, "ciudad", 12);
 
@@ -1853,7 +1883,7 @@ function ResumenPanel({ rows, allRows }) {
       {/* KPIs globales */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard icon="📦" label="Total servicios" value={fmtNum(mTotal.total)} color={C_TEAL} />
-        <KpiCard icon="✅" label="Entregados" value={fmtNum(mTotal.entregados)} sub={fmtPct(pct(mTotal.entregados, mTotal.total))} color={C_GRN} />
+        <KpiCard icon="✅" label="Entregados perfectos" value={fmtNum(mTotal.entregados)} sub={fmtPct(pct(mTotal.entregados, mTotal.total))} color={C_GRN} />
         <KpiCard icon="⚠️" label="No perfectos" value={fmtNum(mTotal.noPerfectos)} sub={mTotal.slaDef > 0 ? `${fmtPct(pct(mTotal.noPerfectos, mTotal.slaDef))} de medidos` : "—"} color={C_RED} />
         <KpiCard icon="⏱️" label="SLA global" value={mTotal.slaDef>0?fmtPct(pct(mTotal.slaMet,mTotal.slaDef)):"—"} sub={`${fmtNum(mTotal.slaMet)} de ${fmtNum(mTotal.slaDef)}`} color={C_CYAN} />
         <KpiCard icon="🏙️" label="Ciudades" value={mTotal.ciudades} color="#6366F1" />
@@ -1861,6 +1891,56 @@ function ResumenPanel({ rows, allRows }) {
         <KpiCard icon="↩️" label="Devoluciones" value={fmtNum(mTotal.devol)} sub={mTotal.total>0?fmtPct(pct(mTotal.devol,mTotal.total)):undefined} color={C_AMB} />
         <KpiCard icon="📊" label="Con SLA medido" value={fmtNum(mTotal.slaDef)} color={C_GRAY} />
       </div>
+
+      {/* Cards por descripción */}
+      {descCards.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <p className="text-sm font-bold text-gray-700 mb-4">📦 Servicios por estado</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+            {descCards.map(({ desc, count, pct: p, bg, text, border }) => {
+              const descL = desc.toLowerCase();
+              const hasDownload = descL !== "paquete entregado";
+              const dlRows = () => {
+                const filtered = rows.filter(r => (r.descripcion || "").trim() === desc);
+                const lineaLabel = { mostrador: "Mostrador", integ_sd: "Integ. Same Day", integ_nd: "Integ. Next Day" };
+                const sheetData = filtered.map(r => ({
+                  "Descripción":       r.descripcion    || "—",
+                  "Fecha":             r.fecha          || "—",
+                  "Ciudad":            r.ciudad         || "—",
+                  "Línea":             lineaLabel[r.linea] || r.linea || "—",
+                  "Sede / Usuario":    r.sucursal       || "—",
+                  "Dirección origen":  r.direccionOrigen|| "—",
+                  "Piloto":            r.nombrePiloto   || "—",
+                  "Estado servicio":   r.estado         || "—",
+                  ...(r.idServicio    ? { "ID Servicio":  r.idServicio }    : {}),
+                  ...(r.numeroPaquete ? { "N° Paquete":   r.numeroPaquete } : {}),
+                }));
+                const ws = XLSX.utils.json_to_sheet(sheetData);
+                ws["!cols"] = [22,12,18,20,30,40,30,25,22,20].map(w => ({ wch: w }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, desc.slice(0, 31));
+                XLSX.writeFile(wb, `${desc.replace(/\s+/g,"-").toLowerCase()}.xlsx`);
+              };
+              return (
+                <div key={desc} className="rounded-xl p-3 text-center border flex flex-col items-center" style={{ background: bg, borderColor: border }}>
+                  <p className="text-2xl font-bold" style={{ color: text }}>{count.toLocaleString("es-CO")}</p>
+                  <p className="text-[10px] font-semibold mt-0.5" style={{ color: text }}>{(p * 100).toFixed(1)}%</p>
+                  <p className="text-[10px] mt-1 leading-tight" style={{ color: text, opacity: 0.8 }}>{desc}</p>
+                  {hasDownload && (
+                    <button
+                      onClick={dlRows}
+                      className="mt-2 text-[9px] font-semibold px-2 py-0.5 rounded-full border transition hover:opacity-80"
+                      style={{ color: text, borderColor: border, background: "white" }}
+                    >
+                      ⬇ Descargar
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <GmvDiarioCV rows={rows} />
 
@@ -2014,6 +2094,7 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows, directorio,
 
       const newDir = { tiendas, horarios: directorio?.horarios || [], uploaded: new Date().toISOString() };
       setDirectorio(newDir);
+      saveConfigToServer("cruz_verde", { directorio: newDir, horariosSd, slaConfig, umbrales: umbralesCV }).catch(() => {});
       setDirUploadMsg({ ok: true, txt: `✅ ${tiendas.length} sucursales cargadas correctamente.` });
     } catch (err) {
       setDirUploadMsg({ ok: false, txt: `❌ Error al procesar: ${err.message}` });
@@ -2076,8 +2157,10 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows, directorio,
         fest_apertura:col(row, "Apertura Festivos","apertura fest"),
         fest_cierre:  col(row, "Cierre Festivos",  "cierre fest"),
       })).filter(h => h.direccion);
-      setHorariosSd({ horarios, uploaded: new Date().toISOString() });
+      const newHorariosSd = { horarios, uploaded: new Date().toISOString() };
+      setHorariosSd(newHorariosSd);
       setHorariosMap(buildHorariosMap(horarios));
+      saveConfigToServer("cruz_verde", { directorio, horariosSd: newHorariosSd, slaConfig, umbrales: umbralesCV }).catch(() => {});
       setSdMsg({ ok: true, txt: `✅ ${horarios.length} tiendas cargadas con horarios.` });
     } catch (err) {
       setSdMsg({ ok: false, txt: `❌ Error: ${err.message}` });
@@ -2954,28 +3037,21 @@ function PilotosPanel({ rows, prevRows, prevMesLabel }) {
 }
 
 // ── Productividad Pilotos Integración ──────────────────────────────────────
-function ProductividadPilotosPanel({ rows }) {
-  const integRows = useMemo(
-    () => rows.filter(r => r.linea === "integ_sd" || r.linea === "integ_nd"),
-    [rows]
-  );
+function ProductividadPilotosPanel({ rows, filtDirecciones = [], filtCiudad = "todas" }) {
+  const integRows = useMemo(() => {
+    let r = rows.filter(r => r.linea === "integ_sd" || r.linea === "integ_nd");
+    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad === filtCiudad);
+    if (filtDirecciones.length > 0) r = r.filter(row => filtDirecciones.includes(row.direccionOrigen));
+    return r;
+  }, [rows, filtDirecciones, filtCiudad]);
 
-  const ciudades = useMemo(
-    () => [...new Set(integRows.map(r => r.ciudad).filter(Boolean))].sort(),
-    [integRows]
-  );
-
-  const [filtPiloto,    setFiltPiloto]    = useState("");
-  const [filtCiudad,    setFiltCiudad]    = useState("todas");
-  const [filtDireccion, setFiltDireccion] = useState("");
+  const [filtPiloto, setFiltPiloto] = useState("");
 
   const filteredBase = useMemo(() => {
     let r = integRows;
-    if (filtPiloto.trim())    r = r.filter(row => (row.nombrePiloto  || "").toLowerCase().includes(filtPiloto.trim().toLowerCase()));
-    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad === filtCiudad);
-    if (filtDireccion.trim()) r = r.filter(row => (row.direccionOrigen || "").toLowerCase().includes(filtDireccion.trim().toLowerCase()));
+    if (filtPiloto.trim()) r = r.filter(row => (row.nombrePiloto || "").toLowerCase().includes(filtPiloto.trim().toLowerCase()));
     return r;
-  }, [integRows, filtPiloto, filtCiudad, filtDireccion]);
+  }, [integRows, filtPiloto]);
 
   const dailyData = useMemo(() => {
     const map = {};
@@ -3153,9 +3229,52 @@ function ProductividadPilotosPanel({ rows }) {
     URL.revokeObjectURL(url);
   };
 
+  const kpiDesc = useMemo(() => {
+    const total = filteredBase.length;
+    const byDesc = {};
+    for (const r of filteredBase) {
+      const d = (r.descripcion || "").trim() || "Sin descripción";
+      byDesc[d] = (byDesc[d] || 0) + 1;
+    }
+    return { total, byDesc: Object.entries(byDesc).sort((a, b) => b[1] - a[1]) };
+  }, [filteredBase]);
+
+  const descColor = (d) => {
+    const l = (d || "").toLowerCase();
+    if (/entregado/.test(l) && !/no entregado/.test(l)) return { bg: "#DCFCE7", text: "#15803D", border: "#BBF7D0" };
+    if (/recolectado/.test(l) && !/no recolectado/.test(l)) return { bg: "#D1FAE5", text: "#065F46", border: "#A7F3D0" };
+    if (/no entregado/.test(l))   return { bg: "#FEE2E2", text: "#DC2626", border: "#FECACA" };
+    if (/devuelto/.test(l))       return { bg: "#FEE2E2", text: "#B91C1C", border: "#FECACA" };
+    if (/cancelado/.test(l))      return { bg: "#FEF3C7", text: "#B45309", border: "#FDE68A" };
+    if (/no recolectado/.test(l)) return { bg: "#EDE9FE", text: "#5B21B6", border: "#DDD6FE" };
+    if (/no visitado/.test(l))    return { bg: "#F1F5F9", text: "#475569", border: "#E2E8F0" };
+    return { bg: "#F0FDFA", text: "#0F766E", border: "#CCFBF1" };
+  };
+
   const thCls = "p-2 text-left font-semibold text-xs whitespace-nowrap";
   const tdCls = "p-2 text-xs";
-  const anyFilter = filtPiloto || filtCiudad !== "todas" || filtDireccion;
+  const anyFilter = !!filtPiloto;
+
+  const [sortDiario,  setSortDiario]  = useState({ col: null, dir: "asc" });
+  const [sortSemanal, setSortSemanal] = useState({ col: null, dir: "asc" });
+
+  const applySortd = (data, { col, dir }) => {
+    if (!col) return data;
+    return [...data].sort((a, b) => {
+      const av = a[col] ?? -Infinity;
+      const bv = b[col] ?? -Infinity;
+      if (typeof av === "string") return dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return dir === "asc" ? av - bv : bv - av;
+    });
+  };
+
+  const sortedDaily  = useMemo(() => applySortd(dailyData,  sortDiario),  [dailyData,  sortDiario]);
+  const sortedWeekly = useMemo(() => applySortd(weeklyData, sortSemanal), [weeklyData, sortSemanal]);
+
+  const toggleSortD = col => setSortDiario(s  => ({ col, dir: s.col === col && s.dir === "asc" ? "desc" : "asc" }));
+  const toggleSortS = col => setSortSemanal(s => ({ col, dir: s.col === col && s.dir === "asc" ? "desc" : "asc" }));
+  const sortIconD = col => sortDiario.col  === col ? (sortDiario.dir  === "asc" ? " ↑" : " ↓") : " ⇅";
+  const sortIconS = col => sortSemanal.col === col ? (sortSemanal.dir === "asc" ? " ↑" : " ↓") : " ⇅";
 
   return (
     <div className="space-y-6">
@@ -3163,33 +3282,13 @@ function ProductividadPilotosPanel({ rows }) {
       {/* Filtros */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
         <p className="text-sm font-bold text-gray-700 mb-4">🔍 Filtros</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Nombre de piloto</label>
             <input
               type="text" value={filtPiloto}
               onChange={e => setFiltPiloto(e.target.value)}
               placeholder="Buscar piloto..."
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Ciudad</label>
-            <select
-              value={filtCiudad}
-              onChange={e => setFiltCiudad(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
-            >
-              <option value="todas">Todas</option>
-              {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Dirección origen</label>
-            <input
-              type="text" value={filtDireccion}
-              onChange={e => setFiltDireccion(e.target.value)}
-              placeholder="Buscar dirección..."
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
           </div>
@@ -3200,12 +3299,48 @@ function ProductividadPilotosPanel({ rows }) {
               {filteredBase.length.toLocaleString()} servicios filtrados
             </span>
             <button
-              onClick={() => { setFiltPiloto(""); setFiltCiudad("todas"); setFiltDireccion(""); }}
+              onClick={() => setFiltPiloto("")}
               className="text-xs text-gray-400 hover:text-gray-600 underline"
-            >Limpiar filtros</button>
+            >Limpiar filtro</button>
           </div>
         )}
       </div>
+
+      {/* KPIs descripción */}
+      {kpiDesc.total > 0 && (
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+          <p className="text-sm font-bold text-gray-700 mb-4">📦 Resumen de paquetes</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            {/* Card total */}
+            <div className="rounded-xl p-3 text-center border" style={{ background: "#F0FDFA", borderColor: "#99F6E4" }}>
+              <p className="text-2xl font-bold" style={{ color: "#0F766E" }}>{kpiDesc.total.toLocaleString("es-CO")}</p>
+              <p className="text-xs font-semibold mt-1" style={{ color: "#0F766E" }}>Total servicios</p>
+            </div>
+            {/* Card participación */}
+            <div className="rounded-xl p-3 text-center border" style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }}>
+              <p className="text-2xl font-bold" style={{ color: "#1D4ED8" }}>
+                {integRows.length > 0 ? ((filteredBase.length / integRows.length) * 100).toFixed(1) : "0.0"}%
+              </p>
+              <p className="text-[10px] font-semibold mt-0.5" style={{ color: "#1D4ED8" }}>
+                {filteredBase.length.toLocaleString("es-CO")} de {integRows.length.toLocaleString("es-CO")}
+              </p>
+              <p className="text-[10px] mt-1 leading-tight" style={{ color: "#1D4ED8", opacity: 0.8 }}>Participación</p>
+            </div>
+            {/* Cards por descripción */}
+            {kpiDesc.byDesc.map(([desc, count]) => {
+              const c = descColor(desc);
+              const pct = kpiDesc.total > 0 ? (count / kpiDesc.total * 100).toFixed(1) : "0.0";
+              return (
+                <div key={desc} className="rounded-xl p-3 text-center border" style={{ background: c.bg, borderColor: c.border }}>
+                  <p className="text-2xl font-bold" style={{ color: c.text }}>{count.toLocaleString("es-CO")}</p>
+                  <p className="text-[10px] font-semibold mt-0.5" style={{ color: c.text }}>{pct}%</p>
+                  <p className="text-[10px] mt-1 leading-tight" style={{ color: c.text, opacity: 0.8 }}>{desc}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Heatmap día/hora */}
       {heatmapData.days.length > 0 && (
@@ -3291,18 +3426,15 @@ function ProductividadPilotosPanel({ rows }) {
             <table className="border-collapse" style={{ minWidth: "860px", width: "100%" }}>
               <thead className="sticky top-0 z-10 bg-teal-50 text-teal-700">
                 <tr>
-                  <th className={thCls}>Piloto</th>
-                  <th className={thCls}>Fecha</th>
-                  <th className={thCls}>Ciudad</th>
-                  <th className={`${thCls} text-right`}>Servicios</th>
-                  <th className={`${thCls} text-right`}>Paquetes</th>
-                  <th className={`${thCls} text-right`}>% SLA</th>
-                  <th className={`${thCls} text-right`}>% Efectividad</th>
-                  <th className={`${thCls} text-right`}>Km prom.</th>
+                  {[["piloto","Piloto","left"],["fecha","Fecha","left"],["ciudad","Ciudad","left"],["servicios","Servicios","right"],["paquetes","Paquetes","right"],["slaPct","% SLA","right"],["entregaPct","% Efectividad","right"],["kmPromedio","Km prom.","right"]].map(([col, label, align]) => (
+                    <th key={col} className={`${thCls} text-${align} cursor-pointer select-none hover:bg-teal-100 transition-colors`} onClick={() => toggleSortD(col)}>
+                      {label}<span className="opacity-60">{sortIconD(col)}</span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {dailyData.map((d, i) => (
+                {sortedDaily.map((d, i) => (
                   <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className={`${tdCls} font-medium text-gray-800 max-w-[200px] truncate`} title={d.piloto}>{d.piloto || "—"}</td>
                     <td className={`${tdCls} whitespace-nowrap text-gray-600`}>{d.fecha}</td>
@@ -3337,18 +3469,15 @@ function ProductividadPilotosPanel({ rows }) {
             <table className="border-collapse w-full">
               <thead className="bg-teal-50 text-teal-700">
                 <tr>
-                  <th className={thCls}>Piloto</th>
-                  <th className={thCls}>Semana</th>
-                  <th className={`${thCls} text-center`}>Días op.</th>
-                  <th className={`${thCls} text-right`}>Servicios</th>
-                  <th className={`${thCls} text-right`}>Paquetes</th>
-                  <th className={`${thCls} text-right`}>% SLA</th>
-                  <th className={`${thCls} text-right`}>% Efectividad</th>
-                  <th className={`${thCls} text-right`}>Km prom.</th>
+                  {[["piloto","Piloto","left"],["semana","Semana","left"],["dias","Días op.","center"],["servicios","Servicios","right"],["paquetes","Paquetes","right"],["slaPct","% SLA","right"],["entregaPct","% Efectividad","right"],["kmPromedio","Km prom.","right"]].map(([col, label, align]) => (
+                    <th key={col} className={`${thCls} text-${align} cursor-pointer select-none hover:bg-teal-100 transition-colors`} onClick={() => toggleSortS(col)}>
+                      {label}<span className="opacity-60">{sortIconS(col)}</span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {weeklyData.map((w, i) => (
+                {sortedWeekly.map((w, i) => (
                   <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className={`${tdCls} font-medium text-gray-800 max-w-[200px] truncate`} title={w.piloto}>{w.piloto || "—"}</td>
                     <td className={`${tdCls} whitespace-nowrap font-semibold`} style={{ color: C_TEAL }}>{fmtSemana(w.semana)}</td>
@@ -3555,6 +3684,362 @@ const LINEAS_ENT = [
   { key:"integ_sd",  label:"Integración Same Day",  short:"Same Day",  icon:"⚡", color:C_CYAN    },
   { key:"integ_nd",  label:"Integración Next Day",  short:"Next Day",  icon:"🌙", color:"#6366F1" },
 ];
+
+// ── Análisis Devoluciones ───────────────────────────────────────────────────
+const DIAS_SEMANA = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+
+function AnalisisDevolucionesPanel({ rows }) {
+  const devRows = useMemo(() =>
+    rows.filter(r => r.esDevolucion || /paquete devuelto/i.test(r.descripcion))
+  , [rows]);
+
+  // ── Franjas horarias ────────────────────────────────────────────────────
+  const horaData = useMemo(() => {
+    const map = {};
+    for (const r of devRows) {
+      if (!r.fechaPaqueteNoRecibido) continue;
+      const d = new Date(r.fechaPaqueteNoRecibido);
+      if (isNaN(d.getTime())) continue;
+      const h = d.getHours();
+      const label = `${String(h).padStart(2,"0")}:00`;
+      map[label] = (map[label] || 0) + 1;
+    }
+    return Object.entries(map)
+      .sort((a,b) => a[0].localeCompare(b[0]))
+      .map(([hora, cantidad]) => ({ hora, cantidad }));
+  }, [devRows]);
+
+  // ── Razón de no entrega ─────────────────────────────────────────────────
+  const razonData = useMemo(() => {
+    const map = {};
+    for (const r of devRows) {
+      const k = r.razonNoEntrega || "Ninguna";
+      map[k] = (map[k] || 0) + 1;
+    }
+    return Object.entries(map)
+      .sort((a,b) => b[1]-a[1])
+      .map(([razon, cantidad]) => ({ razon, cantidad }));
+  }, [devRows]);
+
+  // ── Por línea ───────────────────────────────────────────────────────────
+  const porLinea = useMemo(() => {
+    const m = { mostrador: 0, integ_sd: 0, integ_nd: 0 };
+    for (const r of devRows) m[r.linea] = (m[r.linea] || 0) + 1;
+    return [
+      { linea: "Cruz Verde Mostrador", cantidad: m.mostrador, color: C_TEAL },
+      { linea: "Integración Same Day", cantidad: m.integ_sd,  color: C_CYAN },
+      { linea: "Integración Next Day", cantidad: m.integ_nd,  color: "#6366F1" },
+    ];
+  }, [devRows]);
+
+  // ── Top tiendas ─────────────────────────────────────────────────────────
+  const topTiendas = useMemo(() => {
+    const map = {};
+    for (const r of devRows) {
+      const k = r.sucursal || "Sin sede";
+      if (!map[k]) map[k] = { tienda: k, total: 0, razonMap: {} };
+      map[k].total++;
+      const rz = r.razonNoEntrega || "Ninguna";
+      map[k].razonMap[rz] = (map[k].razonMap[rz] || 0) + 1;
+    }
+    return Object.values(map)
+      .map(d => ({
+        ...d,
+        razonPrincipal: Object.entries(d.razonMap).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—",
+      }))
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 15);
+  }, [devRows]);
+
+  // ── Por día de semana ───────────────────────────────────────────────────
+  const diaSemanaData = useMemo(() => {
+    const map = { 0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0 };
+    for (const r of devRows) {
+      if (!r.fechaPaqueteNoRecibido) continue;
+      const d = new Date(r.fechaPaqueteNoRecibido);
+      if (isNaN(d.getTime())) continue;
+      map[d.getDay()] = (map[d.getDay()] || 0) + 1;
+    }
+    return DIAS_SEMANA.map((dia, i) => ({ dia, cantidad: map[i] || 0 }));
+  }, [devRows]);
+
+  // ── Por ciudad ──────────────────────────────────────────────────────────
+  const ciudadData = useMemo(() => {
+    const map = {};
+    for (const r of devRows) {
+      const k = r.ciudad || "Sin ciudad";
+      if (!map[k]) map[k] = { ciudad: k, total: 0, razonMap: {} };
+      map[k].total++;
+      const rz = r.razonNoEntrega || "Ninguna";
+      map[k].razonMap[rz] = (map[k].razonMap[rz] || 0) + 1;
+    }
+    return Object.values(map)
+      .map(d => ({
+        ...d,
+        razonPrincipal: Object.entries(d.razonMap).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—",
+      }))
+      .sort((a,b) => b.total - a.total);
+  }, [devRows]);
+
+  // ── Por tienda / Mostrador ──────────────────────────────────────────────
+  const tiendaData = useMemo(() => {
+    const map = {};
+    for (const r of devRows.filter(r => r.linea === "mostrador")) {
+      const k = r.sucursal || "Sin tienda";
+      if (!map[k]) map[k] = { nombre: k, total: 0, razonMap: {} };
+      map[k].total++;
+      const rz = r.razonNoEntrega || "Ninguna";
+      map[k].razonMap[rz] = (map[k].razonMap[rz] || 0) + 1;
+    }
+    return Object.values(map)
+      .map(d => ({
+        ...d,
+        razonPrincipal: Object.entries(d.razonMap).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—",
+      }))
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 20);
+  }, [devRows]);
+
+  // ── Por dirección origen / Integración ──────────────────────────────────
+  const dirData = useMemo(() => {
+    const map = {};
+    for (const r of devRows.filter(r => r.linea === "integ_sd" || r.linea === "integ_nd")) {
+      const k = r.direccionOrigen || "Sin dirección";
+      if (!map[k]) map[k] = { nombre: k, total: 0, sd: 0, nd: 0, razonMap: {} };
+      map[k].total++;
+      if (r.linea === "integ_sd") map[k].sd++;
+      if (r.linea === "integ_nd") map[k].nd++;
+      const rz = r.razonNoEntrega || "Ninguna";
+      map[k].razonMap[rz] = (map[k].razonMap[rz] || 0) + 1;
+    }
+    return Object.values(map)
+      .map(d => ({
+        ...d,
+        razonPrincipal: Object.entries(d.razonMap).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—",
+      }))
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 20);
+  }, [devRows]);
+
+  const total       = rows.length;
+  const totalDev    = devRows.length;
+  const pctDev      = total > 0 ? (totalDev / total * 100).toFixed(1) : "0.0";
+  const hasMostrador = devRows.some(r => r.linea === "mostrador");
+  const hasInteg     = devRows.some(r => r.linea === "integ_sd" || r.linea === "integ_nd");
+
+  const cardStyle = "bg-white rounded-2xl shadow-md border border-gray-100 p-5";
+
+  const DetalleTable = ({ data, colNombre, icon, accentColor = "#EF4444" }) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-gray-50">
+            <th className="text-left px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">#</th>
+            <th className="text-left px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">{colNombre}</th>
+            <th className="text-right px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">Devoluciones</th>
+            <th className="text-right px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">% del total</th>
+            <th className="text-left px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">Razón principal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((d, i) => (
+            <tr key={d.nombre} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+              <td className="px-3 py-2 text-gray-400 font-medium">{i + 1}</td>
+              <td className="px-3 py-2 text-gray-800 font-medium">{d.nombre}</td>
+              <td className="px-3 py-2 text-right font-bold" style={{ color: accentColor }}>{fmtNum(d.total)}</td>
+              <td className="px-3 py-2 text-right text-gray-500">{(d.total / totalDev * 100).toFixed(1)}%</td>
+              <td className="px-3 py-2 text-gray-600">{d.razonPrincipal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const exportXlsx = () => {
+    const wb = XLSX.utils.book_new();
+    const wsData = devRows.map(r => ({
+      "Fecha No Recibido":  r.fechaPaqueteNoRecibido,
+      "Razón No Entrega":   r.razonNoEntrega,
+      "Sucursal / Tienda":  r.sucursal,
+      "Dirección Origen":   r.direccionOrigen,
+      "Línea":              r.linea,
+      "Ciudad":             r.ciudad,
+      "Piloto":             r.nombrePiloto,
+      "UUID":               r.uuid,
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wsData), "Devoluciones");
+    XLSX.writeFile(wb, "devoluciones-cruz-verde.xlsx");
+  };
+
+  if (devRows.length === 0) {
+    return (
+      <div className={cardStyle}>
+        <p className="text-gray-500 text-sm text-center py-8">No hay devoluciones en el período seleccionado.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className={`${cardStyle} text-center`}>
+          <p className="text-2xl font-bold text-red-600">{fmtNum(totalDev)}</p>
+          <p className="text-xs text-gray-500 mt-1">Total devoluciones</p>
+        </div>
+        <div className={`${cardStyle} text-center`}>
+          <p className="text-2xl font-bold text-orange-500">{pctDev}%</p>
+          <p className="text-xs text-gray-500 mt-1">% sobre el total</p>
+        </div>
+        {porLinea.map(l => (
+          <div key={l.linea} className={`${cardStyle} text-center`}>
+            <p className="text-2xl font-bold" style={{ color: l.color }}>{fmtNum(l.cantidad)}</p>
+            <p className="text-xs text-gray-500 mt-1">{l.linea}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Franja horaria */}
+      <div className={cardStyle}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-700 text-sm">🕐 Franja horaria de devolución</h3>
+          <span className="text-xs text-gray-400">Basado en fecha_paquete_no_recibido</span>
+        </div>
+        {horaData.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-4">Sin datos de hora disponibles</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={horaData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="hora" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+              <Tooltip formatter={(v) => [fmtNum(v), "Devoluciones"]} />
+              <Bar dataKey="cantidad" fill={C_RED} radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Razón de no entrega + Día de semana */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={cardStyle}>
+          <h3 className="font-bold text-gray-700 text-sm mb-4">❌ Razón de no entrega</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={razonData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
+              <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+              <YAxis type="category" dataKey="razon" tick={{ fontSize: 10 }} width={130} />
+              <Tooltip formatter={(v) => [fmtNum(v), "Devoluciones"]} />
+              <Bar dataKey="cantidad" fill="#F97316" radius={[0,4,4,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <table className="w-full text-xs mt-4 border-collapse">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="text-left px-2 py-1.5 font-semibold text-gray-600">Razón</th>
+                <th className="text-right px-2 py-1.5 font-semibold text-gray-600">Cantidad</th>
+                <th className="text-right px-2 py-1.5 font-semibold text-gray-600">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {razonData.map((d, i) => (
+                <tr key={d.razon} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  <td className="px-2 py-1.5 text-gray-700">{d.razon}</td>
+                  <td className="px-2 py-1.5 text-right font-medium text-gray-800">{fmtNum(d.cantidad)}</td>
+                  <td className="px-2 py-1.5 text-right text-gray-500">{(d.cantidad / totalDev * 100).toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className={cardStyle}>
+          <h3 className="font-bold text-gray-700 text-sm mb-4">📅 Devoluciones por día de semana</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={diaSemanaData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="dia" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+              <Tooltip formatter={(v) => [fmtNum(v), "Devoluciones"]} />
+              <Bar dataKey="cantidad" fill="#A855F7" radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="mt-4 grid grid-cols-7 gap-1 text-center">
+            {diaSemanaData.map(d => (
+              <div key={d.dia}>
+                <p className="text-[10px] font-semibold text-gray-500">{d.dia}</p>
+                <p className="text-xs font-bold text-gray-800">{fmtNum(d.cantidad)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Por ciudad */}
+      {ciudadData.length > 1 && (
+        <div className={cardStyle}>
+          <h3 className="font-bold text-gray-700 text-sm mb-4">🏙️ Devoluciones por ciudad</h3>
+          <DetalleTable data={ciudadData.map(d => ({ ...d, nombre: d.ciudad }))} colNombre="Ciudad" accentColor="#EF4444" />
+        </div>
+      )}
+
+      {/* Por tienda — Mostrador */}
+      {hasMostrador && tiendaData.length > 0 && (
+        <div className={cardStyle}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-bold text-gray-700 text-sm">🏪 Devoluciones por tienda — Mostrador</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Filtra usando "Filtro por tienda" en el encabezado para ver el detalle de una tienda específica</p>
+            </div>
+            <button onClick={exportXlsx}
+              className="text-xs text-teal-600 hover:text-teal-800 font-semibold border border-teal-200 rounded-lg px-3 py-1 hover:bg-teal-50 transition">
+              ↓ Excel
+            </button>
+          </div>
+          <DetalleTable data={tiendaData} colNombre="Tienda / Sucursal" accentColor={C_TEAL} />
+        </div>
+      )}
+
+      {/* Por dirección origen — Integración */}
+      {hasInteg && dirData.length > 0 && (
+        <div className={cardStyle}>
+          <div className="mb-4">
+            <h3 className="font-bold text-gray-700 text-sm">📍 Devoluciones por dirección origen — Integración</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Filtra usando "Dirección origen" en el encabezado para ver el detalle de una dirección específica</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">#</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">Dirección origen</th>
+                  <th className="text-right px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">Total</th>
+                  <th className="text-right px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">Same Day</th>
+                  <th className="text-right px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">Next Day</th>
+                  <th className="text-right px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">% del total</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600 border-b border-gray-200">Razón principal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dirData.map((d, i) => (
+                  <tr key={d.nombre} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="px-3 py-2 text-gray-400 font-medium">{i + 1}</td>
+                    <td className="px-3 py-2 text-gray-800 font-medium max-w-xs truncate" title={d.nombre}>{d.nombre}</td>
+                    <td className="px-3 py-2 text-right font-bold text-indigo-600">{fmtNum(d.total)}</td>
+                    <td className="px-3 py-2 text-right text-cyan-600">{fmtNum(d.sd)}</td>
+                    <td className="px-3 py-2 text-right text-indigo-400">{fmtNum(d.nd)}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">{(d.total / totalDev * 100).toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-gray-600">{d.razonPrincipal}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function EntregasPanel({ rows }) {
   const [lineaSel,  setLineaSel]  = useState("todas");
@@ -4148,6 +4633,7 @@ const TABS = [
   { id:"integ_nd",   label:"Integración Next Day",  icon:"📅",  adminOnly: false },
   { id:"pilotos",       label:"Pilotos Cruz Verde",              icon:"🚴",  adminOnly: false, hiddenForEmails: new Set(["jhon.potier@cruzverde.com.co"]) },
   { id:"prod_pilotos", label:"Productividad Pilotos Integración", icon:"📈", adminOnly: false, hiddenForEmails: new Set(["jhon.potier@cruzverde.com.co"]) },
+  { id:"devoluciones", label:"Análisis Devoluciones", icon:"↩️", adminOnly: false },
   { id:"entregas",   label:"Análisis Entregas",     icon:"📦",  adminOnly: false },
   { id:"admin",      label:"Administrativo",        icon:"🔧",  adminOnly: true  },
   { id:"insight",    label:"Insight",               icon:"💡",  adminOnly: false },
@@ -4192,7 +4678,7 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [prevRows,     setPrevRows]     = useState([]);
   const [publishing,   setPublishing]   = useState(false);
   const [publishMsg,   setPublishMsg]   = useState(null);
-  const [loadingServer, setLoadingServer] = useState(false);
+  const [loadingServer, setLoadingServer] = useState(() => !isAdmin); // no-admin: spinner desde el primer render
 
   // ── ClickHouse integration ──
   const [chDesde,    setChDesde]    = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; });
@@ -4211,12 +4697,9 @@ export default function InformeCruzVerde({ isAdmin }) {
       if (!snap) return false; // error de red — el caller reintentará
       if (!snap.ok || !snap.data?.index) return true; // sin publicación aún — estado correcto, no reintentar
       const d = snap.data;
-      // Guardar en memoria — no depende de IndexedDB para mostrar datos
       serverDataRef.current = d;
       saveIndex({ ...d.index });
-      // IDB como cache secundario (admin lo necesita para subir archivos planos)
-      await Promise.all(Object.entries(d.meses || {}).map(([k, v]) => idbSave(k, v)));
-      // Actualizar estado React directamente — sin localStorage
+      // Actualizar estado React primero — datos visibles sin esperar a IDB
       if (d.directorio) setCvDirectorio(d.directorio);
       if (d.horariosSd) setCvHorariosSd(d.horariosSd);
       if (d.sla) setSlaConfig({ ...SLA_DEFAULTS, ...d.sla });
@@ -4224,6 +4707,8 @@ export default function InformeCruzVerde({ isAdmin }) {
       setIndex({ ...d.index });
       if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
       setSyncVersion(v => v + 1);
+      // IDB en background (cache para admin; no bloquea la vista no-admin)
+      Promise.all(Object.entries(d.meses || {}).map(([k, v]) => idbSave(k, v))).catch(() => {});
       return true;
     } finally {
       setLoadingServer(false);
@@ -4310,6 +4795,17 @@ export default function InformeCruzVerde({ isAdmin }) {
     if (filtDirecciones.length > 0) r = r.filter(row => filtDirecciones.includes(row.direccionOrigen));
     return r.map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
   }, [rows, filtLinea, filtCiudad, filtFechaIni, filtFechaFin, filtTiendas, filtDirecciones, slaConfig, horariosMap]);
+
+  // Base sin filtro de línea — usada por los tabs que ya tienen su propia línea (mostrador, integ_sd, integ_nd)
+  const filteredRowsNoLine = useMemo(() => {
+    let r = rows;
+    if (filtCiudad !== "todas") r = r.filter(row => row.ciudad  === filtCiudad);
+    if (filtFechaIni) r = r.filter(row => row.fecha >= filtFechaIni);
+    if (filtFechaFin) r = r.filter(row => row.fecha <= filtFechaFin);
+    if (filtTiendas.length > 0) r = r.filter(row => filtTiendas.includes(row.sucursal || row.direccionOrigen));
+    if (filtDirecciones.length > 0) r = r.filter(row => filtDirecciones.includes(row.direccionOrigen));
+    return r.map(row => ({ ...row, ...computeRowSla(row, slaConfig, horariosMap) }));
+  }, [rows, filtCiudad, filtFechaIni, filtFechaFin, filtTiendas, filtDirecciones, slaConfig, horariosMap]);
 
   const ciudades = useMemo(() => [...new Set(rows.map(r => r.ciudad))].filter(Boolean).sort(), [rows]);
 
@@ -4518,13 +5014,15 @@ export default function InformeCruzVerde({ isAdmin }) {
 
   const meses = Object.keys(index).sort().reverse();
 
-  // Filas filtradas por tab de línea
+  // Filas filtradas por tab de línea.
+  // Los tabs con línea propia (mostrador, integ_sd, integ_nd) usan filteredRowsNoLine
+  // para que el selector de Línea del header no entre en conflicto con el filtro del tab.
   const tabRows = useMemo(() => {
-    if (tab === "mostrador")  return filteredRows.filter(r => r.linea === "mostrador");
-    if (tab === "integ_sd")   return filteredRows.filter(r => r.linea === "integ_sd");
-    if (tab === "integ_nd")   return filteredRows.filter(r => r.linea === "integ_nd");
+    if (tab === "mostrador")  return filteredRowsNoLine.filter(r => r.linea === "mostrador");
+    if (tab === "integ_sd")   return filteredRowsNoLine.filter(r => r.linea === "integ_sd");
+    if (tab === "integ_nd")   return filteredRowsNoLine.filter(r => r.linea === "integ_nd");
     return filteredRows;
-  }, [tab, filteredRows]);
+  }, [tab, filteredRows, filteredRowsNoLine]);
 
   // Visible tabs
   const currentEmail = (window.__RAILS_USER__?.email || "").toLowerCase().trim();
@@ -4586,6 +5084,7 @@ export default function InformeCruzVerde({ isAdmin }) {
                       'minutos','horaEntrega','esPerfecto','esDevolucion','estado','costo',
                       'dayOfWeek','localidadOrigen','localidadDestino','nombrePiloto',
                       'tsalida','direccionOrigen','descEstado','numeroPaquete',
+                      'horaAsignado',
                       // Campos para descargas de Devoluciones y No Perfectos:
                       'idServicio','iniciadoRaw','idPiloto','descripcion','fechaCancelacion']);
                     const slimRow = (r) => { const s = {}; for (const k of SLIM) if (k in r) s[k] = r[k]; return s; };
@@ -4815,7 +5314,10 @@ export default function InformeCruzVerde({ isAdmin }) {
               <PilotosPanel rows={filteredRows} prevRows={prevRows} prevMesLabel={prevMesSel} />
             )}
             {tab === "prod_pilotos" && (
-              <ProductividadPilotosPanel rows={filteredRows} />
+              <ProductividadPilotosPanel rows={filteredRows} filtDirecciones={filtDirecciones} filtCiudad={filtCiudad} />
+            )}
+            {tab === "devoluciones" && (
+              <AnalisisDevolucionesPanel rows={filteredRows} />
             )}
             {tab === "entregas" && (
               <EntregasPanel rows={filteredRows} />
@@ -4846,7 +5348,7 @@ export default function InformeCruzVerde({ isAdmin }) {
         )}
 
         {/* ── Panel: ClickHouse ── */}
-        {tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
+        {tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "devoluciones" && tab !== "notas" && (
           <div className="bg-white rounded-2xl shadow-md border border-teal-100 p-5">
             <h3 className="font-bold text-gray-700 text-sm mb-1">⚡ Cargar desde ClickHouse</h3>
             <p className="text-xs text-gray-400 mb-4">Ejecuta el reporte en tiempo real. Puede tardar hasta 3 minutos.</p>
@@ -4877,7 +5379,7 @@ export default function InformeCruzVerde({ isAdmin }) {
         )}
 
         {/* ── Panel: Subir nuevo mes ── */}
-        {isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && (
+        {isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "devoluciones" && tab !== "notas" && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <h3 className="font-bold text-gray-700 text-sm mb-4">📂 Subir nuevo mes</h3>
             <div className="flex flex-wrap gap-3 items-end">
@@ -4933,7 +5435,7 @@ export default function InformeCruzVerde({ isAdmin }) {
         )}
 
         {/* Lista de meses para no-admin (sin uploader ni botón eliminar) */}
-        {!isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "notas" && meses.length > 0 && (
+        {!isAdmin && tab !== "admin" && tab !== "insight" && tab !== "entregas" && tab !== "devoluciones" && tab !== "notas" && meses.length > 0 && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
             <p className="text-xs font-semibold text-gray-500 mb-2">Meses cargados ({meses.length})</p>
             <div className="flex flex-wrap gap-2">
