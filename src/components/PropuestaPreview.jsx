@@ -516,7 +516,7 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr style={{ background: GRADIENT }}>
-                    {["Ciudad", "Origen / Área Metropolitana", "Periferia", "Aledaños", "Lejanías", "Zonas Rojas / No Acceso"].map((h, i) => (
+                    {["Ciudad", "Área Metropolitana", "Periferia", "Aledaños", "Lejanías", "Zonas Rojas / No Acceso"].map((h, i) => (
                       <th key={i} className="px-2 py-2 text-left font-semibold text-white border border-purple-900">{h}</th>
                     ))}
                   </tr>
@@ -525,10 +525,10 @@ export default function PropuestaPreview({ propuesta, tarifas, modulos, texts: t
                   {coberturaFiltrada.map((row, i) => (
                     <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : STRIPE }}>
                       <td className="px-2 py-2 border border-purple-100 font-semibold" style={{ color: PURPLE }}>{row.ciudad}</td>
-                      <td className="px-2 py-2 border border-purple-100">{row.origen}{row.metropolitana ? `, ${row.metropolitana}` : ""}</td>
+                      <td className="px-2 py-2 border border-purple-100">{row.origen}</td>
                       <td className="px-2 py-2 border border-purple-100">{row.periferia || "—"}</td>
                       <td className="px-2 py-2 border border-purple-100">{row.aledanos || "—"}</td>
-                      <td className="px-2 py-2 border border-purple-100">—</td>
+                      <td className="px-2 py-2 border border-purple-100">{row.lejanias || "—"}</td>
                       <td className="px-2 py-2 border border-purple-100 text-red-600">{row.zonasRojas || "—"}</td>
                     </tr>
                   ))}

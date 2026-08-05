@@ -654,12 +654,15 @@ export function procesarDatos(rows, slaConfig = null) {
     const city = toStr(row["city"] || row["City"] || "");
     const st = toStr(row["service_status"] || "");
     const gmv = toNum(row["gmv"]);
+    const op = toStr(row["operation_type"] || row["OPERATION_TYPE"] || "");
+    const tel = toStr(row["driver_phone"] || row["phone"] || row["telefono"] || row["driver_mobile"] || "");
+    const rawDate = toStr(row["date"] || "");
     const dtTime = toStr(row["dt_time"] || "");
     let hora = -1;
     const hmMatch = dtTime.match(/^(\d{1,2}):/);
     if (hmMatch) hora = parseInt(hmMatch[1]);
     else { try { const rd = String(row["date"] ?? ""); const d = new Date(rd.length === 10 ? rd + "T12:00:00" : rd); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {} }
-    if (!pilotoMap[dk]) pilotoMap[dk] = { id: dId, n: dNm, ci: city, s: 0, c: 0, x: 0, g: 0, hp: {} };
+    if (!pilotoMap[dk]) pilotoMap[dk] = { id: dId, n: dNm, ci: city, s: 0, c: 0, x: 0, g: 0, hp: {}, ops: {}, ultimaFecha: "", tel: "" };
     const p = pilotoMap[dk];
     p.s++;
     if (st === "Completed") p.c++;
@@ -668,11 +671,15 @@ export function procesarDatos(rows, slaConfig = null) {
     if (hora >= 0) p.hp[hora] = (p.hp[hora] || 0) + 1;
     if (dNm && dNm.length > (p.n || "").length) p.n = dNm;
     if (city) p.ci = city;
+    if (op) p.ops[op] = (p.ops[op] || 0) + 1;
+    if (rawDate && rawDate > p.ultimaFecha) p.ultimaFecha = rawDate;
+    if (tel && !p.tel) p.tel = tel;
   }
   const drivers = Object.values(pilotoMap).map(p => {
     let h = -1, mx = 0;
     for (const [hr, cnt] of Object.entries(p.hp)) { if (cnt > mx) { mx = cnt; h = Number(hr); } }
-    return { id: p.id, n: p.n, ci: p.ci, s: p.s, c: p.c, x: p.x, g: Math.round(p.g), h };
+    const ops = Object.entries(p.ops).sort((a, b) => b[1] - a[1]).map(([op]) => op).join(", ");
+    return { id: p.id, n: p.n, ci: p.ci, s: p.s, c: p.c, x: p.x, g: Math.round(p.g), h, ops, ultimaFecha: p.ultimaFecha, tel: p.tel };
   });
 
   return {

@@ -129,7 +129,7 @@ export default function Configuracion({ data, onSave }) {
     setForm((prev) => ({
       ...prev,
       kams: [...prev.kams, { nombre: "Nuevo KAM", meta: 0, gmv: 0, gmvExtra: 0, okr: 0,
-        utilidadNeta: 0, cumplimiento: 0,
+        utilidadNeta: 0, metaUtilidadNeta: 0, cumplimiento: 0,
         crecimientoVsMes: 0, crecimientoVsMesPct: 0, crecimientoVsAnio: 0, crecimientoVsAnioPct: 0 }],
     }));
   };
@@ -579,7 +579,7 @@ export default function Configuracion({ data, onSave }) {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
                 <Field label="Meta ($)" value={k.meta} onChange={(v) => handleKAMChange(i, "meta", v)} />
                 <Field label="GMV ($)"  value={k.gmv}  onChange={(v) => handleKAMChange(i, "gmv",  v)} />
                 {/* GMV Extra — fondo naranja igual que en Proyección */}
@@ -604,17 +604,40 @@ export default function Configuracion({ data, onSave }) {
                     className="w-full border border-teal-200 rounded-lg px-3 py-2 text-sm bg-teal-50 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-300"
                   />
                 </div>
+                {/* Meta Utilidad Neta — fondo teal más oscuro */}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Meta Util. Neta ($)</label>
+                  <input
+                    type="number"
+                    value={k.metaUtilidadNeta || ""}
+                    placeholder="0"
+                    onChange={(e) => handleKAMChange(i, "metaUtilidadNeta", e.target.value)}
+                    className="w-full border border-teal-300 rounded-lg px-3 py-2 text-sm bg-teal-100 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
                 <Field label="OKR %"    value={k.okr}  onChange={(v) => handleKAMChange(i, "okr",  v)} />
-                <div className="rounded-lg bg-purple-50 p-2 text-center flex flex-col justify-center">
+                <div className="rounded-lg bg-purple-50 p-2 text-center flex flex-col justify-center gap-1">
                   <p className="text-xs text-gray-500">Cumplimiento</p>
-                  <p className={`text-lg font-bold ${
+                  <p className={`text-lg font-bold leading-none ${
                     (k.cumplimiento ?? 0) >= 95 ? "text-green-600"
                     : (k.cumplimiento ?? 0) >= 80 ? "text-yellow-600"
                     : "text-red-500"
                   }`}>{(k.cumplimiento ?? 0).toFixed(1)}%</p>
                   {(k.gmvExtra || 0) > 0 && (
-                    <p className="text-[10px] text-orange-500 mt-0.5">+GMV Extra</p>
+                    <p className="text-[10px] text-orange-500">+GMV Extra</p>
                   )}
+                  {(k.metaUtilidadNeta || 0) > 0 && (k.utilidadNeta || 0) >= 0 && (() => {
+                    const cumplUtil = ((k.utilidadNeta || 0) / k.metaUtilidadNeta * 100);
+                    return (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        cumplUtil >= 95 ? "bg-green-100 text-green-700"
+                        : cumplUtil >= 80 ? "bg-yellow-100 text-yellow-700"
+                        : "bg-red-100 text-red-600"
+                      }`}>
+                        {cumplUtil.toFixed(1)}% util.
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

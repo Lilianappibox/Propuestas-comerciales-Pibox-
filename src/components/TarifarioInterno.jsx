@@ -172,13 +172,13 @@ const recaudoRows = [
 // ── Cobertura por ciudad ──
 const coberturaHeaders = ["Ciudad", "Área Metropolitana", "Periferia", "Aledaños", "Lejanías", "Zonas Rojas"];
 const coberturaRows = [
-  ["Bogotá", "Bogotá", "Soacha, Funza, Madrid, Mosquera, Cota, Chía, La Calera", "Facatativá, Cajicá", "Sopó, Sibaté, Zipaquirá, Tabio, Tenjo", "Quiba, Mochuelo Bajo, Usme Pueblo"],
-  ["Cali", "Cali", "Palmira, Yumbo, Jamundí, Dapa", "La Nubia", "Villa Gorgona, Potreritos, Candelaria", "Siloé, Polvorines, Agua Blanca"],
-  ["Medellín", "Medellín, Envigado, Itagüí, Bello, Sabaneta", "Barbosa, Caldas, Girardota, Copacabana, La Estrella", "Rionegro, Llano Grande, Santa Elena", "La Unión, Guarne, Marinilla, La Ceja", "Manrique La Cruz, Santo Domingo"],
-  ["Barranquilla", "Barranquilla", "Soledad, Palermo, San Isidro", "Puerto Colombia, Galapa, Juan Mina", "Sabana Grande, Baranoa", "Rebolo, La Luz, La Chinita"],
+  ["Bogotá", "Bogotá", "Soacha, Funza, Madrid, Mosquera, Cota, Chía, La Calera", "Facatativá, Cajicá", "Sopó, Sibaté, Zipaquirá, Tabio, Tenjo", "Quiba, Mochuelo Bajo, Illimani, Paraíso, Lucero Alto, Bella Flor, Usme Pueblo, Arbolizadora Alta, Moralba, Miraflores, Ramajal la Gloria, Gaviotas, El Codito"],
+  ["Cali", "Cali", "Palmira, Yumbo, Jamundí, Dapa", "La Nubia", "Villa Gorgona, Potreritos, Candelaria", "Siloé, Las Palmas, Polvorines, Los Chorros, Terrón Colorado, Villa del Sur, Manuela Beltrán, Marroquín 1 y 2, Sucre, Agua Blanca, Potrero Grande, Pizanos 1-2-3, Valle Grande, Mariano Ramos, Último Llorena, Charco Azul, El Calvario, Petecuy 1-2-3, El Hoyo, El Navarro, Poblado Campestre, Cecepaz, Llano Verde, Andrés Sanín"],
+  ["Medellín", "Medellín, Envigado, Itagüí, Bello, Sabaneta", "Barbosa, Caldas, Girardota, Copacabana, La Estrella, San Cristóbal, San Antonio de Prado", "Rionegro, Llano Grande, Santa Elena", "La Unión, Guarne, Marinilla, La Ceja, Carmen de Viboral", "Manrique La Cruz parte alta, Santo Domingo, Enciso, San Javier la Loma, Moravia, Belén Aguas Frías, La Sierra, Carpinelo (Bello), Santa Rita arriba (Bello), Zona Centro (Candelaria), San Javier comunas altas, Manrique, El Popular, Villa Hermosa, Llanaditas, Los Mangos, Trece de Noviembre"],
+  ["Barranquilla", "Barranquilla", "Soledad, Palermo, San Isidro", "Puerto Colombia, Galapa, Juan Mina", "Sabana Grande, Baranoa", "Rebolo, La Luz, La Chinita, Los Olivos I y II, El Rubí, La Pradera, Bajo Valle, La Florida, Nueva Colombia, El Bosque, Las Malvinas, El Ferry, Las Nieves · Soledad: La Bonga, Ferrocarril, Cabrera, Cruz de Mayo, Primero de Mayo, Normandía, Los Cúsules, La Central, Don Bosco"],
   ["Bucaramanga", "Bucaramanga", "Floridablanca, Girón", "Piedecuesta", "—", "—"],
   ["Armenia", "Armenia", "Circasia, Calarcá", "—", "Montenegro", "—"],
-  ["Cartagena", "Cartagena", "La Boquilla, Pradera, La Esperanza, Nelson Mandela", "—", "Serena del Mar, Tierra Baja", "—"],
+  ["Cartagena", "Cartagena", "La Boquilla, Pradera, La Esperanza, Casa Blanca, Nelson Mandela", "—", "Serena del Mar, Tierra Baja, Las Ramplas", "—"],
   ["Santa Marta", "Santa Marta", "Taganga, Bonda, Gaira", "—", "Zazue", "—"],
 ];
 

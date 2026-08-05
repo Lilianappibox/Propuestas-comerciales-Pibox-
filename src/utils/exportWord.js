@@ -237,9 +237,9 @@ export async function exportToWord(propuesta, tarifas, modulos) {
     children.push(
       h2("📍 Cobertura Pibox"),
       makeTable(
-        ["Ciudad", "Origen / Área Metro.", "Periferia", "Aledaños", "Zonas Rojas"],
-        COBERTURA.map((r) => [r.ciudad, r.metropolitana ? `${r.origen}, ${r.metropolitana}` : r.origen, r.periferia || "—", r.aledanos || "—", r.zonasRojas || "—"]),
-        [1100, 2700, 1700, 1700, 2160]
+        ["Ciudad", "Área Metro.", "Periferia", "Aledaños", "Lejanías", "Zonas Rojas"],
+        COBERTURA.map((r) => [r.ciudad, r.origen, r.periferia || "—", r.aledanos || "—", r.lejanias || "—", r.zonasRojas || "—"]),
+        [900, 1500, 1700, 1600, 1600, 2060]
       ),
     );
   }

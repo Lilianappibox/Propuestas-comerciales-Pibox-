@@ -48,7 +48,8 @@ export default function AnalisisPilotos() {
     const prevIds = new Set(driversPrev.map(d => d.id || d.n));
     const currentIds = new Set(driversActual.map(d => d.id || d.n));
     const retenidos = driversPrev.length > 0 ? [...prevIds].filter(id => currentIds.has(id)).length : 0;
-    const perdidos = driversPrev.length > 0 ? driversPrev.length - retenidos : 0;
+    const perdidosList = driversPrev.length > 0 ? driversPrev.filter(d => !currentIds.has(d.id || d.n)) : [];
+    const perdidos = perdidosList.length;
     const tasaRetencion = prevIds.size > 0 ? (retenidos / prevIds.size * 100) : 0;
     const nuevos = driversPrev.length > 0 ? driversActual.filter(d => !prevIds.has(d.id || d.n)) : [];
     const T = driversActual.length;
@@ -82,7 +83,7 @@ export default function AnalisisPilotos() {
     for (const m of Object.values(loadIndex()).sort((a, b) => (a.key < b.key ? -1 : 1))) {
       tend.push({ mes: m.label, key: m.key, pilotos: m.totales?.totalDriversActivos || 0 });
     }
-    return { T, totalS, totalC, totalX, totalG, avg, pctC, pctX, retenidos, perdidos, tasaRetencion, prevTotal: driversPrev.length, nuevosTotal: nuevos.length, franjas, porCiudad, rangos, topA, topX, topG, tend, allA: [...driversActual].sort((a, b) => b.s - a.s), allX: driversActual.filter(d => d.x > 0).sort((a, b) => b.x - a.x) };
+    return { T, totalS, totalC, totalX, totalG, avg, pctC, pctX, retenidos, perdidos, perdidosList, tasaRetencion, prevTotal: driversPrev.length, nuevosTotal: nuevos.length, franjas, porCiudad, rangos, topA, topX, topG, tend, allA: [...driversActual].sort((a, b) => b.s - a.s), allX: driversActual.filter(d => d.x > 0).sort((a, b) => b.x - a.x) };
   }, [driversActual, driversPrev]);
 
   const dlCsv = (rows, hdr, fn) => {
@@ -159,7 +160,21 @@ export default function AnalisisPilotos() {
         {/* Rotación */}
         {driversPrev.length > 0 && (
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-            <h3 className="text-sm font-bold text-gray-700 mb-3">Rotación — {mesLabel} vs {prevLabel}</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-gray-700">Rotación — {mesLabel} vs {prevLabel}</h3>
+              {analisis.perdidosList.length > 0 && (
+                <button
+                  onClick={() => dlCsv(
+                    analisis.perdidosList.map(p => [p.id || "", p.n || "", p.tel || "", p.ci || "", p.ops || "", p.ultimaFecha || ""]),
+                    ["ID Piloto", "Nombre", "Teléfono", "Ciudad", "Operation Type", "Última Fecha Servicio"],
+                    `Pilotos_Perdidos_${prevLabel.replace(" ", "_")}.csv`
+                  )}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
+                >
+                  ⬇ Descargar Perdidos ({analisis.perdidosList.length})
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
               <div className="bg-purple-50 rounded-xl p-3 text-center"><p className="text-2xl font-bold text-purple-700">{analisis.prevTotal.toLocaleString()}</p><p className="text-xs text-gray-500">Mes anterior</p></div>
               <div className="bg-green-50 rounded-xl p-3 text-center"><p className="text-2xl font-bold text-green-600">{analisis.retenidos.toLocaleString()}</p><p className="text-xs text-gray-500">Retenidos</p></div>

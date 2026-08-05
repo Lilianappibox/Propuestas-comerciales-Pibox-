@@ -58,6 +58,22 @@ export async function saveSnapshot(modulo, data) {
   return res.json();
 }
 
+// Guarda solo config (directorio, horariosSd, sla, umbrales) sin tocar los meses publicados.
+export async function saveConfigToServer(modulo, config) {
+  const token = window.__RAILS_CSRF_TOKEN__;
+  const res = await fetch(`/api/snapshot/${modulo}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(token ? { "X-CSRF-Token": token } : {}),
+    },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function clearFromServer(modulo) {
   const token = window.__RAILS_CSRF_TOKEN__;
   const res = await fetch(`/api/snapshot/${modulo}`, {

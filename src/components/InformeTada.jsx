@@ -6,6 +6,16 @@ import {
   ComposedChart, Line,
 } from "recharts";
 
+const MESES_IDX = { Enero:1,Febrero:2,Marzo:3,Abril:4,Mayo:5,Junio:6,Julio:7,Agosto:8,Septiembre:9,Octubre:10,Noviembre:11,Diciembre:12 };
+const mesYearKey = (s) => { const [m, y] = (s||"").split(" "); return (Number(y)||0)*100 + (MESES_IDX[m]||0); };
+const sortMeses = (arr) => [...arr].sort((a, b) => mesYearKey(a) - mesYearKey(b));
+// Normaliza nombre de punto para comparar entre meses: "CAL-TY-CIUDADJARDIN - 830094751-7" → "CIUDADJARDIN" = "Ciudad Jardin"
+const normPunto = (s) => {
+  let n = (s||"").replace(/\s*-\s*\d{6,}-\d\s*$/, "").trim(); // quita NIT " - 830094751-7"
+  n = n.replace(/^[A-Z]{2,3}-[A-Z]{2}-/, "");                  // quita prefijo "BOG-TY-"
+  return n.replace(/\s+/g, "").toUpperCase();
+};
+
 const BRAND_GRADIENT = "linear-gradient(135deg,#5B17A8 0%,#7C22D4 50%,#C026D3 100%)";
 const PIBOX_PURPLE = "#7C22D4";
 const PIBOX_PINK   = "#C026D3";
@@ -281,12 +291,13 @@ function processRows(rows) {
 
     // Punto
     if (punto) {
-      if (!puntoMap[punto]) puntoMap[punto] = { ciudad, turnos: 0, si: 0, no: 0, punt: 0, puntTurnos: 0 };
+      if (!puntoMap[punto]) puntoMap[punto] = { ciudad, turnos: 0, si: 0, no: 0, punt: 0, puntTurnos: 0, cancela: 0 };
       puntoMap[punto].turnos++;
       if (isSI) puntoMap[punto].si++;
       if (isNO) puntoMap[punto].no++;
       if (isPunt || isNoPunt) puntoMap[punto].puntTurnos++;
       if (isPunt) puntoMap[punto].punt++;
+      if (esCancelacion) puntoMap[punto].cancela++;
     }
 
     // Semana
@@ -371,6 +382,24 @@ const TT = ({ active, payload, label }) => {
   );
 };
 
+const TTColoc = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const si = payload.find(p => p.dataKey === "SI")?.value || 0;
+  const no = payload.find(p => p.dataKey === "NO")?.value || 0;
+  const total = si + no;
+  const pct = total > 0 ? ((si / total) * 100).toFixed(1) : "—";
+  return (
+    <div className="bg-white border border-purple-100 rounded-xl shadow-lg px-3 py-2 text-xs">
+      <p className="font-bold text-purple-700 mb-1">{label}</p>
+      <p style={{ color: SEM_VERDE }}>SI: {si.toLocaleString()}</p>
+      <p style={{ color: SEM_ROJO }}>NO: {no.toLocaleString()}</p>
+      <p className="font-bold mt-1" style={{ color: Number(pct) >= 90 ? SEM_VERDE : Number(pct) >= 70 ? SEM_AMARILLO : SEM_ROJO }}>
+        % Coloc: {pct}%
+      </p>
+    </div>
+  );
+};
+
 /* ── KPI Card ────────────────────────────────────────────────────────────── */
 
 function KpiCard({ icon, label, value, sub, borderColor }) {
@@ -426,7 +455,7 @@ function processFactExcel(wb) {
   let mesDetectado = "Sin mes";
 
   for (const r of rows) {
-    const gmv = Number(String(r[" MONTO FINAL TRUMP "] || r["MONTO FINAL TRUMP"] || 0).replace(/[^0-9.-]/g, "")) || 0;
+    const gmv = Number(String(r[" MONTO FINAL BD "] || r["MONTO FINAL BD"] || r["MONTO FINAL TRUMP"] || r[" MONTO FINAL TRUMP "] || 0).replace(/[^0-9.-]/g, "")) || 0;
     const paq = Number(r["PAQUETES"] || 0) || 0;
     const ciudad = String(r["CIUDAD"] || "Sin ciudad").trim();
     const punto = String(r["PUNTO"] || "Sin punto").trim();
@@ -459,7 +488,10 @@ const UMB_DEFAULT = {
   minTurnosCiudad: 10, minTurnosPunto: 5, minGmvPunto: 50000,
 };
 
-function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin, importedData, serverUmbrales, onUmbralesChange }) {
+function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney, isAdmin, importedData, serverUmbrales, onUmbralesChange,
+  trafMesSel, setTrafMesSel, trafMeses: trafMesesProp,
+  trafFechaInicio, setTrafFechaInicio, trafFechaFin, setTrafFechaFin,
+  trafPuntoSel, setTrafPuntoSel, trafPuntosDisponibles, trafHasRows, trafPrevKey, trafFiltroActivo }) {
   const pilotosNuevosPdfRef = useRef(null);
   const [showConfig, setShowConfig] = useState(false);
   const [umb, setUmb] = useState(() =>
@@ -474,8 +506,11 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     }
   }, [serverUmbrales, isAdmin]);
 
-  const insightsMeses = [...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])].sort().reverse();
-  const [mesSel, setMesSel] = useState(insightsMeses[0] || "");
+  const insightsMeses = trafMesesProp?.length
+    ? trafMesesProp
+    : sortMeses([...new Set([...Object.keys(trafIndex), ...Object.keys(factIndex)])]).reverse();
+  const mesSel = trafMesSel ?? insightsMeses[0] ?? "";
+  const setMesSel = setTrafMesSel ?? (() => {});
 
   // Cargar rows de mes actual, anterior y hace 2 meses
   const [insRows, setInsRows] = useState(null);
@@ -530,6 +565,51 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     }
   }, [ins2PrevKey, trafIndex, importedData]);
 
+  // Rango equivalente del mes anterior (mismos días, mes previo)
+  const prevFechaInicio = useMemo(() => {
+    if (!trafFechaInicio || !insPrevKey) return "";
+    const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const parts = insPrevKey.split(" ");
+    if (parts.length !== 2) return "";
+    const mi = ML.indexOf(parts[0]), yr = parseInt(parts[1]);
+    if (mi <= 0 || isNaN(yr)) return "";
+    return `${yr}-${String(mi).padStart(2,"0")}-${trafFechaInicio.slice(8)}`;
+  }, [trafFechaInicio, insPrevKey]);
+
+  const prevFechaFin = useMemo(() => {
+    if (!trafFechaFin || !insPrevKey) return "";
+    const ML = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const parts = insPrevKey.split(" ");
+    if (parts.length !== 2) return "";
+    const mi = ML.indexOf(parts[0]), yr = parseInt(parts[1]);
+    if (mi <= 0 || isNaN(yr)) return "";
+    return `${yr}-${String(mi).padStart(2,"0")}-${trafFechaFin.slice(8)}`;
+  }, [trafFechaFin, insPrevKey]);
+
+  // Filtrar insRows con el rango activo → datos actuales filtrados
+  const trafFiltered = useMemo(() => {
+    if (!insRows?.length || (!trafFechaInicio && !trafFechaFin && !trafPuntoSel)) return null;
+    const filtered = insRows.filter(r => {
+      if (trafFechaInicio && r._fecha && r._fecha < trafFechaInicio) return false;
+      if (trafFechaFin && r._fecha && r._fecha > trafFechaFin) return false;
+      if (trafPuntoSel && String(r["PUNTO"] || "").trim() !== trafPuntoSel) return false;
+      return true;
+    });
+    return filtered.length ? processRows(filtered) : null;
+  }, [insRows, trafFechaInicio, trafFechaFin, trafPuntoSel]);
+
+  // Filtrar insPrevRows con rango equivalente del mes anterior
+  const trafPFiltered = useMemo(() => {
+    if (!insPrevRows?.length || (!prevFechaInicio && !prevFechaFin && !trafPuntoSel)) return null;
+    const filtered = insPrevRows.filter(r => {
+      if (prevFechaInicio && r._fecha && r._fecha < prevFechaInicio) return false;
+      if (prevFechaFin && r._fecha && r._fecha > prevFechaFin) return false;
+      if (trafPuntoSel && String(r["PUNTO"] || "").trim() !== trafPuntoSel) return false;
+      return true;
+    });
+    return filtered.length ? processRows(filtered) : null;
+  }, [insPrevRows, prevFechaInicio, prevFechaFin, trafPuntoSel]);
+
   const saveUmb = (u) => { setUmb(u); onUmbralesChange?.(u); };
   const UmbField = ({ label, k, suffix = "%" }) => (
     <div>
@@ -553,7 +633,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
   const _loadT = (k) => importedData?.meses?.[`traf_${k}`] || loadTrafMes(k);
   const _loadF = (k) => importedData?.meses?.[`fact_${k}`] || loadFactMes(k);
-  const traf = _loadT(mesSel)?.data;
+  const traf = trafFiltered ?? _loadT(mesSel)?.data;
   const fact = _loadF(mesSel);
   // Mes calendario anterior para comparación
   const insPrevMesKey = (() => {
@@ -564,7 +644,7 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
     if (mi <= 0 || isNaN(yr)) return null;
     return `${ML[mi === 1 ? 12 : mi - 1]} ${mi === 1 ? yr - 1 : yr}`;
   })();
-  const trafP = insPrevMesKey ? _loadT(insPrevMesKey)?.data : null;
+  const trafP = trafPFiltered ?? (insPrevMesKey ? _loadT(insPrevMesKey)?.data : null);
   const factP = insPrevMesKey ? _loadF(insPrevMesKey) : null;
 
   const alerts = [], wins = [], detallePuntos = [], detalleCiudades = [];
@@ -899,16 +979,61 @@ function InsightsTab({ trafIndex, factIndex, loadTrafMes, loadFactMes, fmtMoney,
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-      {/* Selector de mes + config */}
+      {/* Filtros — mismos que Tráfico Pilotos */}
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4">
         <div className="flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes</label>
-            <select value={mesSel} onChange={e => setMesSel(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
-              {insightsMeses.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
+          {insightsMeses.length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Mes a analizar</label>
+              <select value={mesSel} onChange={e => setMesSel(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                {insightsMeses.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          )}
+          {trafHasRows && (<>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">📆 Desde</label>
+              <input type="date" value={trafFechaInicio} onChange={e => setTrafFechaInicio(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">📆 Hasta</label>
+              <input type="date" value={trafFechaFin} onChange={e => setTrafFechaFin(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">📍 Punto</label>
+              <select value={trafPuntoSel} onChange={e => setTrafPuntoSel(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 max-w-[200px]">
+                <option value="">Todos</option>
+                {(trafPuntosDisponibles || []).map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            {(trafFechaInicio || trafFechaFin || trafPuntoSel) && (
+              <button onClick={() => { setTrafFechaInicio(""); setTrafFechaFin(""); setTrafPuntoSel(""); }}
+                className="px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition">
+                Limpiar filtros
+              </button>
+            )}
+          </>)}
+          {insPrevKey && !trafFiltroActivo && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold" style={{ background: BRAND_GRADIENT }}>
+              📊 Comparando vs <b className="ml-1">{insPrevKey}</b>
+            </div>
+          )}
+          {trafFiltroActivo && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold flex-wrap" style={{ background: "linear-gradient(135deg,#D97706 0%,#F59E0B 100%)" }}>
+              🔍 Filtro activo:
+              {(trafFechaInicio || trafFechaFin) && <span>{trafFechaInicio || "..."} → {trafFechaFin || "..."}</span>}
+              {trafPuntoSel && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">📍 {trafPuntoSel}</span>}
+              {insPrevKey && (prevFechaInicio || prevFechaFin) && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white/20">
+                  vs {insPrevKey} {prevFechaInicio || "..."} → {prevFechaFin || "..."}
+                </span>
+              )}
+            </div>
+          )}
           {isAdmin && (
             <button onClick={() => setShowConfig(!showConfig)}
               className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-purple-50 transition">
@@ -1818,7 +1943,7 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
                     <CartesianGrid strokeDasharray="3 3" stroke="#F3E8FF" />
                     <XAxis dataKey="hora" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip formatter={(v, n) => [v, n === "turnos" ? "Turnos" : "Colocados"]} />
+                    <Tooltip formatter={(v, n) => [v, n]} />
                     <Legend />
                     <Bar dataKey="turnos" name="Turnos" fill={PIBOX_PURPLE} radius={[4,4,0,0]} />
                     <Bar dataKey="si" name="Colocados" fill={SEM_VERDE} radius={[4,4,0,0]} />
@@ -1922,7 +2047,7 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-purple-600 text-white">
-                        {["#","Piloto","ID","Turnos","Coloc. SI","Coloc. NO","Coloc. %","Punt. SI","Punt. NO","Punt. %","Cancelaciones"].map(h => (
+                        {["#","Piloto","ID","Turnos","Coloc. SI","Coloc. NO","Coloc. Otros","Coloc. %","Punt. SI","Punt. %"].map(h => (
                           <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -1936,18 +2061,13 @@ function CiudadTab({ trafIndex, isAdmin, importedData, loadTrafMes }) {
                           <td className="px-3 py-2 text-center">{p.turnos}</td>
                           <td className="px-3 py-2 text-center font-bold text-green-600">{p.si}</td>
                           <td className="px-3 py-2 text-center text-red-500">{p.no}</td>
+                          <td className="px-3 py-2 text-center text-gray-500">{p.turnos - p.si - p.no}</td>
                           <td className="px-3 py-2 text-center font-bold" style={{ color: p.pctColoc !== null ? colocColor(p.pctColoc) : "#9CA3AF" }}>
                             {p.pctColoc !== null ? `${p.pctColoc.toFixed(1)}%` : "—"}
                           </td>
                           <td className="px-3 py-2 text-center text-green-600">{p.puntSI}</td>
-                          <td className="px-3 py-2 text-center text-red-500">{p.puntNO}</td>
                           <td className="px-3 py-2 text-center font-bold" style={{ color: p.pctPunt !== null ? colocColor(p.pctPunt) : "#9CA3AF" }}>
                             {p.pctPunt !== null ? `${p.pctPunt.toFixed(1)}%` : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            {p.cancela > 0
-                              ? <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-bold">{p.cancela}</span>
-                              : <span className="text-gray-300">0</span>}
                           </td>
                         </tr>
                       ))}
@@ -2034,7 +2154,7 @@ export default function InformeTada({ isAdmin }) {
   const [importedData, setImportedData] = useState(null);
   const [serverUmbrales, setServerUmbrales] = useState(null);
   const [tadaUmbrales, setTadaUmbrales] = useState({});
-  const [loadingServer, setLoadingServer] = useState(false);
+  const [loadingServer, setLoadingServer] = useState(() => !isAdmin); // no-admin: spinner desde el primer render
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState(null);
 
@@ -2052,7 +2172,7 @@ export default function InformeTada({ isAdmin }) {
 
   // Facturación por mes
   const [factIndex, setFactIndex] = useState(_loadFactIndex);
-  const factMeses = Object.keys(factIndex).sort().reverse();
+  const factMeses = sortMeses(Object.keys(factIndex)).reverse();
   const [factMesSel, setFactMesSel] = useState(factMeses[0] || "");
   const [factAnio, setFactAnio] = useState(2026);
   const [factMesNum, setFactMesNum] = useState(new Date().getMonth() + 1);
@@ -2086,11 +2206,12 @@ export default function InformeTada({ isAdmin }) {
   // Cargar snapshot del servidor: no-admins siempre; admins solo si no tienen datos locales
   const syncFromServerTada = useCallback(async () => {
     const tieneLocal = isAdmin && Object.keys(loadTrafIndex()).length > 0;
-    if (tieneLocal) return;
+    if (tieneLocal) return true;
     setLoadingServer(true);
     try {
       const snap = await fetchFromServer("tada");
-      if (!snap?.ok || !snap?.data?.trafIndex) return;
+      if (!snap) return false; // error de red — el caller reintentará en 5s
+      if (!snap?.ok || !snap?.data?.trafIndex) return true; // sin publicación aún
       const d = snap.data;
       setImportedData(d);
       setTrafIndex(d.trafIndex || {});
@@ -2102,17 +2223,23 @@ export default function InformeTada({ isAdmin }) {
       if (d.notas) localStorage.setItem("pibox_tada_notas", JSON.stringify(d.notas));
       if (d.tareas) localStorage.setItem("pibox_tada_tareas", JSON.stringify(d.tareas));
       if (d.umbrales) { setServerUmbrales(d.umbrales); setTadaUmbrales(d.umbrales); }
+      return true;
     } finally {
       setLoadingServer(false);
     }
   }, [isAdmin]);
 
   useEffect(() => {
-    syncFromServerTada();
+    let retryTimer = null;
+    syncFromServerTada().then((ok) => {
+      // Solo no-admin: reintenta en 5s si falló (red), y polling cada 2 min
+      if (isAdmin) return;
+      if (!ok) retryTimer = setTimeout(syncFromServerTada, 5_000);
+    });
     if (isAdmin) return;
     const interval = setInterval(syncFromServerTada, 2 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [syncFromServerTada]);
+    return () => { clearInterval(interval); clearTimeout(retryTimer); };
+  }, [syncFromServerTada, isAdmin]);
 
   // Cargar rows (IndexedDB para admin, importedData o tadaInicial para readonly)
   const [trafRows, setTrafRows] = useState(null);
@@ -2305,9 +2432,13 @@ export default function InformeTada({ isAdmin }) {
         punto,
         ciudad: v.ciudad,
         turnos: v.turnos,
-        colocaciones: v.si,
+        si: v.si,
+        no: v.no || 0,
+        otros: v.turnos - v.si - (v.no || 0),
         pctColoc: pct(v.si, v.si + (v.no || 0)),
+        puntSI: v.punt,
         pctPunt: pct(v.punt, v.puntTurnos || 0),
+        cancela: v.cancela || 0,
       }))
       .sort((a, b) => b.turnos - a.turnos)
       .slice(0, 20);
@@ -2397,7 +2528,7 @@ export default function InformeTada({ isAdmin }) {
     return _loadFactMes(factMesSel);
   }, [factMesSel, factIndex, importedData]);
   const factMesPrevKey = useMemo(() => {
-    const sorted = Object.keys(factIndex).sort();
+    const sorted = sortMeses(Object.keys(factIndex));
     const idx = sorted.indexOf(factMesSel);
     return idx > 0 ? sorted[idx - 1] : null;
   }, [factMesSel, factIndex]);
@@ -2560,6 +2691,7 @@ export default function InformeTada({ isAdmin }) {
             const ciudadData = Object.entries(fd.ciudadMap).map(([name, v]) => ({ name, ...v })).filter(c => c.name && c.name !== "0" && c.name !== "Sin ciudad").sort((a, b) => b.gmv - a.gmv);
             const puntoData = Object.entries(fd.puntoMap).map(([name, v]) => ({ name, ...v })).filter(p => p.name && p.name !== "0" && p.name !== "Sin punto").sort((a, b) => b.gmv - a.gmv);
             const prevCiudad = factPrev ? Object.entries(factPrev.ciudadMap).map(([name, v]) => ({ name, ...v })) : [];
+            const prevPuntoNorm = factPrev ? Object.fromEntries(Object.entries(factPrev.puntoMap).map(([n, v]) => [normPunto(n), v])) : {};
 
             const VarBadge = ({ actual, prev }) => {
               const v = varFact(actual, prev);
@@ -2651,7 +2783,7 @@ export default function InformeTada({ isAdmin }) {
                       </thead>
                       <tbody>
                         {puntoData.slice(0, 25).map((p, i) => {
-                          const prevP = factPrev ? Object.entries(factPrev.puntoMap).find(([n]) => n === p.name)?.[1] : null;
+                          const prevP = prevPuntoNorm[normPunto(p.name)] ?? null;
                           return (
                             <tr key={p.name} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-purple-50/30"} hover:bg-purple-50`}>
                               <td className="px-3 py-2 text-purple-400 font-bold">{i + 1}</td>
@@ -2728,7 +2860,13 @@ export default function InformeTada({ isAdmin }) {
       )}
 
       {/* ── TAB: INSIGHTS ───────────────────────────────────────────── */}
-      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} importedData={importedData} serverUmbrales={serverUmbrales} onUmbralesChange={setTadaUmbrales} />}
+      {tab === "insights" && <InsightsTab trafIndex={trafIndex} factIndex={factIndex} loadTrafMes={_loadTrafMes} loadFactMes={_loadFactMes} fmtMoney={fmtMoney} isAdmin={isAdmin} importedData={importedData} serverUmbrales={serverUmbrales} onUmbralesChange={setTadaUmbrales}
+        trafMesSel={trafMesSel} setTrafMesSel={setTrafMesSel} trafMeses={trafMeses}
+        trafFechaInicio={trafFechaInicio} setTrafFechaInicio={setTrafFechaInicio}
+        trafFechaFin={trafFechaFin} setTrafFechaFin={setTrafFechaFin}
+        trafPuntoSel={trafPuntoSel} setTrafPuntoSel={setTrafPuntoSel}
+        trafPuntosDisponibles={trafPuntosDisponibles} trafHasRows={trafHasRows}
+        trafPrevKey={trafPrevKey} trafFiltroActivo={trafFiltroActivo} />}
 
       {/* ── TAB: POR CIUDAD ─────────────────────────────────────────── */}
       {tab === "ciudad" && <CiudadTab trafIndex={trafIndex} isAdmin={isAdmin} importedData={importedData} loadTrafMes={_loadTrafMes} />}
@@ -2840,8 +2978,7 @@ export default function InformeTada({ isAdmin }) {
               <KpiCard
                 icon="📋"
                 label="Total Turnos"
-                value={efectiveTurnos.toLocaleString()}
-                sub={clienteCancelaCount > 0 ? `(${data.totalTurnos.toLocaleString()} brutos)` : undefined}
+                value={(data.colocacionesSI + data.colocacionesNO).toLocaleString()}
                 borderColor={PIBOX_PURPLE}
               />
               <KpiCard
@@ -2937,7 +3074,7 @@ export default function InformeTada({ isAdmin }) {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={60} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip content={<TT />} />
+                    <Tooltip content={<TTColoc />} />
                     <Legend />
                     <Bar dataKey="SI" stackId="a" fill={SEM_VERDE} name="SI" radius={[0, 0, 0, 0]} />
                     <Bar dataKey="NO" stackId="a" fill={SEM_ROJO} name="NO" radius={[4, 4, 0, 0]} />
@@ -3005,24 +3142,30 @@ export default function InformeTada({ isAdmin }) {
                       <th className="text-left py-2 px-3 text-gray-500 font-semibold">Punto</th>
                       <th className="text-left py-2 px-3 text-gray-500 font-semibold">Ciudad</th>
                       <th className="text-right py-2 px-3 text-gray-500 font-semibold">Turnos</th>
-                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">Colocaciones</th>
-                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">% Colocación</th>
-                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">Puntualidad %</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">Coloc. SI</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">Coloc. NO</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">Coloc. Otros</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">% Coloc.</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">Punt. SI</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-semibold">Punt. %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {topPuntos.map((p, i) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-purple-50/30 transition">
                         <td className="py-2 px-3 text-gray-400 font-mono">{i + 1}</td>
-                        <td className="py-2 px-3 font-semibold text-gray-800 max-w-[220px] truncate" title={p.punto}>
+                        <td className="py-2 px-3 font-semibold text-gray-800 max-w-[180px] truncate" title={p.punto}>
                           {p.punto}
                         </td>
                         <td className="py-2 px-3 text-gray-600">{p.ciudad}</td>
                         <td className="py-2 px-3 text-right font-bold text-gray-700">{p.turnos}</td>
-                        <td className="py-2 px-3 text-right text-gray-700">{p.colocaciones}</td>
+                        <td className="py-2 px-3 text-right font-bold text-green-600">{p.si}</td>
+                        <td className="py-2 px-3 text-right text-red-500">{p.no}</td>
+                        <td className="py-2 px-3 text-right text-gray-500">{p.otros}</td>
                         <td className="py-2 px-3 text-right font-bold" style={{ color: colocColor(p.pctColoc) }}>
                           {p.pctColoc}%
                         </td>
+                        <td className="py-2 px-3 text-right text-green-600">{p.puntSI}</td>
                         <td className="py-2 px-3 text-right font-bold" style={{ color: colocColor(p.pctPunt) }}>
                           {p.pctPunt}%
                         </td>
@@ -3290,17 +3433,34 @@ export default function InformeTada({ isAdmin }) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-purple-700 text-white">
-                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">#</th>
-                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Piloto</th>
-                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">ID</th>
-                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Ciudad</th>
-                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">Turnos</th>
-                    {estadosNuevos.map(e => (
-                      <th key={e} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{e}</th>
-                    ))}
-                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">% Efectividad</th>
-                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">% Puntualidad</th>
-                    <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">Puntos</th>
+                    {(() => {
+                      const abrev = s => s
+                        .replace(/Adicional No Autorizado/i, "Adic.\nNo Aut.")
+                        .replace(/Adicional Cancela/i, "Adic.\nCancela")
+                        .replace(/Adicional autorizado/i, "Adic.\nAut.")
+                        .replace(/Adicional TADA/i, "Adic.\nTADA")
+                        .replace(/Adicional/i, "Adicional")
+                        .replace(/Piloto Cancela/i, "Pil.\nCancela")
+                        .replace(/Reemplazo/i, "Reemplazo")
+                        .replace(/Confirmado/i, "Confirmado");
+                      const thBase = "px-2 py-2 font-semibold text-center leading-tight";
+                      const thL = "px-2 py-2 font-semibold text-left leading-tight";
+                      return (<>
+                        <th className={thL}>#</th>
+                        <th className={thL}>Piloto</th>
+                        <th className={thL}>ID</th>
+                        <th className={thL}>Ciudad</th>
+                        <th className={thBase}>Turnos</th>
+                        {estadosNuevos.map(e => (
+                          <th key={e} className={thBase} style={{ minWidth: 56 }}>
+                            {abrev(e).split("\n").map((l, i) => <span key={i} className="block">{l}</span>)}
+                          </th>
+                        ))}
+                        <th className={thBase}>%<br/>Efect.</th>
+                        <th className={thBase}>%<br/>Punt.</th>
+                        <th className={thL}>Puntos</th>
+                      </>);
+                    })()}
                   </tr>
                 </thead>
                 <tbody>
