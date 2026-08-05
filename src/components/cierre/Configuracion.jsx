@@ -199,24 +199,24 @@ export default function Configuracion({ data, onSave }) {
     setMsgBase("");
   };
 
-  const handleBasePlanaClickHouse = ({ gmvTotal, ciudades, kamGmv }) => {
-    const normKLocal = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-    const buildMatchSet = (formName) => {
-      const fn = normKLocal(formName);
-      const s  = new Set([fn]);
-      if (KAM_MAP[fn]) s.add(normKLocal(KAM_MAP[fn]));
-      for (const [k, v] of Object.entries(KAM_MAP)) {
-        if (normKLocal(v) === fn) s.add(k);
-      }
-      return s;
-    };
-    const wordMatch = (a, b) => {
-      const wa = normKLocal(a).split(/\s+/).filter(Boolean);
-      const wb = normKLocal(b).split(/\s+/).filter(Boolean);
-      const [shorter, longer] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
-      return shorter.length > 0 && shorter.every(w => longer.includes(w));
-    };
+  const normKLocal = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const buildMatchSet = (formName) => {
+    const fn = normKLocal(formName);
+    const s  = new Set([fn]);
+    if (KAM_MAP[fn]) s.add(normKLocal(KAM_MAP[fn]));
+    for (const [k, v] of Object.entries(KAM_MAP)) {
+      if (normKLocal(v) === fn) s.add(k);
+    }
+    return s;
+  };
+  const wordMatch = (a, b) => {
+    const wa = normKLocal(a).split(/\s+/).filter(Boolean);
+    const wb = normKLocal(b).split(/\s+/).filter(Boolean);
+    const [shorter, longer] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
+    return shorter.length > 0 && shorter.every(w => longer.includes(w));
+  };
 
+  const handleActualCH = ({ gmvTotal, ciudades, kamGmv }) => {
     setForm(prev => {
       const next = JSON.parse(JSON.stringify(prev));
       next.cumplimientoEquipo.gmv = gmvTotal;
@@ -235,7 +235,30 @@ export default function Configuracion({ data, onSave }) {
       }
       return next;
     });
-    setMsgBase("✅ Datos de ClickHouse aplicados — GMV Real, Ciudades y KAMs actualizados. Haz clic en 📢 Publicar para el equipo.");
+    setMsgBase("✅ Mes actual aplicado — GMV Real, Ciudades y KAMs actualizados. Haz clic en 📢 Publicar para el equipo.");
+  };
+
+  const handleAnteriorCH = ({ gmvTotal, kamGmv }) => {
+    setForm(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      next.cumplimientoEquipo.mesPasadoGmv = gmvTotal;
+      // Crecimiento vs mes anterior por KAM
+      if (next.kams?.length && kamGmv.length) {
+        next.kams = next.kams.map(k => {
+          const ms = buildMatchSet(k.nombre);
+          const match =
+            kamGmv.find(ch => ms.has(normKLocal(ch.nombre)) || ms.has(normKLocal(ch.rawNombre))) ||
+            kamGmv.find(ch => wordMatch(k.nombre, ch.rawNombre) || wordMatch(k.nombre, ch.nombre));
+          if (!match) return k;
+          const gmvAnt = match.gmv;
+          const crecimientoVsMes    = k.gmv - gmvAnt;
+          const crecimientoVsMesPct = gmvAnt > 0 ? parseFloat(((k.gmv - gmvAnt) / gmvAnt * 100).toFixed(2)) : 0;
+          return { ...k, crecimientoVsMes, crecimientoVsMesPct };
+        });
+      }
+      return next;
+    });
+    setMsgBase("✅ Mes anterior aplicado — GMV Mes Pasado y crecimiento KAMs actualizados. Haz clic en 📢 Publicar para el equipo.");
   };
 
   const handleSave = () => {
@@ -367,7 +390,12 @@ export default function Configuracion({ data, onSave }) {
           </div>
         </div>
         {/* ClickHouse sync */}
-        <BasePlanaClickhouse onDataLoaded={handleBasePlanaClickHouse} />
+        <BasePlanaClickhouse
+          onActualLoaded={handleActualCH}
+          onAnteriorLoaded={handleAnteriorCH}
+          periodo={form.periodo}
+          anio={form.anio}
+        />
 
         {msgBase && (
           <p className={`mt-3 text-xs font-semibold rounded-lg px-3 py-2 ${msgBase.startsWith("✅") ? "bg-green-50 text-green-700" : msgBase.startsWith("❌") ? "bg-red-50 text-red-600" : "bg-indigo-100 text-indigo-700"}`}>

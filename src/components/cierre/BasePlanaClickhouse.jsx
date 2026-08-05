@@ -1,18 +1,28 @@
 import { useState, useRef, useEffect } from "react";
 import { KAM_MAP } from "./excelParser";
 
+const MESES = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11 };
+
 const normK = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 function homologarKAM(raw) {
   const key = normK(raw);
   return KAM_MAP[key] || raw;
 }
 
-function primerDiaMesActual() {
-  const d = new Date();
-  d.setDate(1);
-  return d.toISOString().slice(0, 10);
+function calcDates(periodo, anio) {
+  const mesIdx = MESES[normK(periodo)] ?? new Date().getMonth();
+  const year   = Number(anio) || new Date().getFullYear();
+
+  const actualDesde = new Date(year, mesIdx, 1).toISOString().slice(0, 10);
+  const actualHasta = new Date().toISOString().slice(0, 10);
+
+  const prevIdx  = mesIdx === 0 ? 11 : mesIdx - 1;
+  const prevYear = mesIdx === 0 ? year - 1 : year;
+  const anteriorDesde = new Date(prevYear, prevIdx, 1).toISOString().slice(0, 10);
+  const anteriorHasta = new Date(prevYear, prevIdx + 1, 0).toISOString().slice(0, 10);
+
+  return { actualDesde, actualHasta, anteriorDesde, anteriorHasta };
 }
-function hoy() { return new Date().toISOString().slice(0, 10); }
 
 function procesarFilas(rows) {
   const porCiudad = {};
@@ -54,9 +64,10 @@ function procesarFilas(rows) {
   return { gmvTotal, ciudades, kamGmv };
 }
 
-export default function BasePlanaClickhouse({ onDataLoaded }) {
-  const [desde,   setDesde]   = useState(primerDiaMesActual);
-  const [hasta,   setHasta]   = useState(hoy);
+// ── Panel individual ──────────────────────────────────────────────────────────
+function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta, onDataLoaded }) {
+  const [desde,   setDesde]   = useState(initialDesde);
+  const [hasta,   setHasta]   = useState(initialHasta);
   const [status,  setStatus]  = useState("idle");
   const [msg,     setMsg]     = useState("");
   const [resumen, setResumen] = useState(null);
@@ -67,7 +78,7 @@ export default function BasePlanaClickhouse({ onDataLoaded }) {
   const aplicar = (data) => {
     setResumen(data);
     setStatus("done");
-    setMsg(`✅ ${data.ciudades.length} ciudades · ${data.kamGmv.length} KAMs · GMV $${data.gmvTotal.toLocaleString("es-CO")}`);
+    setMsg(`✅ GMV $${data.gmvTotal.toLocaleString("es-CO")} · ${data.ciudades.length} ciudades · ${data.kamGmv.length} KAMs`);
     onDataLoaded(data);
   };
 
@@ -84,7 +95,7 @@ export default function BasePlanaClickhouse({ onDataLoaded }) {
       if (json.status === "error") { setStatus("error"); setMsg(`❌ ${json.error}`); return; }
 
       setStatus("polling");
-      setMsg("⏳ Consultando ClickHouse… (puede tomar hasta 1 min)");
+      setMsg("⏳ Consultando… (puede tomar hasta 1 min)");
       let attempts = 0;
       pollRef.current = setInterval(async () => {
         if (++attempts > 120) {
@@ -108,63 +119,114 @@ export default function BasePlanaClickhouse({ onDataLoaded }) {
 
   const limpiar = () => {
     if (pollRef.current) clearInterval(pollRef.current);
-    setStatus("idle");
-    setMsg("");
-    setResumen(null);
+    setStatus("idle"); setMsg(""); setResumen(null);
   };
 
   const isRunning = status === "loading" || status === "polling";
 
+  const colors = {
+    indigo: {
+      border:  "border-indigo-200",
+      bg:      "bg-indigo-50",
+      title:   "text-indigo-700",
+      label:   "text-indigo-600",
+      btn:     "bg-indigo-600 hover:bg-indigo-700",
+      btnDis:  "bg-indigo-300",
+      msgBg:   "bg-indigo-50 text-indigo-700 border-indigo-200",
+    },
+    purple: {
+      border:  "border-purple-200",
+      bg:      "bg-purple-50",
+      title:   "text-purple-700",
+      label:   "text-purple-600",
+      btn:     "bg-purple-600 hover:bg-purple-700",
+      btnDis:  "bg-purple-300",
+      msgBg:   "bg-purple-50 text-purple-700 border-purple-200",
+    },
+  }[accentColor] || {};
+
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-4 mt-4">
-      <div className="flex items-center justify-between mb-2">
+    <div className={`bg-white border ${colors.border} rounded-xl p-4`}>
+      <div className="flex items-start justify-between mb-3">
         <div>
-          <p className="text-sm font-bold text-blue-800">🏢 Sincronizar desde ClickHouse</p>
-          <p className="text-xs text-gray-500">
-            Actualiza GMV Real, Ciudades y GMV por KAM automáticamente.
-          </p>
+          <p className={`text-xs font-bold uppercase tracking-wide ${colors.label} mb-0.5`}>{titulo}</p>
+          <p className="text-xs text-gray-400">{descripcion}</p>
         </div>
         {resumen && (
-          <button onClick={limpiar} className="text-xs text-gray-400 hover:text-gray-600 font-medium">
-            ✕ Limpiar
-          </button>
+          <button onClick={limpiar} className="text-xs text-gray-400 hover:text-gray-600 ml-2 shrink-0">✕</button>
         )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      {/* Fechas */}
+      <div className="flex flex-wrap gap-2 mb-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-0.5">Desde</label>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Desde</label>
           <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
             disabled={isRunning}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400 disabled:opacity-50" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-0.5">Hasta</label>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Hasta</label>
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
             disabled={isRunning}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400 disabled:opacity-50" />
         </div>
-        <button
-          onClick={cargar}
-          disabled={isRunning}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-bold shadow transition
-            ${isRunning ? "bg-blue-300 cursor-wait" : "bg-blue-600 hover:bg-blue-700 cursor-pointer"}`}
-        >
-          {isRunning
-            ? <><span className="animate-spin">⏳</span> Consultando…</>
-            : <><span>⚡</span> Cargar desde ClickHouse</>}
-        </button>
       </div>
 
+      {/* Botón */}
+      <button
+        onClick={cargar}
+        disabled={isRunning}
+        className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-xs font-bold shadow transition
+          ${isRunning ? `${colors.btnDis} cursor-wait` : `${colors.btn} cursor-pointer`}`}
+      >
+        {isRunning
+          ? <><span className="animate-spin">⏳</span> Consultando…</>
+          : <><span>⚡</span> Cargar desde ClickHouse</>}
+      </button>
+
+      {/* Mensaje de estado */}
       {msg && (
-        <p className={`mt-2 text-xs px-3 py-1.5 rounded-lg ${
-          status === "error" ? "bg-red-50 text-red-600 border border-red-200"
-          : status === "done" ? "bg-green-50 text-green-700 border border-green-200"
-          : "bg-blue-50 text-blue-700 border border-blue-200"
+        <p className={`mt-2 text-xs px-3 py-1.5 rounded-lg border ${
+          status === "error" ? "bg-red-50 text-red-600 border-red-200"
+          : status === "done" ? "bg-green-50 text-green-700 border-green-200"
+          : colors.msgBg
         }`}>
           {msg}
         </p>
       )}
+    </div>
+  );
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+export default function BasePlanaClickhouse({ onActualLoaded, onAnteriorLoaded, periodo, anio }) {
+  const { actualDesde, actualHasta, anteriorDesde, anteriorHasta } = calcDates(periodo, anio);
+
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 mt-4">
+      <p className="text-sm font-bold text-blue-800 mb-1">🏢 Sincronizar desde ClickHouse</p>
+      <p className="text-xs text-gray-500 mb-3">
+        Fechas pre-calculadas desde la configuración del mes · puedes ajustarlas si es necesario.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <PanelCH
+          titulo="Mes anterior"
+          descripcion="Actualiza GMV Mes Pasado"
+          accentColor="indigo"
+          initialDesde={anteriorDesde}
+          initialHasta={anteriorHasta}
+          onDataLoaded={onAnteriorLoaded}
+        />
+        <PanelCH
+          titulo="Mes actual (cierre)"
+          descripcion="Actualiza GMV Real, Ciudades y KAMs"
+          accentColor="purple"
+          initialDesde={actualDesde}
+          initialHasta={actualHasta}
+          onDataLoaded={onActualLoaded}
+        />
+      </div>
     </div>
   );
 }
