@@ -290,18 +290,29 @@ export function parseCiudades(rows, formActual) {
 }
 
 /**
- * Tendencias — columnas: Mes, GMV, Meta
+ * Tendencias — columnas: Mes, Año, GMV, Meta, Servicios
  */
+const MESES_ORD = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
 export function parseTendencias(rows, formActual) {
   if (!rows.length) return null;
   const tendencias = rows
     .filter((r) => str(val(r, "mes", "month", "periodo")) !== "")
     .map((r) => ({
       mes:       str(val(r, "mes", "month", "periodo")),
+      anio:      num(val(r, "año", "anio", "year")),
       gmv:       num(val(r, "gmv")),
       meta:      num(val(r, "meta", "objetivo")),
       servicios: num(val(r, "servicios", "services", "cantidad servicios")),
-    }));
+    }))
+    .sort((a, b) => {
+      const anioA = a.anio || 0;
+      const anioB = b.anio || 0;
+      if (anioA !== anioB) return anioA - anioB;
+      const mesA = MESES_ORD.indexOf(a.mes.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+      const mesB = MESES_ORD.indexOf(b.mes.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+      return mesA - mesB;
+    });
   if (!tendencias.length) return null;
   return { ...JSON.parse(JSON.stringify(formActual)), tendencias };
 }
