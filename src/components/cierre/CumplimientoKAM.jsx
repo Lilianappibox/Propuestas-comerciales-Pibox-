@@ -22,6 +22,16 @@ function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
   const progress = (pctNum / 100) * circumference;
   const r        = expanded ? 52 : 34;
 
+  const utilNeta       = k.utilidadNeta     || 0;
+  const metaUtilNeta   = k.metaUtilidadNeta || 0;
+  const utilNetaPctGmv = k.gmv > 0 ? ((utilNeta / k.gmv) * 100).toFixed(1) : null;
+  const cumplUtilNeta  = metaUtilNeta > 0 ? ((utilNeta / metaUtilNeta) * 100) : null;
+  const cumplUtilColor = cumplUtilNeta !== null
+    ? (cumplUtilNeta >= 95 ? "bg-green-100 text-green-700"
+       : cumplUtilNeta >= 80 ? "bg-yellow-100 text-yellow-700"
+       : "bg-red-100 text-red-600")
+    : "";
+
   // Comparaciones normalizadas: toleran diferencias de capitalización y tildes
   const kamNorm = normK(k.nombre);
   const nuevos   = (data.clientesNuevos   || []).filter((c) => normK(c.kam) === kamNorm).length;
@@ -69,6 +79,7 @@ function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
       <div className={`bg-white ${expanded ? "px-6 py-5" : "px-4 py-3"}`}>
         {expanded ? (
           /* ── Layout horizontal cuando está expandida ── */
+          <>
           <div className="flex items-center gap-8">
             {/* Donut grande */}
             <div className="shrink-0">
@@ -115,6 +126,40 @@ function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
               </div>
             </div>
           </div>
+          {/* Fila de Utilidad Neta en modo expandido */}
+          {utilNeta > 0 && (
+            <div className="mt-4 bg-teal-50 border border-teal-100 rounded-xl p-4 flex flex-wrap items-center gap-6">
+              <div>
+                <p className="text-xs text-gray-500 font-medium mb-0.5">💚 Utilidad Neta</p>
+                <p className="font-extrabold text-teal-700 text-2xl">{M(utilNeta)}</p>
+              </div>
+              {utilNetaPctGmv !== null && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">% sobre GMV</p>
+                  <span className="text-sm font-bold bg-teal-600 text-white rounded-full px-3 py-1">
+                    {utilNetaPctGmv}%
+                  </span>
+                </div>
+              )}
+              {cumplUtilNeta !== null && (
+                <>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">% vs meta</p>
+                    <span className={`text-sm font-bold rounded-full px-3 py-1 ${cumplUtilColor}`}>
+                      {cumplUtilNeta.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-[120px]">
+                    <p className="text-xs text-gray-500 mb-1">Meta: {M(metaUtilNeta)}</p>
+                    <div className="h-2 bg-teal-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-teal-500 rounded-full" style={{ width: `${Math.min(cumplUtilNeta, 100)}%` }} />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          </>
         ) : (
           /* ── Layout compacto (modo grid múltiple) ── */
           <>
@@ -152,6 +197,27 @@ function KAMCard({ k, data, selected, onClick, gradient, M, expanded }) {
                 <p className="font-bold text-xs text-red-500">{perdidos}</p>
               </div>
             </div>
+            {/* Utilidad Neta — solo si hay valor */}
+            {utilNeta > 0 && (
+              <div className="mt-2 bg-teal-50 border border-teal-100 rounded-lg p-2">
+                <div className="flex justify-between items-center mb-0.5">
+                  <p className="text-[10px] text-gray-600 font-medium">Util. Neta</p>
+                  <div className="flex gap-1 flex-wrap justify-end">
+                    {utilNetaPctGmv !== null && (
+                      <span className="text-[10px] font-bold bg-teal-600 text-white rounded-full px-1.5 py-0.5">
+                        {utilNetaPctGmv}% GMV
+                      </span>
+                    )}
+                    {cumplUtilNeta !== null && (
+                      <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${cumplUtilColor}`}>
+                        {cumplUtilNeta.toFixed(1)}% meta
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="font-bold text-teal-700 text-sm">{M(utilNeta)}</p>
+              </div>
+            )}
           </>
         )}
       </div>
