@@ -70,6 +70,9 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
   const [metaMap, setMetaMap]           = useState(() => {
     try { return JSON.parse(localStorage.getItem("riesgo_meta_map") || "{}"); } catch { return {}; }
   });
+  const [festivosMap, setFestivosMap]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem("riesgo_festivos_map") || "{}"); } catch { return {}; }
+  });
 
   const metaMes    = Number(metaMap[mesKey] || 0);
   const setMetaMes = (val) => {
@@ -77,6 +80,15 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
     setMetaMap(prev => {
       const next = { ...prev, [mesKey]: v };
       try { localStorage.setItem("riesgo_meta_map", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const festivosMes    = (festivosMap[mesKey] || []).map(Number);
+  const setFestivosMes = (diasArr) => {
+    setFestivosMap(prev => {
+      const next = { ...prev, [mesKey]: diasArr };
+      try { localStorage.setItem("riesgo_festivos_map", JSON.stringify(next)); } catch {}
       return next;
     });
   };
@@ -1443,8 +1455,58 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
               const diasConDatos = esMesAct
                 ? (ultimoDia > 0 ? ultimoDia : nowDate.getDate())
                 : totalDias;
-              const pct      = diasConDatos / totalDias;
-              const gmvProy  = pct > 0 ? gmvTotal / pct : gmvTotal;
+              const pct = diasConDatos / totalDias;
+
+              // ── Estacionalidad semanal ──────────────────────────────────────
+              const dailyData   = (activeTot?.daily || []).filter(d => d.gmv > 0);
+              const dowBuckets  = Array.from({length: 7}, () => []);
+              dailyData.forEach(d => {
+                const dow = new Date(d.date + "T12:00:00").getDay();
+                dowBuckets[dow].push(d.gmv);
+              });
+              const globalAvgDay = dailyData.length > 0 ? gmvTotal / dailyData.length : 0;
+              const dowAvg = dowBuckets.map(arr =>
+                arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : globalAvgDay
+              );
+              const sIdx = globalAvgDay > 0 ? dowAvg.map(a => a / globalAvgDay) : Array(7).fill(1);
+              const usandoEstacionalidad = dailyData.length >= 3;
+
+              // ── Factor festivo: aprender del mes anterior ───────────────────
+              let holidayFactor = 0.65;
+              let holidayFactorSrc = "estimado (sin datos previos)";
+              const prevDailyData  = (dataPrev?.totales?.daily || []).filter(d => d.gmv > 0);
+              const prevFestivosArr = mesPrevMeta ? (festivosMap[mesPrevMeta.key] || []).map(Number) : [];
+              if (prevFestivosArr.length > 0 && prevDailyData.length > 0) {
+                const holGmv  = prevDailyData.filter(d => prevFestivosArr.includes(new Date(d.date + "T12:00:00").getDate())).map(d => d.gmv);
+                const normGmv = prevDailyData.filter(d => !prevFestivosArr.includes(new Date(d.date + "T12:00:00").getDate())).map(d => d.gmv);
+                if (holGmv.length > 0 && normGmv.length > 0) {
+                  const avgHol  = holGmv.reduce((s, v) => s + v, 0) / holGmv.length;
+                  const avgNorm = normGmv.reduce((s, v) => s + v, 0) / normGmv.length;
+                  if (avgNorm > 0) {
+                    holidayFactor = avgHol / avgNorm;
+                    holidayFactorSrc = `aprendido de ${mesPrevMeta.label} (${prevFestivosArr.length} festivo${prevFestivosArr.length > 1 ? "s" : ""})`;
+                  }
+                }
+              }
+
+              // ── Peso por día: sIdx[DOW] × factor festivo ───────────────────
+              const festActuales = festivosMes.filter(n => n > 0 && n <= totalDias);
+              const dayWeight = (dayNum) => {
+                const dow    = new Date(yr, mo - 1, dayNum).getDay();
+                const isFest = festActuales.includes(dayNum);
+                return sIdx[dow] * (isFest ? holidayFactor : 1);
+              };
+
+              let wElapsed = 0, wTotal = 0;
+              for (let d = 1; d <= totalDias; d++) {
+                const w = dayWeight(d);
+                wTotal += w;
+                if (d <= diasConDatos) wElapsed += w;
+              }
+
+              // Proyección ajustada (cae al lineal si no hay datos diarios)
+              const gmvProy = wElapsed > 0 ? gmvTotal / wElapsed * wTotal
+                : (pct > 0 ? gmvTotal / pct : gmvTotal);
 
               const histPrev = historialGlobal.filter(h => h.key < mesKey);
 
@@ -1459,9 +1521,9 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
                 }
               }
 
-              const gmvOpt   = gmvProy * (1 + halfRange);
-              const gmvCons  = gmvProy * (1 - halfRange);
-              const avgHist  = histPrev.length
+              const gmvOpt  = gmvProy * (1 + halfRange);
+              const gmvCons = gmvProy * (1 - halfRange);
+              const avgHist = histPrev.length
                 ? histPrev.reduce((s, h) => s + h.gmv, 0) / histPrev.length
                 : 0;
               const deltaVsAvg = avgHist > 0 ? (gmvProy - avgHist) / avgHist : null;
@@ -1512,6 +1574,20 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
                                 placeholder="0"
                                 onChange={e => setMetaMes(e.target.value.replace(/\./g, ""))}
                                 className="w-32 text-xs font-bold text-purple-800 bg-transparent focus:outline-none text-right"
+                              />
+                            </div>
+                            {/* Input festivos */}
+                            <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl px-3 py-1.5">
+                              <span className="text-xs font-semibold text-orange-700">🎉 Festivos (días):</span>
+                              <input
+                                type="text"
+                                value={festivosMes.join(", ")}
+                                placeholder="ej: 7, 20"
+                                onChange={e => {
+                                  const dias = e.target.value.split(/[,\s]+/).map(s => parseInt(s)).filter(n => !isNaN(n) && n > 0);
+                                  setFestivosMes(dias);
+                                }}
+                                className="w-24 text-xs font-bold text-orange-800 bg-transparent focus:outline-none"
                               />
                             </div>
                             {esMesAct ? (
@@ -1634,10 +1710,26 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
                     </div>
                   </div>
 
-                  <p className="text-[10px] text-gray-400 mt-3">
-                    Proyección lineal sobre {diasConDatos} días transcurridos ({(pct*100).toFixed(1)}% del mes).
-                    Rango ±{(halfRange*100).toFixed(0)}% estimado de la varianza de {histPrev.length} mes{histPrev.length !== 1 ? "es" : ""} anteriores.
-                  </p>
+                  <div className="mt-3 space-y-0.5">
+                    <p className="text-[10px] text-gray-400">
+                      {usandoEstacionalidad
+                        ? `📊 Proyección con estacionalidad semanal (${dailyData.length} días con datos). Pesos por DOW calculados del mes actual.`
+                        : `📊 Proyección lineal (sin datos diarios suficientes — carga desde ClickHouse para activar estacionalidad).`}
+                      {" "}Rango ±{(halfRange*100).toFixed(0)}% de varianza de {histPrev.length} mes{histPrev.length !== 1 ? "es" : ""} anteriores.
+                    </p>
+                    {festActuales.length > 0 && (
+                      <p className="text-[10px] text-orange-500">
+                        🎉 {festActuales.length} festivo{festActuales.length > 1 ? "s" : ""} del mes ajustados (días {festActuales.join(", ")}).
+                        Factor festivo: {(holidayFactor*100).toFixed(0)}% vs día normal — {holidayFactorSrc}.
+                      </p>
+                    )}
+                    {prevFestivosArr.length > 0 && festActuales.length === 0 && (
+                      <p className="text-[10px] text-gray-400">
+                        💡 Factor festivo aprendido del mes anterior: {(holidayFactor*100).toFixed(0)}% vs día normal ({holidayFactorSrc}).
+                        Ingresa los festivos de este mes para aplicarlo.
+                      </p>
+                    )}
+                  </div>
                 </div>
               );
             })()}
