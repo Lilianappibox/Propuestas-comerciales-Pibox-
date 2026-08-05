@@ -311,11 +311,12 @@ export function parseTendencias(rows, formActual) {
  * La comparación se hace en minúsculas sin tildes para ser tolerante a variantes.
  */
 export const KAM_MAP = {
-  "cuentas farmer":    "Johana Navarrete",
-  "pipe pibox":        "Bavaria",
-  "nathy olivera":     "Natalia Olivera",
-  "pibox":             "Keeping Deal",
-  "juliana rojas corp":"Juliana Rojas",
+  "cuentas farmer":     "Johana Navarrete",
+  "pipe pibox":         "Bavaria",
+  "nathy olivera":      "Natalia Olivera",
+  "pibox":              "Keeping Deal",
+  "juliana rojas corp": "Juliana Rojas",
+  "jaime giron useche": "Jaime Girón",
 };
 
 function homologarKAM(rawKam) {
@@ -395,12 +396,29 @@ export function parseBasePlana(actual, anterior, formActual) {
   function resolveKam(kamField) {
     if (!kamField) return kamField;
     if (validKamNames.has(kamField)) return kamField; // match directo
-    // Busca el valor original (antes del homologar) entre los nombres válidos
+
+    // Reverse KAM_MAP: nombre mapeado → clave original → buscar en validKamNames
     const rawKey = reverseKamMap[kamField];
     if (rawKey) {
       const match = [...validKamNames].find(k => normStr(k) === rawKey);
       if (match) return match;
     }
+
+    // Match case-insensitive directo
+    const kamNorm = normStr(kamField);
+    const ciMatch = [...validKamNames].find(k => normStr(k) === kamNorm);
+    if (ciMatch) return ciMatch;
+
+    // Word-match: "Jaime Andrés Girón Medina" → "Jaime Girón"
+    // Requiere al menos 2 palabras del nombre más corto en el más largo
+    const kamWords = kamNorm.split(/\s+/).filter(Boolean);
+    const wmMatch = [...validKamNames].find(k => {
+      const kWords = normStr(k).split(/\s+/).filter(Boolean);
+      const [shorter, longer] = kamWords.length <= kWords.length ? [kamWords, kWords] : [kWords, kamWords];
+      return shorter.length >= 2 && shorter.every(w => longer.includes(w));
+    });
+    if (wmMatch) return wmMatch;
+
     return kamField;
   }
 
@@ -513,7 +531,19 @@ export function parseBasePlana(actual, anterior, formActual) {
       detByNorm[normK(key)] = val;
     }
     next.kams = next.kams.map(k => {
-      const kd = next.kamDetalle[k.nombre] || detByNorm[normK(k.nombre)];
+      let kd = next.kamDetalle[k.nombre] || detByNorm[normK(k.nombre)];
+
+      // Word-match fallback: busca en kamDetalle si ningún lookup exacto funcionó
+      if (!kd) {
+        const kWords = normK(k.nombre).split(/\s+/).filter(Boolean);
+        const wmEntry = Object.entries(next.kamDetalle).find(([detKey]) => {
+          const dWords = normK(detKey).split(/\s+/).filter(Boolean);
+          const [shorter, longer] = kWords.length <= dWords.length ? [kWords, dWords] : [dWords, kWords];
+          return shorter.length >= 2 && shorter.every(w => longer.includes(w));
+        });
+        if (wmEntry) kd = wmEntry[1];
+      }
+
       if (!kd) return k;
       const gmv = kd.gmv;
       return {
