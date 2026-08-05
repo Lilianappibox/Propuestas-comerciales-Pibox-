@@ -19,7 +19,8 @@ export default function CumplimientoEquipo({ data }) {
   const vsAnio  = c.gmv - c.anioPasadoGmv;
   const vsMesPct  = c.mesPasadoGmv  > 0 ? ((vsMes  / c.mesPasadoGmv)  * 100).toFixed(2) : "0";
   const vsAnioPct = c.anioPasadoGmv > 0 ? ((vsAnio / c.anioPasadoGmv) * 100).toFixed(2) : "0";
-  const utilPct = ((c.utilidadBruta / c.gmv) * 100).toFixed(1);
+  const utilPct     = c.gmv > 0 ? ((c.utilidadBruta / c.gmv) * 100).toFixed(1) : "0";
+  const utilNetaPct = c.gmv > 0 ? ((( c.utilidadNeta || 0) / c.gmv) * 100).toFixed(1) : "0";
 
   const circumference = 2 * Math.PI * 48;
   const progress      = (pctNum / 100) * circumference;
@@ -113,7 +114,7 @@ export default function CumplimientoEquipo({ data }) {
           </div>
 
           {/* Utilidad Bruta */}
-          <div className="col-span-2 bg-purple-50 rounded-xl p-4 border border-purple-100">
+          <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
             <div className="flex items-start justify-between mb-1">
               <p className="text-xs text-gray-500 font-medium">Utilidad Bruta</p>
               <span className="text-xs font-bold bg-purple-600 text-white rounded-full px-2.5 py-0.5">
@@ -125,6 +126,23 @@ export default function CumplimientoEquipo({ data }) {
               <div
                 className="h-full rounded-full"
                 style={{ width: `${Math.min(Number(utilPct) * 4, 100)}%`, background: BRAND }}
+              />
+            </div>
+          </div>
+
+          {/* Utilidad Neta */}
+          <div className="bg-teal-50 rounded-xl p-4 border border-teal-100">
+            <div className="flex items-start justify-between mb-1">
+              <p className="text-xs text-gray-500 font-medium">Utilidad Neta</p>
+              <span className="text-xs font-bold bg-teal-600 text-white rounded-full px-2.5 py-0.5">
+                {utilNetaPct}% sobre GMV
+              </span>
+            </div>
+            <p className="font-extrabold text-teal-700 text-xl">{M(c.utilidadNeta || 0)}</p>
+            <div className="mt-2 h-2 bg-teal-200 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-teal-500"
+                style={{ width: `${Math.min(Number(utilNetaPct) * 4, 100)}%` }}
               />
             </div>
           </div>
