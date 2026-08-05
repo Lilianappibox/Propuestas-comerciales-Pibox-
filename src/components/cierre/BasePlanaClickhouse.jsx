@@ -33,6 +33,7 @@ function procesarFilas(rows) {
   for (const r of rows) {
     const gmv     = Number(r.gmv)         || 0;
     const serv    = Number(r.servicios)   || 0;
+    const pkgs    = Number(r.packages)    || 0;
     const company = String(r.company     || "").trim();
     const rawKam  = String(r.account_manager || "").trim();
     const kam     = KAM_MAP[normK(rawKam)] || rawKam;
@@ -43,12 +44,14 @@ function procesarFilas(rows) {
       if (!companies[company]) companies[company] = { kam, gmv: 0, servicios: 0, paquetes: 0 };
       companies[company].gmv      += gmv;
       companies[company].servicios += serv;
+      companies[company].paquetes  += pkgs;
       if (kam) companies[company].kam = kam;
     }
     if (opType) {
       if (!lineas[opType]) lineas[opType] = { gmv: 0, servicios: 0, paquetes: 0 };
       lineas[opType].gmv      += gmv;
       lineas[opType].servicios += serv;
+      lineas[opType].paquetes  += pkgs;
     }
     if (city) ciudades[city] = (ciudades[city] || 0) + gmv;
   }
