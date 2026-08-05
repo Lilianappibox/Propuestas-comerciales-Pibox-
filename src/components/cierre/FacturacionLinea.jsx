@@ -142,11 +142,6 @@ export default function FacturacionLinea({ data }) {
             <p className="text-white/60 text-xs font-medium">📋 Servicios</p>
             <p className="text-white font-extrabold text-xl leading-tight">{totalServ.toLocaleString()}</p>
           </div>
-          {/* Paquetes */}
-          <div className="bg-white/15 backdrop-blur rounded-xl px-4 py-3 border border-white/20 min-w-[130px]">
-            <p className="text-white/60 text-xs font-medium">📦 Paquetes</p>
-            <p className="text-white font-extrabold text-xl leading-tight">{totalPaq.toLocaleString()}</p>
-          </div>
         </div>
       </div>
 
