@@ -330,23 +330,9 @@ function RiesgoComercialInner({ currentUser }) {
 
       {/* Contenido */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <Suspense fallback={<div className="text-center py-10 text-purple-400 text-sm">Cargando...</div>}>
-          {tab === "metricas" && <MetricasRiesgo umbrales={riesgoUmbrales} />}
-          {tab === "ranking"  && <RankingRiesgo umbrales={riesgoUmbrales} />}
-          {tab === "ciudad"   && <AnalisisCiudad />}
-          {tab === "informe"  && <InformeEmpresa umbrales={riesgoUmbrales} />}
-          {tab === "pilotos"  && <AnalisisPilotos />}
-          {tab === "nuevos"   && <ClientesNuevos />}
-          {tab === "perdidos" && <ClientesPerdidos />}
-          {tab === "informeCliente" && <InformeCliente currentUser={currentUser} />}
-          {tab === "empresasHoras"  && <EmpresasHoras currentUser={currentUser} />}
-          {tab === "proyeccion"     && <ProyeccionCliente />}
-          {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange} slaConfig={riesgoSlaConfig} onSlaChange={setRiesgoSlaConfig} umbralesConfig={riesgoUmbrales} onUmbralesChange={setRiesgoUmbrales} />}
-        </Suspense>
-
-        {/* Panel ClickHouse — al final, disponible para todos, no en config */}
+        {/* Panel ClickHouse — encima del contenido, disponible para todos, no en config */}
         {tab !== "config" && (
-          <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5 mt-6">
+          <div className="bg-white rounded-2xl shadow-md border border-purple-100 p-5 mb-6">
             <h3 className="font-bold text-gray-700 text-sm mb-3">⚡ Cargar desde ClickHouse</h3>
             <div className="flex flex-wrap gap-3 items-end">
               <div>
@@ -381,6 +367,20 @@ function RiesgoComercialInner({ currentUser }) {
             )}
           </div>
         )}
+
+        <Suspense fallback={<div className="text-center py-10 text-purple-400 text-sm">Cargando...</div>}>
+          {tab === "metricas" && <MetricasRiesgo umbrales={riesgoUmbrales} />}
+          {tab === "ranking"  && <RankingRiesgo umbrales={riesgoUmbrales} />}
+          {tab === "ciudad"   && <AnalisisCiudad />}
+          {tab === "informe"  && <InformeEmpresa umbrales={riesgoUmbrales} />}
+          {tab === "pilotos"  && <AnalisisPilotos />}
+          {tab === "nuevos"   && <ClientesNuevos />}
+          {tab === "perdidos" && <ClientesPerdidos />}
+          {tab === "informeCliente" && <InformeCliente currentUser={currentUser} />}
+          {tab === "empresasHoras"  && <EmpresasHoras currentUser={currentUser} />}
+          {tab === "proyeccion"     && <ProyeccionCliente />}
+          {tab === "config"   && <ConfiguracionRiesgo onMesesChange={handleMesesChange} slaConfig={riesgoSlaConfig} onSlaChange={setRiesgoSlaConfig} umbralesConfig={riesgoUmbrales} onUmbralesChange={setRiesgoUmbrales} />}
+        </Suspense>
       </div>
     </div>
   );
