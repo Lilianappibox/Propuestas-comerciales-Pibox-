@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { fmtM } from "./utils";
 import { parseExcelFile, parseExcelRaw, PARSERS, parseBasePlana, aggregateBase, KAM_MAP } from "./excelParser";
 import ProyeccionClickhouse from "./ProyeccionClickhouse";
+import BasePlanaClickhouse from "./BasePlanaClickhouse";
 
 const HIST_KEY = "pibox_cierre_historial_cargas";
 const MAX_HIST = 20;
@@ -198,6 +199,45 @@ export default function Configuracion({ data, onSave }) {
     setMsgBase("");
   };
 
+  const handleBasePlanaClickHouse = ({ gmvTotal, ciudades, kamGmv }) => {
+    const normKLocal = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const buildMatchSet = (formName) => {
+      const fn = normKLocal(formName);
+      const s  = new Set([fn]);
+      if (KAM_MAP[fn]) s.add(normKLocal(KAM_MAP[fn]));
+      for (const [k, v] of Object.entries(KAM_MAP)) {
+        if (normKLocal(v) === fn) s.add(k);
+      }
+      return s;
+    };
+    const wordMatch = (a, b) => {
+      const wa = normKLocal(a).split(/\s+/).filter(Boolean);
+      const wb = normKLocal(b).split(/\s+/).filter(Boolean);
+      const [shorter, longer] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
+      return shorter.length > 0 && shorter.every(w => longer.includes(w));
+    };
+
+    setForm(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      next.cumplimientoEquipo.gmv = gmvTotal;
+      next.facturacionCiudad = ciudades;
+      if (next.kams?.length && kamGmv.length) {
+        next.kams = next.kams.map(k => {
+          const ms = buildMatchSet(k.nombre);
+          const match =
+            kamGmv.find(ch => ms.has(normKLocal(ch.nombre)) || ms.has(normKLocal(ch.rawNombre))) ||
+            kamGmv.find(ch => wordMatch(k.nombre, ch.rawNombre) || wordMatch(k.nombre, ch.nombre));
+          if (!match) return k;
+          const gmv = match.gmv;
+          const cumplimiento = k.meta > 0 ? parseFloat(((gmv / k.meta) * 100).toFixed(2)) : 0;
+          return { ...k, gmv, cumplimiento };
+        });
+      }
+      return next;
+    });
+    setMsgBase("✅ Datos de ClickHouse aplicados — GMV Real, Ciudades y KAMs actualizados. Haz clic en 📢 Publicar para el equipo.");
+  };
+
   const handleSave = () => {
     onSave(form);
     setMsg("✅ Configuración guardada correctamente");
@@ -326,6 +366,9 @@ export default function Configuracion({ data, onSave }) {
             <p className="text-xs text-gray-400 mt-2">Requerido — genera Top 10, Líneas y Ciudades</p>
           </div>
         </div>
+        {/* ClickHouse sync */}
+        <BasePlanaClickhouse onDataLoaded={handleBasePlanaClickHouse} />
+
         {msgBase && (
           <p className={`mt-3 text-xs font-semibold rounded-lg px-3 py-2 ${msgBase.startsWith("✅") ? "bg-green-50 text-green-700" : msgBase.startsWith("❌") ? "bg-red-50 text-red-600" : "bg-indigo-100 text-indigo-700"}`}>
             {msgBase}
