@@ -548,6 +548,7 @@ export default function Configuracion({ data, onSave }) {
           <Field label="GMV Real" value={form.cumplimientoEquipo.gmv} onChange={(v) => handleChange("cumplimientoEquipo.gmv", v)} />
           <Field label="Utilidad Bruta" value={form.cumplimientoEquipo.utilidadBruta} onChange={(v) => handleChange("cumplimientoEquipo.utilidadBruta", v)} />
           <Field label="Utilidad Neta" value={form.cumplimientoEquipo.utilidadNeta || 0} onChange={(v) => handleChange("cumplimientoEquipo.utilidadNeta", v)} />
+          <Field label="Meta Utilidad Neta" value={form.cumplimientoEquipo.metaUtilidadNeta || 0} onChange={(v) => handleChange("cumplimientoEquipo.metaUtilidadNeta", v)} />
           <Field label="Meta Mes Pasado" value={form.cumplimientoEquipo.mesPasadoMeta} onChange={(v) => handleChange("cumplimientoEquipo.mesPasadoMeta", v)} />
           <Field label="GMV Mes Pasado" value={form.cumplimientoEquipo.mesPasadoGmv} onChange={(v) => handleChange("cumplimientoEquipo.mesPasadoGmv", v)} />
           <Field label="Meta Año Pasado" value={form.cumplimientoEquipo.anioPasadoMeta} onChange={(v) => handleChange("cumplimientoEquipo.anioPasadoMeta", v)} />
