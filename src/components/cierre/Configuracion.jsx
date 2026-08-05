@@ -116,10 +116,10 @@ export default function Configuracion({ data, onSave }) {
   const handleKAMChange = (idx, field, value) => {
     setForm((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
-      // nombre es texto; los demás campos son números
       next.kams[idx][field] = field === "nombre" ? value : (isNaN(value) ? value : Number(value));
+      const gmvTotal = (next.kams[idx].gmv || 0) + (next.kams[idx].gmvExtra || 0);
       next.kams[idx].cumplimiento = next.kams[idx].meta > 0
-        ? Number(((next.kams[idx].gmv / next.kams[idx].meta) * 100).toFixed(2))
+        ? Number(((gmvTotal / next.kams[idx].meta) * 100).toFixed(2))
         : 0;
       return next;
     });
@@ -128,7 +128,8 @@ export default function Configuracion({ data, onSave }) {
   const addKAM = () => {
     setForm((prev) => ({
       ...prev,
-      kams: [...prev.kams, { nombre: "Nuevo KAM", meta: 0, gmv: 0, okr: 0, cumplimiento: 0,
+      kams: [...prev.kams, { nombre: "Nuevo KAM", meta: 0, gmv: 0, gmvExtra: 0, okr: 0,
+        utilidadNeta: 0, cumplimiento: 0,
         crecimientoVsMes: 0, crecimientoVsMesPct: 0, crecimientoVsAnio: 0, crecimientoVsAnioPct: 0 }],
     }));
   };
@@ -577,13 +578,42 @@ export default function Configuracion({ data, onSave }) {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 <Field label="Meta ($)" value={k.meta} onChange={(v) => handleKAMChange(i, "meta", v)} />
                 <Field label="GMV ($)"  value={k.gmv}  onChange={(v) => handleKAMChange(i, "gmv",  v)} />
+                {/* GMV Extra — fondo naranja igual que en Proyección */}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">GMV Extra ($)</label>
+                  <input
+                    type="number"
+                    value={k.gmvExtra || ""}
+                    placeholder="0"
+                    onChange={(e) => handleKAMChange(i, "gmvExtra", e.target.value)}
+                    className="w-full border border-orange-200 rounded-lg px-3 py-2 text-sm bg-orange-50 focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+                  />
+                </div>
+                {/* Utilidad Neta — fondo teal */}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Utilidad Neta ($)</label>
+                  <input
+                    type="number"
+                    value={k.utilidadNeta || ""}
+                    placeholder="0"
+                    onChange={(e) => handleKAMChange(i, "utilidadNeta", e.target.value)}
+                    className="w-full border border-teal-200 rounded-lg px-3 py-2 text-sm bg-teal-50 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-300"
+                  />
+                </div>
                 <Field label="OKR %"    value={k.okr}  onChange={(v) => handleKAMChange(i, "okr",  v)} />
                 <div className="rounded-lg bg-purple-50 p-2 text-center flex flex-col justify-center">
                   <p className="text-xs text-gray-500">Cumplimiento</p>
-                  <p className="text-lg font-bold text-purple-700">{(k.cumplimiento ?? 0).toFixed(1)}%</p>
+                  <p className={`text-lg font-bold ${
+                    (k.cumplimiento ?? 0) >= 95 ? "text-green-600"
+                    : (k.cumplimiento ?? 0) >= 80 ? "text-yellow-600"
+                    : "text-red-500"
+                  }`}>{(k.cumplimiento ?? 0).toFixed(1)}%</p>
+                  {(k.gmvExtra || 0) > 0 && (
+                    <p className="text-[10px] text-orange-500 mt-0.5">+GMV Extra</p>
+                  )}
                 </div>
               </div>
             </div>
