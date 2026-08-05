@@ -199,66 +199,50 @@ export default function Configuracion({ data, onSave }) {
     setMsgBase("");
   };
 
-  const normKLocal = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const buildMatchSet = (formName) => {
-    const fn = normKLocal(formName);
-    const s  = new Set([fn]);
-    if (KAM_MAP[fn]) s.add(normKLocal(KAM_MAP[fn]));
-    for (const [k, v] of Object.entries(KAM_MAP)) {
-      if (normKLocal(v) === fn) s.add(k);
+  // Estado para retener los agg de ClickHouse y combinarlos igual que los Excel
+  const [chAnteriorAgg, setChAnteriorAgg] = useState(null);
+  const [chActualAgg,   setChActualAgg]   = useState(null);
+
+  // Construye un objeto compatible con lo que espera aplicarComparativo({ nombre, agg })
+  const toBasePlanaObj = (label, chData) => ({
+    nombre: label,
+    agg: {
+      companies: chData.companies,
+      lineas:    chData.lineas,
+      ciudades:  chData.ciudades,
+    },
+    total: chData.nEmpresas,
+  });
+
+  const handleActualCH = (chData) => {
+    setChActualAgg(chData);
+    const actualObj   = toBasePlanaObj(`ClickHouse ${new Date().toLocaleDateString("es-CO")}`, chData);
+    const anteriorObj = chAnteriorAgg
+      ? toBasePlanaObj("ClickHouse anterior", chAnteriorAgg)
+      : baseAnterior || null;
+    aplicarComparativo(actualObj, anteriorObj);
+    setBaseActual(actualObj);
+  };
+
+  const handleAnteriorCH = (chData) => {
+    setChAnteriorAgg(chData);
+    const anteriorObj = toBasePlanaObj(`ClickHouse ${new Date().toLocaleDateString("es-CO")}`, chData);
+    setBaseAnterior(anteriorObj);
+    // GMV Mes Pasado al campo general
+    setForm(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      next.cumplimientoEquipo.mesPasadoGmv = chData.gmvTotal;
+      return next;
+    });
+    // Si ya tenemos el mes actual cargado, recalcular comparativo completo
+    if (chActualAgg) {
+      const actualObj = toBasePlanaObj("ClickHouse actual", chActualAgg);
+      aplicarComparativo(actualObj, anteriorObj);
+    } else if (baseActual) {
+      aplicarComparativo(baseActual, anteriorObj);
+    } else {
+      setMsgBase("✅ Mes anterior cargado — GMV Mes Pasado actualizado. Carga el mes actual para completar el cuadro.");
     }
-    return s;
-  };
-  const wordMatch = (a, b) => {
-    const wa = normKLocal(a).split(/\s+/).filter(Boolean);
-    const wb = normKLocal(b).split(/\s+/).filter(Boolean);
-    const [shorter, longer] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
-    return shorter.length > 0 && shorter.every(w => longer.includes(w));
-  };
-
-  const handleActualCH = ({ gmvTotal, ciudades, kamGmv }) => {
-    setForm(prev => {
-      const next = JSON.parse(JSON.stringify(prev));
-      next.cumplimientoEquipo.gmv = gmvTotal;
-      next.facturacionCiudad = ciudades;
-      if (next.kams?.length && kamGmv.length) {
-        next.kams = next.kams.map(k => {
-          const ms = buildMatchSet(k.nombre);
-          const match =
-            kamGmv.find(ch => ms.has(normKLocal(ch.nombre)) || ms.has(normKLocal(ch.rawNombre))) ||
-            kamGmv.find(ch => wordMatch(k.nombre, ch.rawNombre) || wordMatch(k.nombre, ch.nombre));
-          if (!match) return k;
-          const gmv = match.gmv;
-          const cumplimiento = k.meta > 0 ? parseFloat(((gmv / k.meta) * 100).toFixed(2)) : 0;
-          return { ...k, gmv, cumplimiento };
-        });
-      }
-      return next;
-    });
-    setMsgBase("✅ Mes actual aplicado — GMV Real, Ciudades y KAMs actualizados. Haz clic en 📢 Publicar para el equipo.");
-  };
-
-  const handleAnteriorCH = ({ gmvTotal, kamGmv }) => {
-    setForm(prev => {
-      const next = JSON.parse(JSON.stringify(prev));
-      next.cumplimientoEquipo.mesPasadoGmv = gmvTotal;
-      // Crecimiento vs mes anterior por KAM
-      if (next.kams?.length && kamGmv.length) {
-        next.kams = next.kams.map(k => {
-          const ms = buildMatchSet(k.nombre);
-          const match =
-            kamGmv.find(ch => ms.has(normKLocal(ch.nombre)) || ms.has(normKLocal(ch.rawNombre))) ||
-            kamGmv.find(ch => wordMatch(k.nombre, ch.rawNombre) || wordMatch(k.nombre, ch.nombre));
-          if (!match) return k;
-          const gmvAnt = match.gmv;
-          const crecimientoVsMes    = k.gmv - gmvAnt;
-          const crecimientoVsMesPct = gmvAnt > 0 ? parseFloat(((k.gmv - gmvAnt) / gmvAnt * 100).toFixed(2)) : 0;
-          return { ...k, crecimientoVsMes, crecimientoVsMesPct };
-        });
-      }
-      return next;
-    });
-    setMsgBase("✅ Mes anterior aplicado — GMV Mes Pasado y crecimiento KAMs actualizados. Haz clic en 📢 Publicar para el equipo.");
   };
 
   const handleSave = () => {

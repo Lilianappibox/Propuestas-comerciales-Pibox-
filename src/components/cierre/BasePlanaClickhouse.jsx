@@ -2,12 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { KAM_MAP } from "./excelParser";
 
 const MESES = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11 };
-
 const normK = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-function homologarKAM(raw) {
-  const key = normK(raw);
-  return KAM_MAP[key] || raw;
-}
 
 function calcDates(periodo, anio) {
   const mesIdx = MESES[normK(periodo)] ?? new Date().getMonth();
@@ -24,44 +19,46 @@ function calcDates(periodo, anio) {
   return { actualDesde, actualHasta, anteriorDesde, anteriorHasta };
 }
 
+/**
+ * Convierte las filas de ClickHouse (company, account_manager, city, operation_type, servicios, gmv)
+ * al mismo formato que aggregateBase() produce desde Excel:
+ *   { companies: { nombre → {kam, gmv, servicios, paquetes} }, lineas: {...}, ciudades: { ciudad → gmv } }
+ * Además devuelve resumen para mostrar en pantalla.
+ */
 function procesarFilas(rows) {
-  const porCiudad = {};
-  const porKam    = {};
-  let gmvTotal    = 0;
+  const companies = {};
+  const lineas    = {};
+  const ciudades  = {};
 
   for (const r of rows) {
-    const gmv  = Number(r.gmv)       || 0;
-    const serv = Number(r.servicios) || 0;
-    const city = r.city              || "";
-    const raw  = String(r.account_manager || "").trim();
-    const kam  = homologarKAM(raw);
+    const gmv     = Number(r.gmv)         || 0;
+    const serv    = Number(r.servicios)   || 0;
+    const company = String(r.company     || "").trim();
+    const rawKam  = String(r.account_manager || "").trim();
+    const kam     = KAM_MAP[normK(rawKam)] || rawKam;
+    const city    = String(r.city        || "").trim();
+    const opType  = String(r.operation_type || "").trim();
 
-    gmvTotal += gmv;
-
-    if (city) {
-      if (!porCiudad[city]) porCiudad[city] = { ciudad: city, gmv: 0 };
-      porCiudad[city].gmv += gmv;
+    if (company) {
+      if (!companies[company]) companies[company] = { kam, gmv: 0, servicios: 0, paquetes: 0 };
+      companies[company].gmv      += gmv;
+      companies[company].servicios += serv;
+      if (kam) companies[company].kam = kam;
     }
-    if (raw) {
-      if (!porKam[raw]) porKam[raw] = { rawNombre: raw, nombre: kam, gmv: 0, servicios: 0 };
-      porKam[raw].gmv      += gmv;
-      porKam[raw].servicios += serv;
+    if (opType) {
+      if (!lineas[opType]) lineas[opType] = { gmv: 0, servicios: 0, paquetes: 0 };
+      lineas[opType].gmv      += gmv;
+      lineas[opType].servicios += serv;
     }
+    if (city) ciudades[city] = (ciudades[city] || 0) + gmv;
   }
 
-  gmvTotal = Math.round(gmvTotal);
+  const gmvTotal = Math.round(Object.values(companies).reduce((a, c) => a + c.gmv, 0));
+  const nCiudades = Object.keys(ciudades).length;
+  const nKams     = new Set(Object.values(companies).map(c => c.kam).filter(Boolean)).size;
+  const nEmpresas = Object.keys(companies).length;
 
-  const ciudades = Object.values(porCiudad)
-    .map(c => ({
-      ciudad:        c.ciudad,
-      gmv:           Math.round(c.gmv),
-      participacion: gmvTotal > 0 ? parseFloat(((c.gmv / gmvTotal) * 100).toFixed(2)) : 0,
-    }))
-    .sort((a, b) => b.gmv - a.gmv);
-
-  const kamGmv = Object.values(porKam).sort((a, b) => b.gmv - a.gmv);
-
-  return { gmvTotal, ciudades, kamGmv };
+  return { companies, lineas, ciudades, gmvTotal, nCiudades, nKams, nEmpresas };
 }
 
 // ── Panel individual ──────────────────────────────────────────────────────────
@@ -78,7 +75,7 @@ function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta,
   const aplicar = (data) => {
     setResumen(data);
     setStatus("done");
-    setMsg(`✅ GMV $${data.gmvTotal.toLocaleString("es-CO")} · ${data.ciudades.length} ciudades · ${data.kamGmv.length} KAMs`);
+    setMsg(`✅ ${data.nEmpresas} empresas · ${data.nCiudades} ciudades · ${data.nKams} KAMs · GMV $${data.gmvTotal.toLocaleString("es-CO")}`);
     onDataLoaded(data);
   };
 
@@ -88,7 +85,7 @@ function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta,
     setMsg("⏳ Iniciando consulta en ClickHouse…");
     setResumen(null);
     try {
-      const res  = await fetch(`/api/cierre_proyeccion/consulta?desde=${desde}&hasta=${hasta}`);
+      const res  = await fetch(`/api/cierre_base_plana/consulta?desde=${desde}&hasta=${hasta}`);
       const json = await res.json();
 
       if (json.status === "done")  { aplicar(procesarFilas(json.data)); return; }
@@ -105,7 +102,7 @@ function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta,
           return;
         }
         try {
-          const r2 = await fetch(`/api/cierre_proyeccion/status?desde=${desde}&hasta=${hasta}`);
+          const r2 = await fetch(`/api/cierre_base_plana/status?desde=${desde}&hasta=${hasta}`);
           const j2 = await r2.json();
           if (j2.status === "done")  { clearInterval(pollRef.current); aplicar(procesarFilas(j2.data)); }
           else if (j2.status === "error") { clearInterval(pollRef.current); setStatus("error"); setMsg(`❌ ${j2.error}`); }
@@ -124,32 +121,16 @@ function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta,
 
   const isRunning = status === "loading" || status === "polling";
 
-  const colors = {
-    indigo: {
-      border:  "border-indigo-200",
-      bg:      "bg-indigo-50",
-      title:   "text-indigo-700",
-      label:   "text-indigo-600",
-      btn:     "bg-indigo-600 hover:bg-indigo-700",
-      btnDis:  "bg-indigo-300",
-      msgBg:   "bg-indigo-50 text-indigo-700 border-indigo-200",
-    },
-    purple: {
-      border:  "border-purple-200",
-      bg:      "bg-purple-50",
-      title:   "text-purple-700",
-      label:   "text-purple-600",
-      btn:     "bg-purple-600 hover:bg-purple-700",
-      btnDis:  "bg-purple-300",
-      msgBg:   "bg-purple-50 text-purple-700 border-purple-200",
-    },
+  const C = {
+    indigo: { border: "border-indigo-200", title: "text-indigo-700", btn: "bg-indigo-600 hover:bg-indigo-700", btnDis: "bg-indigo-300" },
+    purple: { border: "border-purple-200", title: "text-purple-700", btn: "bg-purple-600 hover:bg-purple-700", btnDis: "bg-purple-300" },
   }[accentColor] || {};
 
   return (
-    <div className={`bg-white border ${colors.border} rounded-xl p-4`}>
+    <div className={`bg-white border ${C.border} rounded-xl p-4`}>
       <div className="flex items-start justify-between mb-3">
         <div>
-          <p className={`text-xs font-bold uppercase tracking-wide ${colors.label} mb-0.5`}>{titulo}</p>
+          <p className={`text-xs font-bold uppercase tracking-wide ${C.title} mb-0.5`}>{titulo}</p>
           <p className="text-xs text-gray-400">{descripcion}</p>
         </div>
         {resumen && (
@@ -157,43 +138,33 @@ function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta,
         )}
       </div>
 
-      {/* Fechas */}
       <div className="flex flex-wrap gap-2 mb-3">
         <div>
           <label className="block text-[10px] text-gray-400 mb-0.5">Desde</label>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
-            disabled={isRunning}
+          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} disabled={isRunning}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400 disabled:opacity-50" />
         </div>
         <div>
           <label className="block text-[10px] text-gray-400 mb-0.5">Hasta</label>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
-            disabled={isRunning}
+          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} disabled={isRunning}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400 disabled:opacity-50" />
         </div>
       </div>
 
-      {/* Botón */}
-      <button
-        onClick={cargar}
-        disabled={isRunning}
+      <button onClick={cargar} disabled={isRunning}
         className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-white text-xs font-bold shadow transition
-          ${isRunning ? `${colors.btnDis} cursor-wait` : `${colors.btn} cursor-pointer`}`}
-      >
+          ${isRunning ? `${C.btnDis} cursor-wait` : `${C.btn} cursor-pointer`}`}>
         {isRunning
           ? <><span className="animate-spin">⏳</span> Consultando…</>
           : <><span>⚡</span> Cargar desde ClickHouse</>}
       </button>
 
-      {/* Mensaje de estado */}
       {msg && (
         <p className={`mt-2 text-xs px-3 py-1.5 rounded-lg border ${
           status === "error" ? "bg-red-50 text-red-600 border-red-200"
           : status === "done" ? "bg-green-50 text-green-700 border-green-200"
-          : colors.msgBg
-        }`}>
-          {msg}
-        </p>
+          : "bg-blue-50 text-blue-700 border-blue-200"
+        }`}>{msg}</p>
       )}
     </div>
   );
@@ -212,7 +183,7 @@ export default function BasePlanaClickhouse({ onActualLoaded, onAnteriorLoaded, 
       <div className="grid sm:grid-cols-2 gap-3">
         <PanelCH
           titulo="Mes anterior"
-          descripcion="Actualiza GMV Mes Pasado"
+          descripcion="Actualiza GMV Mes Pasado, crecimiento KAMs y clientes perdidos"
           accentColor="indigo"
           initialDesde={anteriorDesde}
           initialHasta={anteriorHasta}
@@ -220,7 +191,7 @@ export default function BasePlanaClickhouse({ onActualLoaded, onAnteriorLoaded, 
         />
         <PanelCH
           titulo="Mes actual (cierre)"
-          descripcion="Actualiza GMV Real, Ciudades y KAMs"
+          descripcion="Actualiza GMV Real, KAMs, Top 10, Clientes Nuevos, Líneas y Ciudades"
           accentColor="purple"
           initialDesde={actualDesde}
           initialHasta={actualHasta}
