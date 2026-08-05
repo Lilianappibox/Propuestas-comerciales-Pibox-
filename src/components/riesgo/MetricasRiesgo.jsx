@@ -64,6 +64,7 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
 
   const [mesKey, setMesKey]             = useState(meses[meses.length-1]?.key || "");
   const [filterOpType, setFilterOpType] = useState("");
+  const [filterKam, setFilterKam]       = useState("");
   const [historialGlobal, setHistorialGlobal] = useState([]);
   const [empresaSel, setEmpresaSel]     = useState(null);
   useEffect(() => {
@@ -98,11 +99,19 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
   const dataMes  = useMemo(()=> mesKey ? loadMesData(mesKey)   : null, [mesKey]);
   const dataPrev = useMemo(()=> mesPrevMeta ? loadMesData(mesPrevMeta.key) : null, [mesPrevMeta]);
 
+  // Opciones de KAM únicas del mes activo
+  const kamOptions = useMemo(() => {
+    if (!dataMes) return [];
+    const set = new Set(dataMes.empresas.map(e => e.ejecutivo || "Sin asignar"));
+    return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b, "es"));
+  }, [dataMes]);
+
   const empresasConScore = useMemo(()=>{
     if (!dataMes) return [];
     const ORDER = { rojo: 0, amarillo: 1, verde: 2 };
     return dataMes.empresas
       .filter(e => empresaMatchesOpType(e, filterOpType))
+      .filter(e => !filterKam || (e.ejecutivo || "Sin asignar") === filterKam)
       .map(e => {
         const opData = getOpMetrics(e, filterOpType);
         const eBase  = opData ? { ...e, gmv: opData.gmv, total: opData.total, completados: opData.completados, cancelados: opData.cancelados, paquetes: opData.paquetes, relanzamientos: opData.relanzamientos ?? e.relanzamientos, devueltos: opData.devueltos ?? e.devueltos, canceladosPax: opData.canceladosPax ?? e.canceladosPax, expirados: opData.expirados ?? e.expirados } : e;
@@ -115,7 +124,7 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
         if (riskDiff !== 0) return riskDiff;
         return b.gmv - a.gmv;
       });
-  }, [dataMes, dataPrev, umb, filterOpType]);
+  }, [dataMes, dataPrev, umb, filterOpType, filterKam]);
 
 
   // Totales filtrados por tipo de operación — alimenta todos los charts cuando hay filtro activo
@@ -213,7 +222,9 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
                     Math.max(empresasConScore.reduce((s,e)=>s+e.total,0),1);
 
   // ── Totales mes anterior ─────────────────────────────────────────────────
-  const empPrevAll    = (dataPrev?.empresas || []).filter(e => empresaMatchesOpType(e, filterOpType));
+  const empPrevAll    = (dataPrev?.empresas || [])
+    .filter(e => empresaMatchesOpType(e, filterOpType))
+    .filter(e => !filterKam || (e.ejecutivo || "Sin asignar") === filterKam);
   const _prevVal = (e, k) => { const op = getOpMetrics(e, filterOpType); return op ? (op[k]||0) : e[k]||0; };
   const gmvPrevTotal  = empPrevAll.reduce((s,e)=>s+_prevVal(e,"gmv"),0);
   const totPrevSvc    = empPrevAll.reduce((s,e)=>s+_prevVal(e,"total"),0);
@@ -319,6 +330,19 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
             >
               {OP_TYPES.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">👤 KAM</label>
+            <select
+              value={filterKam}
+              onChange={e => { setFilterKam(e.target.value); setEmpresaSel(null); }}
+              className="border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white text-gray-700"
+            >
+              <option value="">Todos los KAMs</option>
+              {kamOptions.map(k => (
+                <option key={k} value={k}>{k}</option>
               ))}
             </select>
           </div>
