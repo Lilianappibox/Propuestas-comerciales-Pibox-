@@ -67,6 +67,19 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
   const [filterKam, setFilterKam]       = useState("");
   const [historialGlobal, setHistorialGlobal] = useState([]);
   const [empresaSel, setEmpresaSel]     = useState(null);
+  const [metaMap, setMetaMap]           = useState(() => {
+    try { return JSON.parse(localStorage.getItem("riesgo_meta_map") || "{}"); } catch { return {}; }
+  });
+
+  const metaMes    = Number(metaMap[mesKey] || 0);
+  const setMetaMes = (val) => {
+    const v = Number(String(val).replace(/[^0-9]/g, "")) || 0;
+    setMetaMap(prev => {
+      const next = { ...prev, [mesKey]: v };
+      try { localStorage.setItem("riesgo_meta_map", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
   useEffect(() => {
     if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
       setMesKey(meses[meses.length - 1].key);
@@ -1474,53 +1487,105 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
 
               return (
                 <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-                  <div className="flex flex-wrap items-center justify-between mb-4">
-                    <h3 className="font-bold text-gray-700 text-sm">📈 Proyección de Cierre</h3>
-                    {esMesAct ? (
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-gray-500">Día {diasConDatos} de {totalDias}</div>
-                        <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full"
-                               style={{width:`${Math.min(pct*100,100).toFixed(1)}%`,background:BRAND_GRADIENT}}/>
-                        </div>
-                        <div className="text-xs font-bold text-purple-600">{(pct*100).toFixed(1)}%</div>
-                      </div>
-                    ) : (
-                      <span className="px-3 py-1 rounded-full text-xs font-bold text-white"
-                            style={{background:PIBOX_PURPLE}}>Mes completado</span>
-                    )}
-                  </div>
+                  {/* Meta mensual manual */}
+                  {(() => {
+                    const cumplAcum  = metaMes > 0 ? (gmvTotal / metaMes * 100) : null;
+                    const cumplProy  = metaMes > 0 ? (gmvProy  / metaMes * 100) : null;
+                    const cumplOpt   = metaMes > 0 ? (gmvOpt   / metaMes * 100) : null;
+                    const cumplCons  = metaMes > 0 ? (gmvCons  / metaMes * 100) : null;
+                    const semColor   = (p) => p === null ? "" : p >= 95 ? "#16a34a" : p >= 80 ? "#d97706" : "#dc2626";
+                    const semBg      = (p) => p === null ? "" : p >= 95 ? "#dcfce7" : p >= 80 ? "#fef3c7" : "#fee2e2";
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
-                         style={{borderLeft:`3px solid ${PIBOX_PURPLE}`}}>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">GMV acumulado</p>
-                      <p className="text-lg font-extrabold mt-1" style={{color:PIBOX_PURPLE}}>{fmtFull(gmvTotal)}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{(pct*100).toFixed(1)}% del mes</p>
-                    </div>
-                    <div className="rounded-xl p-3 border border-purple-200"
-                         style={{background:BRAND_GRADIENT}}>
-                      <p className="text-xs text-white/80 uppercase tracking-wide">Proyección al cierre</p>
-                      <p className="text-lg font-extrabold mt-1 text-white">{fmtFull(gmvProy)}</p>
-                      {deltaVsAvg !== null && (
-                        <p className="text-xs font-semibold mt-0.5 text-white/80">
-                          {deltaVsAvg >= 0 ? "▲" : "▼"} {Math.abs(deltaVsAvg*100).toFixed(1)}% vs prom. hist.
-                        </p>
-                      )}
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
-                         style={{borderLeft:`3px solid #16a34a`}}>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">↑ Optimista</p>
-                      <p className="text-lg font-extrabold mt-1" style={{color:"#16a34a"}}>{fmtFull(gmvOpt)}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">+{(halfRange*100).toFixed(0)}% rango</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
-                         style={{borderLeft:`3px solid #d97706`}}>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">↓ Conservador</p>
-                      <p className="text-lg font-extrabold mt-1" style={{color:"#d97706"}}>{fmtFull(gmvCons)}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">-{(halfRange*100).toFixed(0)}% rango</p>
-                    </div>
-                  </div>
+                    return (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between mb-4">
+                          <h3 className="font-bold text-gray-700 text-sm">📈 Proyección de Cierre</h3>
+                          <div className="flex flex-wrap items-center gap-3">
+                            {/* Input meta */}
+                            <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-xl px-3 py-1.5">
+                              <span className="text-xs font-semibold text-purple-700">🎯 Meta:</span>
+                              <span className="text-xs text-purple-400">$</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={metaMes > 0 ? metaMes.toLocaleString("es-CO") : ""}
+                                placeholder="0"
+                                onChange={e => setMetaMes(e.target.value.replace(/\./g, ""))}
+                                className="w-32 text-xs font-bold text-purple-800 bg-transparent focus:outline-none text-right"
+                              />
+                            </div>
+                            {esMesAct ? (
+                              <div className="flex items-center gap-2">
+                                <div className="text-xs text-gray-500">Día {diasConDatos} de {totalDias}</div>
+                                <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full"
+                                       style={{width:`${Math.min(pct*100,100).toFixed(1)}%`,background:BRAND_GRADIENT}}/>
+                                </div>
+                                <div className="text-xs font-bold text-purple-600">{(pct*100).toFixed(1)}%</div>
+                              </div>
+                            ) : (
+                              <span className="px-3 py-1 rounded-full text-xs font-bold text-white"
+                                    style={{background:PIBOX_PURPLE}}>Mes completado</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+                               style={{borderLeft:`3px solid ${PIBOX_PURPLE}`}}>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide">GMV acumulado</p>
+                            <p className="text-lg font-extrabold mt-1" style={{color:PIBOX_PURPLE}}>{fmtFull(gmvTotal)}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{(pct*100).toFixed(1)}% del mes</p>
+                            {cumplAcum !== null && (
+                              <span className="mt-1.5 inline-block text-xs font-bold px-2 py-0.5 rounded-full"
+                                    style={{background:semBg(cumplAcum),color:semColor(cumplAcum)}}>
+                                {cumplAcum.toFixed(1)}% meta
+                              </span>
+                            )}
+                          </div>
+                          <div className="rounded-xl p-3 border border-purple-200"
+                               style={{background:BRAND_GRADIENT}}>
+                            <p className="text-xs text-white/80 uppercase tracking-wide">Proyección al cierre</p>
+                            <p className="text-lg font-extrabold mt-1 text-white">{fmtFull(gmvProy)}</p>
+                            {deltaVsAvg !== null && (
+                              <p className="text-xs font-semibold mt-0.5 text-white/80">
+                                {deltaVsAvg >= 0 ? "▲" : "▼"} {Math.abs(deltaVsAvg*100).toFixed(1)}% vs prom. hist.
+                              </p>
+                            )}
+                            {cumplProy !== null && (
+                              <span className="mt-1.5 inline-block text-xs font-bold px-2 py-0.5 rounded-full bg-white/25 text-white">
+                                {cumplProy.toFixed(1)}% meta
+                              </span>
+                            )}
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+                               style={{borderLeft:`3px solid #16a34a`}}>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide">↑ Optimista</p>
+                            <p className="text-lg font-extrabold mt-1" style={{color:"#16a34a"}}>{fmtFull(gmvOpt)}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">+{(halfRange*100).toFixed(0)}% rango</p>
+                            {cumplOpt !== null && (
+                              <span className="mt-1.5 inline-block text-xs font-bold px-2 py-0.5 rounded-full"
+                                    style={{background:semBg(cumplOpt),color:semColor(cumplOpt)}}>
+                                {cumplOpt.toFixed(1)}% meta
+                              </span>
+                            )}
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+                               style={{borderLeft:`3px solid #d97706`}}>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide">↓ Conservador</p>
+                            <p className="text-lg font-extrabold mt-1" style={{color:"#d97706"}}>{fmtFull(gmvCons)}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">-{(halfRange*100).toFixed(0)}% rango</p>
+                            {cumplCons !== null && (
+                              <span className="mt-1.5 inline-block text-xs font-bold px-2 py-0.5 rounded-full"
+                                    style={{background:semBg(cumplCons),color:semColor(cumplCons)}}>
+                                {cumplCons.toFixed(1)}% meta
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="lg:col-span-2">
