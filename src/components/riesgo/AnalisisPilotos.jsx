@@ -45,13 +45,30 @@ export default function AnalisisPilotos() {
   // Análisis
   const analisis = useMemo(() => {
     if (!driversActual.length) return null;
-    const prevIds = new Set(driversPrev.map(d => d.id || d.n));
-    const currentIds = new Set(driversActual.map(d => d.id || d.n));
-    const retenidos = driversPrev.length > 0 ? [...prevIds].filter(id => currentIds.has(id)).length : 0;
-    const perdidosList = driversPrev.length > 0 ? driversPrev.filter(d => !currentIds.has(d.id || d.n)) : [];
+    // Mapas del mes actual: primario por driver_id (único), secundario por nombre (solo si no hay ID)
+    const currentById   = new Map(driversActual.filter(d => d.id).map(d => [d.id, d]));
+    const currentByName = new Map(driversActual.filter(d => d.n).map(d => [d.n, d]));
+    // Mapas del mes anterior: misma lógica para detectar nuevos
+    const prevById   = new Map(driversPrev.filter(d => d.id).map(d => [d.id, d]));
+    const prevByName = new Map(driversPrev.filter(d => d.n).map(d => [d.n, d]));
+    // Busca al piloto en el mes actual usando driver_id como identificador definitivo;
+    // cae al nombre solo si el piloto no tiene ID registrado
+    const getCurrent = (d) => d.id ? (currentById.get(d.id) || null) : (d.n ? currentByName.get(d.n) || null : null);
+    const isInPrev   = (d) => d.id ? prevById.has(d.id)   : (d.n ? prevByName.has(d.n)   : false);
+    // Retenido: estaba en el mes anterior Y tiene ≥1 servicio Completado en el mes actual
+    const retenidos = driversPrev.length > 0
+      ? driversPrev.filter(d => { const cur = getCurrent(d); return cur && (cur.c || 0) > 0; }).length
+      : 0;
+    // Perdido: estaba en el mes anterior Y NO tiene ningún servicio Completado en el mes actual
+    const perdidosList = driversPrev.length > 0
+      ? driversPrev.filter(d => { const cur = getCurrent(d); return !cur || (cur.c || 0) === 0; })
+      : [];
     const perdidos = perdidosList.length;
+    const prevIds    = new Set(driversPrev.map(d => d.id || d.n));
+    const currentIds = new Set(driversActual.map(d => d.id || d.n));
     const tasaRetencion = prevIds.size > 0 ? (retenidos / prevIds.size * 100) : 0;
-    const nuevos = driversPrev.length > 0 ? driversActual.filter(d => !prevIds.has(d.id || d.n)) : [];
+    // Nuevo: está en el mes actual Y no estaba en el mes anterior (por ID si tiene, si no por nombre)
+    const nuevos = driversPrev.length > 0 ? driversActual.filter(d => !isInPrev(d)) : [];
     const T = driversActual.length;
     const totalS = driversActual.reduce((a, d) => a + d.s, 0);
     const totalC = driversActual.reduce((a, d) => a + d.c, 0);

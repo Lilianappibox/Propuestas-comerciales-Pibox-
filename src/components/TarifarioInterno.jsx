@@ -900,10 +900,15 @@ function Calculadora() {
 
 const SK_TARIFARIO = "pibox_tarifario_interno";
 
-function loadData() {
+function mergeWithDefaults(saved) {
+  if (!saved) return JSON.parse(JSON.stringify(TABLE_DATA));
+  return { ...JSON.parse(JSON.stringify(TABLE_DATA)), ...saved };
+}
+
+function loadDataLocal() {
   try {
     const s = localStorage.getItem(SK_TARIFARIO);
-    if (s) return { ...JSON.parse(JSON.stringify(TABLE_DATA)), ...JSON.parse(s) };
+    if (s) return mergeWithDefaults(JSON.parse(s));
   } catch {}
   return JSON.parse(JSON.stringify(TABLE_DATA));
 }
@@ -1180,9 +1185,24 @@ function HistorialEntry({ entry, defaultOpen, isAdmin, onRevert }) {
 export default function TarifarioInterno({ currentUser }) {
   const isAdmin = currentUser?.rol === "Administrativo";
   const [tab, setTab] = useState("politicasGenerales");
-  const [data, setData] = useState(loadData);
+  const [data, setData] = useState(loadDataLocal);
   const [editing, setEditing] = useState(false);
   const [toast, setToast] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Cargar desde el servidor al montar — sobreescribe el localStorage
+  useEffect(() => {
+    fetch("/api/tarifario_spa", { credentials: "same-origin" })
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        if (json?.data && Object.keys(json.data).length > 0) {
+          const merged = mergeWithDefaults(json.data);
+          setData(merged);
+          localStorage.setItem(SK_TARIFARIO, JSON.stringify(json.data));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const current = data[tab];
 
@@ -1196,17 +1216,45 @@ export default function TarifarioInterno({ currentUser }) {
     setData((prev) => ({ ...prev, [key]: { ...prev[key], politicas: { ...prev[key].politicas, rows } } }));
   };
 
-  const handleSave = () => {
-    localStorage.setItem(SK_TARIFARIO, JSON.stringify(data));
-    setEditing(false);
-    setToast("✅ Tarifario guardado");
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/tarifario_spa", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data }),
+      });
+      if (res.ok) {
+        localStorage.setItem(SK_TARIFARIO, JSON.stringify(data));
+        setEditing(false);
+        setToast("✅ Tarifario guardado en el servidor");
+      } else {
+        setToast("❌ Error al guardar. Intenta de nuevo.");
+      }
+    } catch {
+      setToast("❌ Sin conexión. Guardado solo localmente.");
+      localStorage.setItem(SK_TARIFARIO, JSON.stringify(data));
+    }
+    setSaving(false);
     setTimeout(() => setToast(""), 3000);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!confirm("¿Restaurar tarifario por defecto? Se perderán los cambios.")) return;
+    const defaultData = JSON.parse(JSON.stringify(TABLE_DATA));
+    setSaving(true);
+    try {
+      await fetch("/api/tarifario_spa", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: defaultData }),
+      });
+    } catch {}
+    setSaving(false);
     localStorage.removeItem(SK_TARIFARIO);
-    setData(JSON.parse(JSON.stringify(TABLE_DATA)));
+    setData(defaultData);
     setEditing(false);
     setToast("🔄 Tarifario restaurado");
     setTimeout(() => setToast(""), 3000);
@@ -1231,7 +1279,7 @@ export default function TarifarioInterno({ currentUser }) {
           <div className="flex gap-2">
             {editing ? (
               <>
-                <button onClick={handleSave} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">💾 Guardar</button>
+                <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-60">{saving ? "Guardando…" : "💾 Guardar"}</button>
                 <button onClick={() => { setData(loadData()); setEditing(false); }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300">Cancelar</button>
                 <button onClick={handleReset} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg text-sm font-semibold hover:bg-red-200">🔄 Restaurar</button>
               </>
@@ -1272,6 +1320,11 @@ export default function TarifarioInterno({ currentUser }) {
       ) : tab === "incrementoAnual" ? (
         <IncrementoAnual data={data} isAdmin={isAdmin} onApply={(newData) => {
           setData(newData);
+          fetch("/api/tarifario_spa", {
+            method: "PUT", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: newData }),
+          }).catch(() => {});
           localStorage.setItem(SK_TARIFARIO, JSON.stringify(newData));
           setToast("✅ Incremento aplicado y guardado");
           setTimeout(() => setToast(""), 4000);

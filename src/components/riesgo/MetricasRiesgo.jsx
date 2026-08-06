@@ -92,6 +92,9 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
       return next;
     });
   };
+  // Texto crudo del campo festivos — se parsea solo al perder el foco
+  const [festivosRaw, setFestivosRaw] = useState(festivosMes.join(", "));
+  useEffect(() => { setFestivosRaw(festivosMes.join(", ")); }, [mesKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (meses.length > 0 && (!mesKey || !meses.find(m => m.key === mesKey)))
       setMesKey(meses[meses.length - 1].key);
@@ -1581,11 +1584,13 @@ export default function MetricasRiesgo({ umbrales: umbralesProp }) {
                               <span className="text-xs font-semibold text-orange-700">🎉 Festivos (días):</span>
                               <input
                                 type="text"
-                                value={festivosMes.join(", ")}
+                                value={festivosRaw}
                                 placeholder="ej: 7, 20"
-                                onChange={e => {
+                                onChange={e => setFestivosRaw(e.target.value)}
+                                onBlur={e => {
                                   const dias = e.target.value.split(/[,\s]+/).map(s => parseInt(s)).filter(n => !isNaN(n) && n > 0);
                                   setFestivosMes(dias);
+                                  setFestivosRaw(dias.join(", "));
                                 }}
                                 className="w-24 text-xs font-bold text-orange-800 bg-transparent focus:outline-none"
                               />

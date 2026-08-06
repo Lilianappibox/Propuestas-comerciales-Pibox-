@@ -652,16 +652,25 @@ export function procesarDatos(rows, slaConfig = null) {
     const dk = dId || dNm;
     if (!dk) continue;
     const city = toStr(row["city"] || row["City"] || "");
-    const st = toStr(row["service_status"] || "");
+    const st = toStr(row["service_status"] || row["Service Status"] || row["SERVICE_STATUS"] || "");
     const gmv = toNum(row["gmv"]);
     const op = toStr(row["operation_type"] || row["OPERATION_TYPE"] || "");
     const tel = toStr(row["driver_phone"] || row["phone"] || row["telefono"] || row["driver_mobile"] || "");
     const rawDate = toStr(row["date"] || "");
-    const dtTime = toStr(row["dt_time"] || "");
+    const dtTime = toStr(row["dt_time"] || row["Hora"] || row["hora"] || row["time"] || row["horaAsignado"] || row["hour"] || "");
     let hora = -1;
-    const hmMatch = dtTime.match(/^(\d{1,2}):/);
-    if (hmMatch) hora = parseInt(hmMatch[1]);
-    else { try { const rd = String(row["date"] ?? ""); const d = new Date(rd.length === 10 ? rd + "T12:00:00" : rd); if (!isNaN(d.getTime())) hora = d.getHours(); } catch {} }
+    const hmMatch = dtTime.match(/(\d{1,2}):/);
+    if (hmMatch) {
+      hora = parseInt(hmMatch[1]);
+    } else {
+      // Solo extraer hora si la columna date trae datetime completo (>10 chars tipo "2026-07-01 14:30:00")
+      try {
+        if (rawDate.length > 10) {
+          const d = new Date(rawDate);
+          if (!isNaN(d.getTime())) hora = d.getHours();
+        }
+      } catch {}
+    }
     if (!pilotoMap[dk]) pilotoMap[dk] = { id: dId, n: dNm, ci: city, s: 0, c: 0, x: 0, g: 0, hp: {}, ops: {}, ultimaFecha: "", tel: "" };
     const p = pilotoMap[dk];
     p.s++;
