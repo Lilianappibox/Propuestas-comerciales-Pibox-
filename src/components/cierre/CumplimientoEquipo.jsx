@@ -19,11 +19,13 @@ export default function CumplimientoEquipo({ data }) {
   const vsAnio  = c.gmv - c.anioPasadoGmv;
   const vsMesPct  = c.mesPasadoGmv  > 0 ? ((vsMes  / c.mesPasadoGmv)  * 100).toFixed(2) : "0";
   const vsAnioPct = c.anioPasadoGmv > 0 ? ((vsAnio / c.anioPasadoGmv) * 100).toFixed(2) : "0";
-  const utilPct        = c.gmv > 0 ? ((c.utilidadBruta / c.gmv) * 100).toFixed(1) : "0";
-  const utilNeta       = c.utilidadNeta       || 0;
-  const metaUtilNeta   = c.metaUtilidadNeta   || 0;
-  const utilNetaPct    = c.gmv > 0 ? ((utilNeta / c.gmv) * 100).toFixed(1) : "0";
-  const cumplUtilNeta  = metaUtilNeta > 0 ? ((utilNeta / metaUtilNeta) * 100).toFixed(1) : null;
+  const utilPct         = c.gmv > 0 ? ((c.utilidadBruta / c.gmv) * 100).toFixed(1) : "0";
+  const metaUtilBruta   = c.metaUtilidadBruta  || 0;
+  const cumplUtilBruta  = metaUtilBruta > 0 ? ((c.utilidadBruta / metaUtilBruta) * 100).toFixed(1) : null;
+  const utilNeta        = c.utilidadNeta        || 0;
+  const metaUtilNeta    = c.metaUtilidadNeta    || 0;
+  const utilNetaPct     = c.gmv > 0 ? ((utilNeta / c.gmv) * 100).toFixed(1) : "0";
+  const cumplUtilNeta   = metaUtilNeta > 0 ? ((utilNeta / metaUtilNeta) * 100).toFixed(1) : null;
 
   const circumference = 2 * Math.PI * 48;
   const progress      = (pctNum / 100) * circumference;
@@ -118,19 +120,35 @@ export default function CumplimientoEquipo({ data }) {
 
           {/* Utilidad Bruta */}
           <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
-            <div className="flex items-start justify-between mb-1">
+            <div className="flex items-start justify-between mb-2">
               <p className="text-xs text-gray-500 font-medium">Utilidad Bruta</p>
-              <span className="text-xs font-bold bg-purple-600 text-white rounded-full px-2.5 py-0.5">
-                {utilPct}% sobre GMV
-              </span>
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-xs font-bold bg-purple-600 text-white rounded-full px-2.5 py-0.5">
+                  {utilPct}% sobre GMV
+                </span>
+                {cumplUtilBruta !== null && (
+                  <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 ${
+                    Number(cumplUtilBruta) >= 95 ? "bg-green-100 text-green-700"
+                    : Number(cumplUtilBruta) >= 80 ? "bg-yellow-100 text-yellow-700"
+                    : "bg-red-100 text-red-600"
+                  }`}>
+                    {cumplUtilBruta}% vs meta
+                  </span>
+                )}
+              </div>
             </div>
             <p className="font-extrabold text-purple-700 text-xl">{M(c.utilidadBruta)}</p>
-            <div className="mt-2 h-2 bg-purple-200 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${Math.min(Number(utilPct) * 4, 100)}%`, background: BRAND }}
-              />
-            </div>
+            {cumplUtilBruta !== null && (
+              <div className="mt-2 h-2 bg-purple-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${Math.min(Number(cumplUtilBruta), 100)}%`, background: BRAND }}
+                />
+              </div>
+            )}
+            {metaUtilBruta > 0 && (
+              <p className="text-[10px] text-gray-400 mt-1">Meta: {M(metaUtilBruta)}</p>
+            )}
           </div>
 
           {/* Utilidad Neta */}
