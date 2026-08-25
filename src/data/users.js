@@ -17,6 +17,7 @@ export const PERMISOS_BASE = {
     verRiesgoComercial:  false,
     verInformeTada:      false,
     verInformeCruzVerde: false,
+    verManual:           false,
   },
   [ROLES.OPERATIVO]: {
     verPropuesta:        false,
@@ -29,6 +30,7 @@ export const PERMISOS_BASE = {
     verRiesgoComercial:  false,
     verInformeTada:      false,
     verInformeCruzVerde: false,
+    verManual:           false,
   },
   [ROLES.ADMIN]: {
     verPropuesta:        true,
@@ -41,6 +43,7 @@ export const PERMISOS_BASE = {
     verRiesgoComercial:  true,
     verInformeTada:      true,
     verInformeCruzVerde: true,
+    verManual:           true,
   },
 };
 
@@ -54,6 +57,7 @@ export const PERMISOS_CONFIGURABLES = [
   { id: "verRiesgoComercial",  label: "Ver Riesgo Comercial 360°",  desc: "Puede acceder al tablero de riesgo de clientes" },
   { id: "verInformeTada",      label: "Ver Informe TaDa",           desc: "Puede acceder al informe operacional TaDa (Bavaria)" },
   { id: "verInformeCruzVerde", label: "Ver Informe Cruz Verde",     desc: "Puede acceder al informe operacional de Cruz Verde" },
+  { id: "verManual",           label: "Ver Manual de Usuario",      desc: "Puede acceder al manual de usuario del Tablero Comercial" },
 ];
 
 // Backward compatibility

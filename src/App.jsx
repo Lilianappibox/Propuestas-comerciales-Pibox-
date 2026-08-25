@@ -15,6 +15,7 @@ import RiesgoComercial  from "./components/RiesgoComercial";
 import TarifarioInterno from "./components/TarifarioInterno";
 import InformeTada from "./components/InformeTada";
 import InformeCruzVerde from "./components/InformeCruzVerde";
+import ManualUsuario from "./components/ManualUsuario";
 import homeBg from "./assets/pibox-home.png";
 import "./App.css";
 
@@ -39,6 +40,7 @@ const VIEW_RIESGO     = "riesgo";
 const VIEW_TADA       = "tada";
 const VIEW_CRUZ_VERDE = "cruz-verde";
 const VIEW_TARIFARIO  = "tarifario-interno";
+const VIEW_MANUAL     = "manual";
 
 const ROLE_COLORS = {
   [ROLES.ADMIN]:     "bg-fuchsia-100 text-fuchsia-700",
@@ -315,6 +317,7 @@ export default function App() {
     { id: VIEW_RIESGO,     label: "Operación Pibox",        icon: "📦", visible: !!permisos.verRiesgoComercial },
     { id: VIEW_TADA,       label: "Informe TaDa",           icon: "🍺", visible: !!permisos.verInformeTada },
     { id: VIEW_CRUZ_VERDE, label: "Informe Cruz Verde",     icon: "🟢", visible: !!permisos.verInformeCruzVerde },
+    { id: VIEW_MANUAL,     label: "Manual de Usuario",      icon: "📖", visible: !!permisos.verManual },
     { id: VIEW_USUARIOS,   label: "Usuarios",               icon: "👥", visible: permisos.gestionarUsuarios && !railsMode },
   ].filter((v) => v.visible);
 
@@ -698,6 +701,13 @@ export default function App() {
          ══════════════════════════════════════════════════════════════════════ */}
       {view === VIEW_TARIFARIO && (
         <TarifarioInterno currentUser={currentUser} />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+           VISTA: MANUAL DE USUARIO
+         ══════════════════════════════════════════════════════════════════════ */}
+      {view === VIEW_MANUAL && permisos.verManual && (
+        <ManualUsuario />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
