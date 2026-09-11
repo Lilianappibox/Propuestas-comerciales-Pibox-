@@ -246,6 +246,13 @@ function procesarRows(rawRows) {
       estadoServicioAnterior: String(r.estado_servicio_anterior || "").trim(),
       fuenteCierre:           String(r.fuente_cierre           || "").trim(),
       intentosPrevios:        r.intentos_previos != null ? Number(r.intentos_previos) : 0,
+      // true cuando el servicio fue completado en una fecha distinta a la de creación
+      entregaDiaDiferente: (() => {
+        if (!fechaEntrega) return false;
+        const dEnt = toDateStr(fechaEntrega);
+        const dCre = toDateStr(r.asignado || r.iniciado || r.salio_de_origen);
+        return !!(dEnt && dCre && dEnt !== dCre);
+      })(),
     };
   });
 }
@@ -975,10 +982,14 @@ function BuscadorMetricas({ rows, prevRows, prevMesLabel, sedeLabel = "Usuario" 
 
 // ── Panel de una línea de negocio ──────────────────────────────────────────
 function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
-  const [inclFuera, setInclFuera] = useState(true);
-  const baseRows = (linea === "integ_sd" && !inclFuera)
-    ? rows.filter(r => !r.fueraHorario)
-    : rows;
+  const [inclFuera,  setInclFuera]  = useState(true);
+  const [filtDiaDif, setFiltDiaDif] = useState("todos"); // "todos" | "mismo" | "diferente"
+  const baseRows = (() => {
+    let r = (linea === "integ_sd" && !inclFuera) ? rows.filter(x => !x.fueraHorario) : rows;
+    if (linea === "integ_sd" && filtDiaDif !== "todos")
+      r = r.filter(x => filtDiaDif === "diferente" ? x.entregaDiaDiferente : !x.entregaDiaDiferente);
+    return r;
+  })();
   const m = calcMetricas(baseRows);
   const tendencia = dailyTrend(baseRows);
   const byCiudad  = topN(baseRows, "ciudad", 12).map(d => ({ ...d, pct_sla: d.slaDef > 0 ? Math.round(pct(d.slaMet,d.slaDef)*100) : null }));
@@ -1109,6 +1120,41 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
                 className={`px-3 py-1.5 transition border-l border-amber-300 ${!inclFuera ? "text-white" : "text-amber-700 hover:bg-amber-100"}`}
                 style={!inclFuera ? { background: C_TEAL } : {}}>
                 Sin fuera de horario
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Filtro día entrega — solo integ_sd */}
+      {linea === "integ_sd" && (() => {
+        const nDif = rows.filter(r => r.entregaDiaDiferente).length;
+        if (!nDif) return null;
+        const nMismo = rows.length - nDif;
+        return (
+          <div className="flex items-center gap-3 bg-cyan-50 border border-cyan-200 rounded-xl px-4 py-2.5">
+            <span className="text-cyan-600 text-sm">📅</span>
+            <p className="text-xs text-cyan-700 font-medium flex-1">
+              {nDif} servicio{nDif !== 1 ? "s" : ""} entregado{nDif !== 1 ? "s" : ""} en fecha diferente a la de creación.
+            </p>
+            <div className="flex rounded-lg overflow-hidden border border-cyan-300 text-xs font-bold flex-shrink-0">
+              <button
+                onClick={() => setFiltDiaDif("todos")}
+                className={`px-3 py-1.5 transition ${filtDiaDif === "todos" ? "text-white" : "text-cyan-700 hover:bg-cyan-100"}`}
+                style={filtDiaDif === "todos" ? { background: C_TEAL } : {}}>
+                Todos ({fmtNum(rows.length)})
+              </button>
+              <button
+                onClick={() => setFiltDiaDif("mismo")}
+                className={`px-3 py-1.5 transition border-l border-cyan-300 ${filtDiaDif === "mismo" ? "text-white" : "text-cyan-700 hover:bg-cyan-100"}`}
+                style={filtDiaDif === "mismo" ? { background: C_GRN } : {}}>
+                Mismo día ({fmtNum(nMismo)})
+              </button>
+              <button
+                onClick={() => setFiltDiaDif("diferente")}
+                className={`px-3 py-1.5 transition border-l border-cyan-300 ${filtDiaDif === "diferente" ? "text-white" : "text-cyan-700 hover:bg-cyan-100"}`}
+                style={filtDiaDif === "diferente" ? { background: C_RED } : {}}>
+                Día diferente ({fmtNum(nDif)})
               </button>
             </div>
           </div>
