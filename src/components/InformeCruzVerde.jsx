@@ -5197,7 +5197,7 @@ export default function InformeCruzVerde({ isAdmin }) {
     };
 
     const poll = async (attempts = 0) => {
-      if (attempts > 120) {
+      if (attempts > 180) {
         setChStatus("error");
         setChError("La consulta tardó demasiado. Intenta con un rango de fechas menor.");
         return;
@@ -5219,7 +5219,7 @@ export default function InformeCruzVerde({ isAdmin }) {
           setChError(d.error || "Error en ClickHouse");
         } else {
           const elapsed = attempts * 5;
-          setChMsg(`⏳ Consultando ClickHouse… ${elapsed}s (puede tardar hasta 3 min)`);
+          setChMsg(`⏳ Consultando ClickHouse… ${elapsed}s (puede tardar hasta 5 min)`);
           const tid = setTimeout(() => poll(attempts + 1), 5000);
           setChPollRef(tid);
         }
@@ -5251,7 +5251,7 @@ export default function InformeCruzVerde({ isAdmin }) {
           setChStatus("error");
           setChError(d.error || "Error en ClickHouse");
         } else {
-          setChMsg("⏳ Consultando ClickHouse… (puede tardar hasta 3 min)");
+          setChMsg("⏳ Consultando ClickHouse… (puede tardar hasta 5 min)");
           const tid = setTimeout(() => poll(1), 5000);
           setChPollRef(tid);
         }
