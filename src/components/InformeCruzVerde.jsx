@@ -237,6 +237,15 @@ function procesarRows(rawRows) {
         r.costo_servicio ?? r.costo ?? r.gmv ?? r.valor_servicio ?? r.valor ??
         r["costo del servicio"] ?? r["valor del servicio"] ?? r["costo servicio"] ?? 0
       ) || 0,
+      // ── Relanzamientos (sólo ClickHouse v4+) ──────────────────────────────
+      relanzamiento:          String(r.relanzamiento || "").trim(),
+      huecoRelanzamientoMin:  r.hueco_relanzamiento_min  != null ? Number(r.hueco_relanzamiento_min)  : null,
+      huecoRelanzamientoTxt:  String(r.hueco_relanzamiento_txt  || "").trim(),
+      huecoRelanzamientoSeg:  r.hueco_relanzamiento_seg  != null ? Number(r.hueco_relanzamiento_seg)  : null,
+      cierreServicioAnterior: r.cierre_servicio_anterior  ? String(r.cierre_servicio_anterior)         : "",
+      estadoServicioAnterior: String(r.estado_servicio_anterior || "").trim(),
+      fuenteCierre:           String(r.fuente_cierre           || "").trim(),
+      intentosPrevios:        r.intentos_previos != null ? Number(r.intentos_previos) : 0,
     };
   });
 }
@@ -966,16 +975,20 @@ function BuscadorMetricas({ rows, prevRows, prevMesLabel, sedeLabel = "Usuario" 
 
 // ── Panel de una línea de negocio ──────────────────────────────────────────
 function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
-  const m = calcMetricas(rows);
-  const tendencia = dailyTrend(rows);
-  const byCiudad  = topN(rows, "ciudad", 12).map(d => ({ ...d, pct_sla: d.slaDef > 0 ? Math.round(pct(d.slaMet,d.slaDef)*100) : null }));
-  const bySucursal = topN(rows, "sucursal", 10);
-  const slaDist    = slaDistribucion(rows);
-  const slaRanges  = slaByRange(rows);
+  const [inclFuera, setInclFuera] = useState(true);
+  const baseRows = (linea === "integ_sd" && !inclFuera)
+    ? rows.filter(r => !r.fueraHorario)
+    : rows;
+  const m = calcMetricas(baseRows);
+  const tendencia = dailyTrend(baseRows);
+  const byCiudad  = topN(baseRows, "ciudad", 12).map(d => ({ ...d, pct_sla: d.slaDef > 0 ? Math.round(pct(d.slaMet,d.slaDef)*100) : null }));
+  const bySucursal = topN(baseRows, "sucursal", 10);
+  const slaDist    = slaDistribucion(baseRows);
+  const slaRanges  = slaByRange(baseRows);
   const isNextDay  = linea === "integ_nd";
 
   function descargarNoPerfectos() {
-    const noPerfectos = rows.filter(r => r.slaCumplido === false);
+    const noPerfectos = baseRows.filter(r => r.slaCumplido === false);
     const data = noPerfectos.map(r => ({
       "Booking ID":          r.idServicio || r.uuid || "—",
       "N° Paquete":          r.numeroPaquete || "—",
@@ -996,7 +1009,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
   }
 
   function descargarDevoluciones() {
-    const devRows = rows.filter(r => r.esDevolucion);
+    const devRows = baseRows.filter(r => r.esDevolucion);
     const data = devRows.map(r => ({
       "Fecha":                       r.fechaCancelacion ? fmtDatetime(r.fechaCancelacion) : fmtDatetime(r.iniciadoRaw),
       "Booking ID":                  r.idServicio || r.uuid || "—",
@@ -1029,7 +1042,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
     }
     const cfg = SLA_DEFAULTS.ranges;
     const lastMax = cfg[cfg.length - 1]?.maxKm || 17;
-    const data = rows
+    const data = baseRows
       .filter(r => r.km > 0)
       .map(r => {
         let rango = `> ${lastMax} km`;
@@ -1073,6 +1086,35 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
 
   return (
     <div className="space-y-6">
+      {/* Filtro fuera de horario — solo integ_sd */}
+      {linea === "integ_sd" && (() => {
+        const nFuera = rows.filter(r => r.fueraHorario).length;
+        if (!nFuera) return null;
+        return (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+            <span className="text-amber-600 text-sm">⚠️</span>
+            <p className="text-xs text-amber-700 font-medium flex-1">
+              {nFuera} servicio{nFuera !== 1 ? "s" : ""} fuera del horario de tienda.
+              Los indicadores muestran los datos:
+            </p>
+            <div className="flex rounded-lg overflow-hidden border border-amber-300 text-xs font-bold flex-shrink-0">
+              <button
+                onClick={() => setInclFuera(true)}
+                className={`px-3 py-1.5 transition ${inclFuera ? "text-white" : "text-amber-700 hover:bg-amber-100"}`}
+                style={inclFuera ? { background: C_AMB } : {}}>
+                Con fuera de horario
+              </button>
+              <button
+                onClick={() => setInclFuera(false)}
+                className={`px-3 py-1.5 transition border-l border-amber-300 ${!inclFuera ? "text-white" : "text-amber-700 hover:bg-amber-100"}`}
+                style={!inclFuera ? { background: C_TEAL } : {}}>
+                Sin fuera de horario
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard icon="📦" label="Total servicios" value={fmtNum(m.total)} color={C_TEAL} />
@@ -1112,9 +1154,9 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
         </div>
       )}
 
-      <GmvDiarioCV rows={rows} />
+      <GmvDiarioCV rows={baseRows} />
 
-      <PaquetesDescripcionChart rows={rows} />
+      <PaquetesDescripcionChart rows={baseRows} />
 
       {/* Tendencia diaria */}
       {tendencia.length > 1 && (
@@ -1172,7 +1214,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
             <>
               <p className="text-sm font-bold text-gray-700 mb-3">🕕 Hora de entrega (Next Day)</p>
               {(() => {
-                const byHora = Array.from({length:24},(_,h)=>({hora:`${String(h).padStart(2,"0")}:00`, n:rows.filter(r=>r.esPerfecto && r.horaEntrega !== null && Math.floor(r.horaEntrega/60)===h).length})).filter(h=>h.n>0);
+                const byHora = Array.from({length:24},(_,h)=>({hora:`${String(h).padStart(2,"0")}:00`, n:baseRows.filter(r=>r.esPerfecto && r.horaEntrega !== null && Math.floor(r.horaEntrega/60)===h).length})).filter(h=>h.n>0);
                 return byHora.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={byHora}>
@@ -1195,7 +1237,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
       {(() => {
         // Agrupar todos los estados
         const byEstado = Object.entries(
-          rows.reduce((acc, r) => {
+          baseRows.reduce((acc, r) => {
             const e = r.estado || "Sin estado";
             acc[e] = (acc[e] || 0) + 1;
             return acc;
@@ -1214,14 +1256,14 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
         };
 
         // Top 5 expirados por usuario (mostrador)
-        const expiradosRows = rows.filter(r => r.estado?.toLowerCase().includes("expir"));
+        const expiradosRows = baseRows.filter(r => r.estado?.toLowerCase().includes("expir"));
         const topExpirados  = Object.entries(
           expiradosRows.reduce((acc, r) => { acc[r.sucursal] = (acc[r.sucursal] || 0) + 1; return acc; }, {})
         ).map(([s, n]) => ({ sucursal: s.length > 25 ? s.slice(0, 25) + "…" : s, n }))
           .sort((a, b) => b.n - a.n).slice(0, 5);
 
         // Top 5 cancelados por usuario (mostrador)
-        const canceladosRows = rows.filter(r => r.estado?.toLowerCase().includes("cancel"));
+        const canceladosRows = baseRows.filter(r => r.estado?.toLowerCase().includes("cancel"));
         const topCancelados  = Object.entries(
           canceladosRows.reduce((acc, r) => { acc[r.sucursal] = (acc[r.sucursal] || 0) + 1; return acc; }, {})
         ).map(([s, n]) => ({ sucursal: s.length > 25 ? s.slice(0, 25) + "…" : s, n }))
@@ -1424,16 +1466,16 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
       {/* Ranking por ciudad + Buscador de métricas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <TablaRanking rows={rows} groupKey="ciudad" title="🏙️ Ranking por ciudad" showSla={!isNextDay} />
+          <TablaRanking rows={baseRows} groupKey="ciudad" title="🏙️ Ranking por ciudad" showSla={!isNextDay} />
         </div>
-        <BuscadorMetricas rows={rows} prevRows={prevRows} prevMesLabel={prevMesLabel}
+        <BuscadorMetricas rows={baseRows} prevRows={prevRows} prevMesLabel={prevMesLabel}
           sedeLabel={linea === "mostrador" ? "Usuario" : "Sede"} />
       </div>
 
       {/* Top 5 tiendas mostrador */}
       {linea === "mostrador" && (() => {
         // Agrupar por sucursal y calcular métricas
-        const grp = groupBy(rows, "sucursal");
+        const grp = groupBy(baseRows, "sucursal");
         const ranking = Object.entries(grp)
           .map(([nombre, rs]) => ({
             nombre,
@@ -1538,7 +1580,7 @@ function LineaPanel({ rows, linea, prevRows, prevMesLabel }) {
 
       {/* Top 5 devoluciones por usuario / sede */}
       {(() => {
-        const devolRows = rows.filter(r => r.esDevolucion);
+        const devolRows = baseRows.filter(r => r.esDevolucion);
         const sedeLabel = linea === "mostrador" ? "Usuario" : "Sede";
 
         // Agrupar devoluciones por sucursal
@@ -2070,26 +2112,45 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows, directorio,
       const buf = await file.arrayBuffer();
       const wb  = XLSX.read(buf, { type: "array" });
 
-      // Hoja "Directorio Consolidado" (o primera hoja disponible)
       const ws = wb.Sheets["Directorio Consolidado"] || wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      // header:1 para acceder positionally y evitar problemas con \n/espacios en encabezados
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (!raw.length) throw new Error("Archivo sin datos");
 
-      const tiendas = rows.map(r => ({
-        codigo:       String(r["Cod. Suc"] ?? "").trim(),
-        nombre:       String(r["Nombre Sucursal"] ?? "").trim(),
-        departamento: String(r["Departamento"] ?? "").trim(),
-        ciudad:       String(r["Ciudad"] ?? "").trim(),
-        direccion:    String(r["Dirección"] ?? r["Direccion"] ?? "").trim(),
-        correo:       String(r["Correo Sucursal"] ?? "").trim(),
-        celular:      String(r["Celular Corporativo"] ?? "").trim(),
-        lv_apertura:  String(r["Apertura\n  Lunes a viernes"] ?? r["Apertura Lunes a viernes"] ?? "").trim(),
-        lv_cierre:    String(r["Cierre \n Lunes a viernes"]   ?? r["Cierre Lunes a viernes"]   ?? "").trim(),
-        sab_apertura: String(r["Apertura \n Sábado"]  ?? r["Apertura Sábado"]  ?? "").trim(),
-        sab_cierre:   String(r["Cierre \n Sábado"]    ?? r["Cierre Sábado"]    ?? "").trim(),
-        dom_apertura: String(r["Apertura \n Domingo"] ?? r["Apertura Domingo"] ?? "").trim(),
-        dom_cierre:   String(r["Cierre \n Domingo"]   ?? r["Cierre Domingo"]   ?? "").trim(),
-        fest_apertura:String(r["Apertura \n Festivos"]?? r["Apertura Festivos"]?? "").trim(),
-        fest_cierre:  String(r["Cierre \n Festivos"]  ?? r["Cierre Festivos"]  ?? "").trim(),
+      const [headerRow, ...dataRows] = raw;
+
+      // Normaliza: colapsa whitespace/saltos de línea → un espacio, lowercase, sin tilde
+      const norm = (s) =>
+        String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase()
+          .normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+      const colIdx = {};
+      headerRow.forEach((h, i) => { colIdx[norm(h)] = i; });
+
+      const col = (row, ...keys) => {
+        for (const k of keys) {
+          const i = colIdx[norm(k)];
+          if (i !== undefined) return String(row[i] ?? "").trim();
+        }
+        return "";
+      };
+
+      const tiendas = dataRows.map(row => ({
+        codigo:       col(row, "Cod. Suc"),
+        nombre:       col(row, "Nombre Sucursal"),
+        departamento: col(row, "Departamento"),
+        ciudad:       col(row, "Ciudad"),
+        direccion:    col(row, "Dirección", "Direccion"),
+        correo:       col(row, "Correo Sucursal", "Correo"),
+        celular:      col(row, "Celular Corporativo", "Celular"),
+        lv_apertura:  col(row, "Apertura Lunes a viernes"),
+        lv_cierre:    col(row, "Cierre Lunes a viernes"),
+        sab_apertura: col(row, "Apertura Sábado", "Apertura Sabado"),
+        sab_cierre:   col(row, "Cierre Sábado", "Cierre Sabado"),
+        dom_apertura: col(row, "Apertura Domingo"),
+        dom_cierre:   col(row, "Cierre Domingo"),
+        fest_apertura:col(row, "Apertura Festivos"),
+        fest_cierre:  col(row, "Cierre Festivos"),
       })).filter(t => t.codigo || t.nombre);
 
       const newDir = { tiendas, horarios: directorio?.horarios || [], uploaded: new Date().toISOString() };
@@ -2345,10 +2406,10 @@ function AdminPanel({ slaConfig, setSlaConfig, setHorariosMap, rows, directorio,
                         <td className="p-2 text-gray-500">{t.direccion}</td>
                         <td className="p-2 text-gray-500 whitespace-nowrap">{t.correo}</td>
                         <td className="p-2 text-gray-500 whitespace-nowrap">{t.celular}</td>
-                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.lv_apertura && t.lv_cierre ? `${t.lv_apertura} – ${t.lv_cierre}` : "—"}</td>
-                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.sab_apertura && t.sab_cierre ? `${t.sab_apertura} – ${t.sab_cierre}` : "—"}</td>
-                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.dom_apertura && t.dom_cierre ? `${t.dom_apertura} – ${t.dom_cierre}` : "—"}</td>
-                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.fest_apertura && t.fest_cierre ? `${t.fest_apertura} – ${t.fest_cierre}` : "—"}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.lv_apertura && t.lv_cierre ? `${minutesToHHMM(excelTimeToMinutes(t.lv_apertura))} – ${minutesToHHMM(excelTimeToMinutes(t.lv_cierre))}` : "—"}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.sab_apertura && t.sab_cierre ? `${minutesToHHMM(excelTimeToMinutes(t.sab_apertura))} – ${minutesToHHMM(excelTimeToMinutes(t.sab_cierre))}` : "—"}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.dom_apertura && t.dom_cierre ? `${minutesToHHMM(excelTimeToMinutes(t.dom_apertura))} – ${minutesToHHMM(excelTimeToMinutes(t.dom_cierre))}` : "—"}</td>
+                        <td className="p-2 text-gray-500 whitespace-nowrap">{t.fest_apertura && t.fest_cierre ? `${minutesToHHMM(excelTimeToMinutes(t.fest_apertura))} – ${minutesToHHMM(excelTimeToMinutes(t.fest_cierre))}` : "—"}</td>
                       </tr>
                     ))}
                     {filteredTiendas.length > 300 && (
@@ -4625,6 +4686,177 @@ function InsightPanel({ rows, prevRows }) {
   );
 }
 
+// ── Relanzamientos ─────────────────────────────────────────────────────────
+function RelanzamientosPanel({ rows }) {
+  const relRows = useMemo(() =>
+    rows.filter(r => r.intentosPrevios > 0)
+  , [rows]);
+
+  const totalRows = rows.length;
+  const total     = relRows.length;
+
+  const avgHueco = useMemo(() => {
+    const valid = relRows.filter(r => r.huecoRelanzamientoMin != null);
+    if (!valid.length) return null;
+    return Math.round(valid.reduce((s, r) => s + r.huecoRelanzamientoMin, 0) / valid.length);
+  }, [relRows]);
+
+  const maxIntentos = useMemo(() =>
+    relRows.reduce((m, r) => Math.max(m, r.intentosPrevios), 0)
+  , [relRows]);
+
+  const porEstadoAnterior = useMemo(() => {
+    const map = {};
+    for (const r of relRows) {
+      const k = r.estadoServicioAnterior || "Sin estado";
+      map[k] = (map[k] || 0) + 1;
+    }
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([estado, cantidad]) => ({ estado, cantidad }));
+  }, [relRows]);
+
+  const porIntentos = useMemo(() => {
+    const map = {};
+    for (const r of relRows) {
+      const k = r.intentosPrevios;
+      map[k] = (map[k] || 0) + 1;
+    }
+    return Object.entries(map)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([intentos, cantidad]) => ({ intentos: `${intentos} previo${intentos === "1" ? "" : "s"}`, cantidad }));
+  }, [relRows]);
+
+  const [busq, setBusq] = useState("");
+  const tabla = useMemo(() => {
+    const q = busq.toLowerCase();
+    return relRows.filter(r =>
+      !q ||
+      r.uuid.toLowerCase().includes(q) ||
+      r.sucursal.toLowerCase().includes(q) ||
+      r.ciudad.toLowerCase().includes(q) ||
+      r.relanzamiento.toLowerCase().includes(q)
+    );
+  }, [relRows, busq]);
+
+  const exportar = () => {
+    const data = tabla.map(r => ({
+      "ID Servicio":            r.uuid,
+      "Fecha":                  r.fecha || "",
+      "Sucursal":               r.sucursal,
+      "Ciudad":                 r.ciudad,
+      "Línea":                  r.linea,
+      "Intentos previos":       r.intentosPrevios,
+      "Estado anterior":        r.estadoServicioAnterior,
+      "Cierre servicio ant.":   r.cierreServicioAnterior,
+      "Fuente cierre":          r.fuenteCierre,
+      "Hueco (min)":            r.huecoRelanzamientoMin ?? "",
+      "Hueco (texto)":          r.huecoRelanzamientoTxt,
+      "Cadena relanzamiento":   r.relanzamiento,
+      "Estado final":           r.estado,
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Relanzamientos");
+    XLSX.writeFile(wb, "relanzamientos-cruz-verde.xlsx");
+  };
+
+  if (!totalRows) return <p className="text-gray-400 text-sm p-4">Sin datos cargados.</p>;
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard icon="🔄" label="Servicios relanzados" value={fmtNum(total)}
+          sub={totalRows > 0 ? fmtPct(pct(total, totalRows)) + " del total" : undefined} color={C_AMB} />
+        <KpiCard icon="⏱️" label="Hueco promedio" value={avgHueco != null ? `${avgHueco} min` : "—"}
+          sub="cierre padre → acept. hijo" color={C_TEAL} />
+        <KpiCard icon="🔁" label="Máx. intentos previos" value={maxIntentos || "—"} color={C_RED} />
+        <KpiCard icon="📦" label="Total del período" value={fmtNum(totalRows)} color={C_GRAY} />
+      </div>
+
+      {/* Gráficos */}
+      {total > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Por estado del servicio anterior */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <h4 className="text-sm font-bold text-gray-700 mb-3">Estado del servicio anterior</h4>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={porEstadoAnterior} layout="vertical" margin={{ left: 16, right: 16 }}>
+                <XAxis type="number" tick={{ fontSize: 10 }} />
+                <YAxis type="category" dataKey="estado" width={90} tick={{ fontSize: 11 }} />
+                <Tooltip content={<TT />} />
+                <Bar dataKey="cantidad" fill={C_AMB} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Por número de intentos previos */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <h4 className="text-sm font-bold text-gray-700 mb-3">Distribución por intentos previos</h4>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={porIntentos} margin={{ left: 0, right: 16 }}>
+                <XAxis dataKey="intentos" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip content={<TT />} />
+                <Bar dataKey="cantidad" fill={C_TEAL} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Tabla detalle */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h4 className="text-sm font-bold text-gray-700">Detalle de servicios relanzados ({fmtNum(tabla.length)})</h4>
+          <div className="flex gap-2 items-center">
+            <input
+              type="text" placeholder="Buscar…" value={busq} onChange={e => setBusq(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 w-48" />
+            <button onClick={exportar}
+              className="px-3 py-1.5 rounded-lg text-white text-xs font-bold bg-teal-600 hover:bg-teal-700 shadow">
+              ⬇ Exportar
+            </button>
+          </div>
+        </div>
+        {tabla.length === 0
+          ? <p className="text-gray-400 text-sm">{total === 0 ? "Sin servicios relanzados en el período." : "Sin resultados para la búsqueda."}</p>
+          : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  {["ID Servicio","Fecha","Sucursal","Ciudad","Intentos","Estado ant.","Hueco","Cadena"].map(h => (
+                    <th key={h} className="text-left py-2 px-2 text-gray-500 font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tabla.slice(0, 200).map((r, i) => (
+                  <tr key={i} className={`border-b border-gray-50 ${i % 2 === 0 ? "" : "bg-gray-50"}`}>
+                    <td className="py-1.5 px-2 font-mono text-gray-500 text-xs">{r.uuid.slice(-8)}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap">{r.fecha || "—"}</td>
+                    <td className="py-1.5 px-2 max-w-[140px] truncate" title={r.sucursal}>{r.sucursal}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap">{r.ciudad}</td>
+                    <td className="py-1.5 px-2 text-center font-bold" style={{ color: r.intentosPrevios >= 3 ? C_RED : r.intentosPrevios >= 2 ? C_AMB : C_TEAL }}>
+                      {r.intentosPrevios}
+                    </td>
+                    <td className="py-1.5 px-2 whitespace-nowrap">{r.estadoServicioAnterior || "—"}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap">{r.huecoRelanzamientoTxt || (r.huecoRelanzamientoMin != null ? `${r.huecoRelanzamientoMin} min` : "—")}</td>
+                    <td className="py-1.5 px-2 font-mono text-gray-400 max-w-[180px] truncate" title={r.relanzamiento}>{r.relanzamiento || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {tabla.length > 200 && (
+              <p className="text-xs text-gray-400 mt-2">Mostrando 200 de {fmtNum(tabla.length)} filas. Usa Exportar para ver todos.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Tabs ───────────────────────────────────────────────────────────────────
 const TABS = [
   { id:"resumen",    label:"Resumen",              icon:"📊",  adminOnly: false },
@@ -4636,6 +4868,7 @@ const TABS = [
   { id:"devoluciones", label:"Análisis Devoluciones", icon:"↩️", adminOnly: false },
   { id:"entregas",   label:"Análisis Entregas",     icon:"📦",  adminOnly: false },
   { id:"admin",      label:"Administrativo",        icon:"🔧",  adminOnly: true  },
+  { id:"relanzamientos", label:"Relanzamientos",     icon:"🔄",  adminOnly: false },
   { id:"insight",    label:"Insight",               icon:"💡",  adminOnly: false },
   { id:"notas",      label:"Notas y Tareas",        icon:"📝",  adminOnly: false },
 ];
@@ -4651,7 +4884,9 @@ export default function InformeCruzVerde({ isAdmin }) {
   const [syncVersion, setSyncVersion] = useState(0);
   const [loading,    setLoading]    = useState(false);
   // Datos del servidor en memoria — evita depender de IndexedDB para mostrar
-  const serverDataRef = useRef(null);
+  const serverDataRef  = useRef(null);
+  // Filas cargadas desde ClickHouse en esta sesión por no-admin (session-only, no persiste en IDB)
+  const localChRowsRef = useRef({});
   const [uploadMsg,  setUploadMsg]  = useState(null);
   const [filtCiudad,    setFiltCiudad]    = useState("todas");
   const [filtLinea,     setFiltLinea]     = useState("todas");
@@ -4698,13 +4933,20 @@ export default function InformeCruzVerde({ isAdmin }) {
       if (!snap.ok || !snap.data?.index) return true; // sin publicación aún — estado correcto, no reintentar
       const d = snap.data;
       serverDataRef.current = d;
-      saveIndex({ ...d.index });
+      // Merge: los meses cargados localmente por no-admin (ClickHouse) que aún no están
+      // publicados se preservan para que no desaparezcan en cada polling de 30s.
+      const localIdx = loadIndex();
+      const mergedIdx = { ...d.index };
+      for (const [k, v] of Object.entries(localIdx)) {
+        if (!(k in mergedIdx)) mergedIdx[k] = v;
+      }
+      saveIndex(mergedIdx);
       // Actualizar estado React primero — datos visibles sin esperar a IDB
       if (d.directorio) setCvDirectorio(d.directorio);
       if (d.horariosSd) setCvHorariosSd(d.horariosSd);
       if (d.sla) setSlaConfig({ ...SLA_DEFAULTS, ...d.sla });
       if (d.umbrales) setCvUmbrales(d.umbrales);
-      setIndex({ ...d.index });
+      setIndex(mergedIdx);
       if (d.horariosSd?.horarios?.length) setHorariosMap(buildHorariosMap(d.horariosSd.horarios));
       setSyncVersion(v => v + 1);
       // IDB en background (cache para admin; no bloquea la vista no-admin)
@@ -4752,12 +4994,15 @@ export default function InformeCruzVerde({ isAdmin }) {
   }, [index]);
 
   // Cargar filas del mes seleccionado
-  // No-admin: SOLO datos del servidor (serverDataRef); nunca IDB — evita caché de otra sesión
+  // No-admin: servidor primero; si no está publicado, usa las filas cargadas localmente
+  //   desde ClickHouse en esta sesión (localChRowsRef) — evita caché entre usuarios
   // Admin: lee de IDB (carga archivos planos y ClickHouse localmente)
   useEffect(() => {
     if (!mesSel) { setRows([]); return; }
     if (!isAdmin) {
-      setRows((serverDataRef.current?.meses?.[mesSel]?.rows || []).filter(r => !isEstadoExcluido(r.estado)));
+      const serverRows = serverDataRef.current?.meses?.[mesSel]?.rows;
+      const source = serverRows ?? localChRowsRef.current[mesSel] ?? [];
+      setRows(source.filter(r => !isEstadoExcluido(r.estado)));
     } else {
       idbLoad(mesSel).then(data =>
         setRows((data?.rows || []).filter(r => !isEstadoExcluido(r.estado)))
@@ -4772,7 +5017,7 @@ export default function InformeCruzVerde({ isAdmin }) {
     return idx > 0 ? sorted[idx - 1] : null;
   }, [index, mesSel]);
 
-  // Cargar mes anterior — no-admin: SOLO servidor; admin: IDB
+  // Cargar mes anterior — no-admin: servidor primero, luego localChRowsRef; admin: IDB
   useEffect(() => {
     if (!prevMesSel) { setPrevRows([]); return; }
     const process = (rawRows) => {
@@ -4782,7 +5027,8 @@ export default function InformeCruzVerde({ isAdmin }) {
       setPrevRows(enriched);
     };
     if (!isAdmin) {
-      process(serverDataRef.current?.meses?.[prevMesSel]?.rows);
+      const serverRows = serverDataRef.current?.meses?.[prevMesSel]?.rows;
+      process(serverRows ?? localChRowsRef.current[prevMesSel]);
     } else {
       idbLoad(prevMesSel).then(data => process(data?.rows));
     }
@@ -4893,6 +5139,8 @@ export default function InformeCruzVerde({ isAdmin }) {
       const mesKey = `${MESES_LABEL[d0.getMonth()]} ${d0.getFullYear()}`;
       const fmtD = (s) => s.split("-").reverse().join("/");
       const chLabel = `${fmtD(chDesde)} – ${fmtD(chHasta)}`;
+      // Para no-admin: guardar filas en sesión (no IDB) para evitar caché entre usuarios
+      if (!isAdmin) localChRowsRef.current[mesKey] = processed;
       await idbSave(mesKey, { rows: processed, archivo: "ClickHouse", fecha: new Date().toISOString(), total: processed.length });
       const newIdx = { ...loadIndex(), [mesKey]: { archivo: "ClickHouse", fecha: new Date().toISOString(), total: processed.length, label: chLabel } };
       saveIndex(newIdx);
@@ -5090,7 +5338,9 @@ export default function InformeCruzVerde({ isAdmin }) {
                       'tsalida','direccionOrigen','descEstado','numeroPaquete',
                       'horaAsignado',
                       // Campos para descargas de Devoluciones y No Perfectos:
-                      'idServicio','iniciadoRaw','idPiloto','descripcion','fechaCancelacion']);
+                      'idServicio','iniciadoRaw','idPiloto','descripcion','fechaCancelacion',
+                      // Campos para Análisis Devoluciones (visible a todos):
+                      'fechaPaqueteNoRecibido','razonNoEntrega']);
                     const slimRow = (r) => { const s = {}; for (const k of SLIM) if (k in r) s[k] = r[k]; return s; };
                     const mesData = await idbLoad(mesSel);
                     if (!mesData) throw new Error("No hay datos cargados para este mes");
@@ -5325,6 +5575,9 @@ export default function InformeCruzVerde({ isAdmin }) {
             )}
             {tab === "entregas" && (
               <EntregasPanel rows={filteredRows} />
+            )}
+            {tab === "relanzamientos" && (
+              <RelanzamientosPanel rows={filteredRows} />
             )}
             {tab === "insight" && (
               <InsightPanel rows={filteredRows} prevRows={prevRows} />
