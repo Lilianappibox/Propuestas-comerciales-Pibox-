@@ -902,7 +902,8 @@ const SK_TARIFARIO = "pibox_tarifario_interno";
 
 function mergeWithDefaults(saved) {
   if (!saved) return JSON.parse(JSON.stringify(TABLE_DATA));
-  return { ...JSON.parse(JSON.stringify(TABLE_DATA)), ...saved };
+  const { _ts, ...rest } = saved;
+  return { ...JSON.parse(JSON.stringify(TABLE_DATA)), ...rest };
 }
 
 function loadDataLocal() {
@@ -1189,16 +1190,22 @@ export default function TarifarioInterno({ currentUser }) {
   const [editing, setEditing] = useState(false);
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
+  const [utilidadAdicional, setUtilidadAdicional] = useState(0);
 
-  // Cargar desde el servidor al montar — sobreescribe el localStorage
+  // Cargar desde el servidor al montar — solo sobreescribe local si el servidor es más reciente
   useEffect(() => {
     fetch("/api/tarifario_spa", { credentials: "same-origin" })
       .then(r => r.ok ? r.json() : null)
       .then(json => {
         if (json?.data && Object.keys(json.data).length > 0) {
-          const merged = mergeWithDefaults(json.data);
-          setData(merged);
-          localStorage.setItem(SK_TARIFARIO, JSON.stringify(json.data));
+          const serverTs = json.data._ts || 0;
+          const localRaw = localStorage.getItem(SK_TARIFARIO);
+          const localTs = localRaw ? (JSON.parse(localRaw)?._ts || 0) : 0;
+          if (serverTs >= localTs) {
+            const merged = mergeWithDefaults(json.data);
+            setData(merged);
+            localStorage.setItem(SK_TARIFARIO, JSON.stringify(json.data));
+          }
         }
       })
       .catch(() => {});
@@ -1218,23 +1225,26 @@ export default function TarifarioInterno({ currentUser }) {
 
   const handleSave = async () => {
     setSaving(true);
+    const csrfToken = window.__RAILS_CSRF_TOKEN__;
+    const dataToSave = { ...data, _ts: Date.now() };
     try {
       const res = await fetch("/api/tarifario_spa", {
         method: "PUT",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data }),
+        headers: { "Content-Type": "application/json", ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}) },
+        body: JSON.stringify({ data: dataToSave }),
       });
       if (res.ok) {
-        localStorage.setItem(SK_TARIFARIO, JSON.stringify(data));
+        localStorage.setItem(SK_TARIFARIO, JSON.stringify(dataToSave));
         setEditing(false);
         setToast("✅ Tarifario guardado en el servidor");
       } else {
-        setToast("❌ Error al guardar. Intenta de nuevo.");
+        localStorage.setItem(SK_TARIFARIO, JSON.stringify(dataToSave));
+        setToast(`❌ Error ${res.status} al guardar. Datos conservados localmente.`);
       }
     } catch {
       setToast("❌ Sin conexión. Guardado solo localmente.");
-      localStorage.setItem(SK_TARIFARIO, JSON.stringify(data));
+      localStorage.setItem(SK_TARIFARIO, JSON.stringify(dataToSave));
     }
     setSaving(false);
     setTimeout(() => setToast(""), 3000);
@@ -1242,22 +1252,40 @@ export default function TarifarioInterno({ currentUser }) {
 
   const handleReset = async () => {
     if (!confirm("¿Restaurar tarifario por defecto? Se perderán los cambios.")) return;
-    const defaultData = JSON.parse(JSON.stringify(TABLE_DATA));
+    const defaultData = { ...JSON.parse(JSON.stringify(TABLE_DATA)), _ts: Date.now() };
+    const csrfToken = window.__RAILS_CSRF_TOKEN__;
     setSaving(true);
     try {
       await fetch("/api/tarifario_spa", {
         method: "PUT",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}) },
         body: JSON.stringify({ data: defaultData }),
       });
     } catch {}
     setSaving(false);
     localStorage.removeItem(SK_TARIFARIO);
-    setData(defaultData);
+    setData(JSON.parse(JSON.stringify(TABLE_DATA)));
     setEditing(false);
     setToast("🔄 Tarifario restaurado");
     setTimeout(() => setToast(""), 3000);
+  };
+
+  const applyUtilRows = (rows) => {
+    if (!utilidadAdicional || utilidadAdicional <= 0) return rows;
+    return rows.map(row => row.map(c => applyPctToCell(c, utilidadAdicional)));
+  };
+
+  const tabTieneMontos = TABS_CON_TARIFAS.includes(tab);
+  const projectedRows = tabTieneMontos && current?.rows ? applyUtilRows(current.rows) : (current?.rows || []);
+  const projectedExtraRows = tabTieneMontos && current?.extra?.rows ? applyUtilRows(current.extra.rows) : (current?.extra?.rows || []);
+
+  const copyTabla = (headers, rows) => {
+    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+    navigator.clipboard.writeText(text).then(
+      () => { setToast("📋 Tabla copiada al portapapeles"); setTimeout(() => setToast(""), 3000); },
+      () => { setToast("❌ No se pudo copiar al portapapeles"); setTimeout(() => setToast(""), 3000); }
+    );
   };
 
   return (
@@ -1333,10 +1361,42 @@ export default function TarifarioInterno({ currentUser }) {
         <InformeTada isAdmin={isAdmin} />
       ) : (
         <>
+          {/* Panel Utilidad Adicional */}
+          {tabTieneMontos && !editing && (
+            <div className="bg-white rounded-xl border border-purple-100 shadow-sm p-4 space-y-3">
+              <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                <span>📊</span> Tarifas Base PIBOX + Utilidad Adicional
+                <span className="text-xs font-normal text-purple-500">({TABS.find(t => t.id === tab)?.label})</span>
+              </h3>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-xs font-semibold text-gray-600">% Utilidad Adicional:</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="1"
+                  value={utilidadAdicional}
+                  onChange={e => setUtilidadAdicional(Number(e.target.value) || 0)}
+                  className="w-20 border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+                <span className="text-xs text-gray-400">%</span>
+                <button
+                  onClick={() => copyTabla(current.headers, projectedRows)}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-200 transition"
+                >
+                  📋 Copiar tabla
+                </button>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-xs text-purple-700">
+                Tarifas base del Tarifario Interno PIBOX. Ajusta el % de utilidad para calcular las tarifas con margen adicional.
+              </div>
+            </div>
+          )}
+
           {editing && isAdmin ? (
             <EditableTable headers={current.headers} rows={current.rows} onChange={(rows) => updateRows(tab, rows)} />
           ) : (
-            <DataTable headers={current.headers} rows={current.rows} />
+            <DataTable headers={current.headers} rows={projectedRows} />
           )}
 
           {current.extra && (
@@ -1345,7 +1405,7 @@ export default function TarifarioInterno({ currentUser }) {
               {editing && isAdmin ? (
                 <EditableTable headers={current.extra.headers} rows={current.extra.rows} onChange={(rows) => updateExtraRows(tab, rows)} />
               ) : (
-                <DataTable headers={current.extra.headers} rows={current.extra.rows} />
+                <DataTable headers={current.extra.headers} rows={projectedExtraRows} />
               )}
             </div>
           )}
