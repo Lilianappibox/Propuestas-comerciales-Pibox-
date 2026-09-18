@@ -31,14 +31,14 @@ function procesarFilas(rows) {
   const ciudades  = {};
 
   for (const r of rows) {
-    const gmv     = Number(r.gmv)         || 0;
-    const serv    = Number(r.servicios)   || 0;
-    const pkgs    = Number(r.packages)    || 0;
-    const company = String(r.company     || "").trim();
-    const rawKam  = String(r.account_manager || "").trim();
-    const kam     = KAM_MAP[normK(rawKam)] || rawKam;
-    const city    = String(r.city        || "").trim();
-    const opType  = String(r.operation_type || "").trim();
+    const company = String(r.company || "").trim();
+    const gmv    = Number(r.gmv)              || 0;
+    const serv   = Number(r.servicios)        || 0;
+    const pkgs   = Number(r.packages)         || 0;
+    const rawKam = String(r.account_manager || "").trim();
+    const kam    = KAM_MAP[normK(rawKam)] || rawKam;
+    const city   = String(r.city        || "").trim();
+    const opType = String(r.operation_type || "").trim();
 
     if (company) {
       if (!companies[company]) companies[company] = { kam, gmv: 0, servicios: 0, paquetes: 0 };
@@ -62,6 +62,33 @@ function procesarFilas(rows) {
   const nEmpresas = Object.keys(companies).length;
 
   return { companies, lineas, ciudades, gmvTotal, nCiudades, nKams, nEmpresas };
+}
+
+function injectBodega(data, bodegaRaw, bodegaClientesRaw, bodegaEOKamRaw) {
+  if (bodegaRaw) {
+    const gmv      = Math.round(Number(bodegaRaw.gmv)  || 0);
+    const servicios = Number(bodegaRaw.servicios)        || 0;
+    const paquetes  = Number(bodegaRaw.paquetes)         || 0;
+    if (gmv > 0 || servicios > 0) {
+      data.bodegaPiboxStats = { gmv, servicios, paquetes };
+    }
+  }
+  if (Array.isArray(bodegaClientesRaw) && bodegaClientesRaw.length > 0) {
+    data.bodegaClientes = bodegaClientesRaw.map(r => ({
+      kam:      String(r.kam          || ""),
+      cliente:  String(r.real_company || ""),
+      servicios: Number(r.servicios)  || 0,
+      gmv:      Math.round(Number(r.gmv) || 0),
+      paquetes:  Number(r.paquetes)   || 0,
+    }));
+  }
+  if (Array.isArray(bodegaEOKamRaw) && bodegaEOKamRaw.length > 0) {
+    data.bodegaEOKam = bodegaEOKamRaw.map(r => ({
+      kam:   String(r.real_account_manager || ""),
+      gmvEO: Math.round(Number(r.gmv_eo)   || 0),
+    }));
+  }
+  return data;
 }
 
 // ── Panel individual ──────────────────────────────────────────────────────────
@@ -91,7 +118,7 @@ function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta,
       const res  = await fetch(`/api/cierre_base_plana/consulta?desde=${desde}&hasta=${hasta}`);
       const json = await res.json();
 
-      if (json.status === "done")  { aplicar(procesarFilas(json.data)); return; }
+      if (json.status === "done")  { aplicar(injectBodega(procesarFilas(json.data), json.bodega_pibox, json.bodega_clientes, json.bodega_eo_kam)); return; }
       if (json.status === "error") { setStatus("error"); setMsg(`❌ ${json.error}`); return; }
 
       setStatus("polling");
@@ -107,7 +134,7 @@ function PanelCH({ titulo, descripcion, accentColor, initialDesde, initialHasta,
         try {
           const r2 = await fetch(`/api/cierre_base_plana/status?desde=${desde}&hasta=${hasta}`);
           const j2 = await r2.json();
-          if (j2.status === "done")  { clearInterval(pollRef.current); aplicar(procesarFilas(j2.data)); }
+          if (j2.status === "done")  { clearInterval(pollRef.current); aplicar(injectBodega(procesarFilas(j2.data), j2.bodega_pibox, j2.bodega_clientes, j2.bodega_eo_kam)); }
           else if (j2.status === "error") { clearInterval(pollRef.current); setStatus("error"); setMsg(`❌ ${j2.error}`); }
         } catch {}
       }, 5000);

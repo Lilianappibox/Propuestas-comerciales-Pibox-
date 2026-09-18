@@ -80,11 +80,14 @@ function autoUpdateTendencias(formData, actualAgg, anteriorAgg) {
     upsert(anteriorAgg, prevMesIdx, prevAnio);
   }
 
-  tendencias.sort((a, b) => {
-    const pa = parseM(a.mes), pb = parseM(b.mes);
-    return pa.anio !== pb.anio ? pa.anio - pb.anio : pa.mesIdx - pb.mesIdx;
-  });
+  tendencias.sort(sortTend);
   return { ...formData, tendencias };
+}
+
+function sortTend(a, b) {
+  const ya = Number(a.anio) || 0, yb = Number(b.anio) || 0;
+  if (ya !== yb) return ya - yb;
+  return parseM(a.mes).mesIdx - parseM(b.mes).mesIdx;
 }
 
 export default function Configuracion({ data, onSave }) {
@@ -196,7 +199,7 @@ export default function Configuracion({ data, onSave }) {
 
   const eliminarActual = () => {
     setBaseActual(null);
-    setForm(prev => ({ ...prev, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [], _basePlanaActiva: false }));
+    setForm(prev => ({ ...prev, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [], bodegaPiboxStats: null, bodegaClientes: null, bodegaEOKam: null, _basePlanaActiva: false }));
     setMsgBase("");
   };
 
@@ -208,9 +211,12 @@ export default function Configuracion({ data, onSave }) {
   const toBasePlanaObj = (label, chData) => ({
     nombre: label,
     agg: {
-      companies: chData.companies,
-      lineas:    chData.lineas,
-      ciudades:  chData.ciudades,
+      companies:        chData.companies,
+      lineas:           chData.lineas,
+      ciudades:         chData.ciudades,
+      bodegaPiboxStats: chData.bodegaPiboxStats || null,
+      bodegaClientes:   chData.bodegaClientes   || null,
+      bodegaEOKam:      chData.bodegaEOKam      || null,
     },
     total: chData.nEmpresas,
   });
@@ -399,7 +405,7 @@ export default function Configuracion({ data, onSave }) {
             </button>
             <button
               onClick={() => {
-                const formLimpio = { ...form, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [] };
+                const formLimpio = { ...form, top10Clientes: [], clientesNuevos: [], clientesPerdidos: [], facturacionLinea: [], facturacionCiudad: [], bodegaPiboxStats: null, bodegaClientes: null, bodegaEOKam: null };
                 eliminarActual();
                 eliminarAnterior();
                 onSave(formLimpio);
@@ -847,10 +853,10 @@ export default function Configuracion({ data, onSave }) {
 
       {tab === "tendencias" && (
         <EditableTable
-          rows={form.tendencias}
+          rows={[...(form.tendencias || [])].sort(sortTend)}
           columns={["mes", "anio", "gmv", "meta", "servicios"]}
           columnLabels={{ mes: "Mes", anio: "Año", gmv: "GMV", meta: "Meta", servicios: "Servicios" }}
-          onChange={(rows) => setForm((p) => ({ ...p, tendencias: rows }))}
+          onChange={(rows) => setForm((p) => ({ ...p, tendencias: [...rows].sort(sortTend) }))}
         />
       )}
 
@@ -912,7 +918,8 @@ export default function Configuracion({ data, onSave }) {
                   );
                 if (!match) return k;
                 const gmv = match.gmv;
-                const cumplimiento = k.meta > 0 ? parseFloat(((gmv / k.meta) * 100).toFixed(2)) : 0;
+                const gmvTotal = gmv + (k.gmvExtra || 0);
+                const cumplimiento = k.meta > 0 ? parseFloat(((gmvTotal / k.meta) * 100).toFixed(2)) : 0;
                 return { ...k, gmv, cumplimiento };
               });
             }
@@ -965,6 +972,7 @@ export default function Configuracion({ data, onSave }) {
                       <th className="text-left p-2">KAM</th>
                       <th className="text-right p-2">Meta ($)</th>
                       <th className="text-right p-2">GMV ($)</th>
+                      <th className="text-right p-2">GMV Entregas optimizadas</th>
                       <th className="text-right p-2">GMV Extra ($)</th>
                       <th className="text-right p-2">Cumplimiento</th>
                       <th className="p-2 w-8"></th>
@@ -972,9 +980,19 @@ export default function Configuracion({ data, onSave }) {
                   </thead>
                   <tbody>
                     {(() => {
+                      const normKam = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+                      const bodegaEOByKam = {};
+                      if (form.bodegaEOKam?.length) {
+                        for (const r of form.bodegaEOKam) {
+                          if (!r.kam) continue;
+                          const k = normKam(r.kam);
+                          bodegaEOByKam[k] = (bodegaEOByKam[k] || 0) + (r.gmvEO || 0);
+                        }
+                      }
                       const allKams = proy.kams || form.kams.map(km => ({ nombre: km.nombre, meta: km.meta, gmv: km.gmv }));
                       return allKams.map((pk, i) => {
-                        const effectiveGmv = (Number(pk.gmv) || 0) + (Number(pk.gmvExtra) || 0);
+                        const gmvBodega = bodegaEOByKam[normKam(pk.nombre)] || 0;
+                        const effectiveGmv = (Number(pk.gmv) || 0) + gmvBodega + (Number(pk.gmvExtra) || 0);
                         const cumplK = pk.meta > 0 ? (effectiveGmv / pk.meta * 100) : 0;
                         const updateKamField = (field, val) => {
                           const kams = [...allKams];
@@ -999,6 +1017,11 @@ export default function Configuracion({ data, onSave }) {
                             <td className="p-1">
                               <input type="number" value={pk.gmv || ""} onChange={(e) => updateKamField("gmv", e.target.value)}
                                 className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                            </td>
+                            <td className="p-2 text-right">
+                              {gmvBodega > 0
+                                ? <span className="text-xs font-semibold text-teal-700">${Math.round(gmvBodega).toLocaleString("es-CO")}</span>
+                                : <span className="text-xs text-gray-300">—</span>}
                             </td>
                             <td className="p-1">
                               <input type="number" value={pk.gmvExtra || ""} onChange={(e) => updateKamField("gmvExtra", e.target.value)}
