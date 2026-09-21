@@ -962,7 +962,7 @@ const TABS_CON_TARIFAS = ["distancia","horas","paquetes","tarifasTada","recargos
 
 function parsePesoVal(s) {
   if (typeof s !== "string") return null;
-  const m = s.match(/^\$?\s*([\d.,]+)/);
+  const m = s.match(/^\$\s*([\d.,]+)/);
   if (!m) return null;
   return Number(m[1].replace(/\./g, "").replace(",", "."));
 }
