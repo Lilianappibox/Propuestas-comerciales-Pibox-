@@ -149,9 +149,7 @@ function chRowToBD(row) {
     hourFare:      Number(row.hour_fare)           || 0,
     hourBaseFare:     Number(row.hour_base_fare)      || 0,
     packageFare:      Number(row.package_fare)        || 0,
-    parkingFare:      Number(row.parking_fare)        || 0,
-    maxDeclaredValue: Number(row.max_declared_value)  || 0,
-    maxChargedValue:  Number(row.max_charged_value)   || 0,
+    valorDeclarado:   Number(row.valor_declarado)     || 0,
     comission:        Number(row.comission)           || 0,
     utilidadCorp:  Number(row.utilidad_corporativa)|| 0,
     credit:        Number(row.credit)              || 0,
@@ -774,7 +772,7 @@ export default function IncrementoTarifas({ isAdmin }) {
       row[4] = c.ciudad || "";                                                    // Ciudad o Zona
       row[5] = "City";                                                            // Tipo de Geocerca
       row[6] = 1;                                                                 // Servicio Express
-      row[7] = c.comission != null && c.comission !== "" ? c.comission : "";       // % Comisión
+      row[7] = c.utilidadCorp != null && c.utilidadCorp !== "" ? c.utilidadCorp : ""; // % Comisión
       row[8] = validHasta;                                                        // Válido Hasta
       row[9] = c.moneda || "COP";                                                // Moneda
       row[10] = 1;                                                                // Tarifa Estándar habilitada
@@ -789,9 +787,7 @@ export default function IncrementoTarifas({ isAdmin }) {
       row[38] = selectedFields.has("hourFare") ? nw.hourFare : c.hourFare;        // Tarifa Por Hora (valor)
       row[47] = c.extraStopFare > 0 ? 1 : 0;                                     // Tarifa Parada Extra habilitada
       row[48] = selectedFields.has("extraStopFare") ? nw.extraStopFare : c.extraStopFare; // Valor Parada Extra
-      row[55] = c.parkingFare > 0 ? c.parkingFare : "";                          // Tarifa Parqueo
-      row[56] = c.maxDeclaredValue > 0 ? c.maxDeclaredValue : "";                // Valor Máximo Declarado
-      row[57] = c.maxChargedValue > 0 ? c.maxChargedValue : "";                  // Valor Máximo Cobrado
+      row[56] = c.valorDeclarado > 0 ? c.valorDeclarado : "";                      // Valor Máximo Declarado
       rows.push(row);
     });
 
