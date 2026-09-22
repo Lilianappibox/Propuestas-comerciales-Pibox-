@@ -147,9 +147,12 @@ function chRowToBD(row) {
     distanceFare:  Number(row.distance_fare)       || 0,
     extraStopFare: Number(row.extra_stop_fare)     || 0,
     hourFare:      Number(row.hour_fare)           || 0,
-    hourBaseFare:  Number(row.hour_base_fare)      || 0,
-    packageFare:   Number(row.package_fare)        || 0,
-    comission:     Number(row.comission)           || 0,
+    hourBaseFare:     Number(row.hour_base_fare)      || 0,
+    packageFare:      Number(row.package_fare)        || 0,
+    parkingFare:      Number(row.parking_fare)        || 0,
+    maxDeclaredValue: Number(row.max_declared_value)  || 0,
+    maxChargedValue:  Number(row.max_charged_value)   || 0,
+    comission:        Number(row.comission)           || 0,
     utilidadCorp:  Number(row.utilidad_corporativa)|| 0,
     credit:        Number(row.credit)              || 0,
     tieneCredito:  row.tiene_credito || "",
@@ -413,7 +416,7 @@ function TarifasClickhousePanel({ isAdmin, onImportToBD, showToast }) {
 
 export default function IncrementoTarifas({ isAdmin }) {
   // Vista activa
-  const [chMode, setChMode] = useState(false);
+  const [chMode, setChMode] = useState(true);
 
   // ClickHouse state
   const [chClientsDB,  setChClientsDB]  = useState([]);
@@ -771,7 +774,7 @@ export default function IncrementoTarifas({ isAdmin }) {
       row[4] = c.ciudad || "";                                                    // Ciudad o Zona
       row[5] = "City";                                                            // Tipo de Geocerca
       row[6] = 1;                                                                 // Servicio Express
-      row[7] = c.comission || "";                                                 // % Comisión
+      row[7] = c.comission != null && c.comission !== "" ? c.comission : "";       // % Comisión
       row[8] = validHasta;                                                        // Válido Hasta
       row[9] = c.moneda || "COP";                                                // Moneda
       row[10] = 1;                                                                // Tarifa Estándar habilitada
@@ -786,6 +789,9 @@ export default function IncrementoTarifas({ isAdmin }) {
       row[38] = selectedFields.has("hourFare") ? nw.hourFare : c.hourFare;        // Tarifa Por Hora (valor)
       row[47] = c.extraStopFare > 0 ? 1 : 0;                                     // Tarifa Parada Extra habilitada
       row[48] = selectedFields.has("extraStopFare") ? nw.extraStopFare : c.extraStopFare; // Valor Parada Extra
+      row[55] = c.parkingFare > 0 ? c.parkingFare : "";                          // Tarifa Parqueo
+      row[56] = c.maxDeclaredValue > 0 ? c.maxDeclaredValue : "";                // Valor Máximo Declarado
+      row[57] = c.maxChargedValue > 0 ? c.maxChargedValue : "";                  // Valor Máximo Cobrado
       rows.push(row);
     });
 
@@ -943,28 +949,9 @@ export default function IncrementoTarifas({ isAdmin }) {
             </div>
           )}
 
-          {/* Fuente de datos + Step tabs */}
+          {/* Step tabs */}
           <div className="flex gap-1 overflow-x-auto flex-wrap items-center">
-            {/* Fuente toggle */}
-            <button
-              onClick={() => { setChMode(false); setSelectedIds(new Set()); }}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                !chMode ? "bg-purple-700 text-white shadow border-purple-700" : "text-gray-500 hover:bg-purple-50 hover:text-purple-700 border-transparent"
-              }`}
-            >
-              📁 Base de Datos (Excel)
-            </button>
-            <button
-              onClick={() => { setChMode(true); setSelectedIds(new Set()); }}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                chMode ? "bg-purple-700 text-white shadow border-purple-700" : "text-gray-500 hover:bg-purple-50 hover:text-purple-700 border-transparent"
-              }`}
-            >
-              📊 ClickHouse (en vivo)
-            </button>
-
-            {/* Separador + Step tabs (siempre visibles) */}
-            <div className="flex gap-1 ml-2 pl-2 border-l border-purple-200">
+            <div className="flex gap-1">
               {[
                 { id: 1, icon: "1", label: "Seleccionar Clientes" },
                 { id: 2, icon: "2", label: "Configurar Incremento" },
