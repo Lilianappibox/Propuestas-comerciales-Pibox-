@@ -114,14 +114,15 @@ function TarifasBaseSection({ activeTab }) {
     return TARIFARIO_DEFAULTS[tarifarioKey] || null;
   }, [tarifarioKey]);
 
-  if (!tarifarioKey || !tarifarioData) return null;
-
-  const { headers, rows } = tarifarioData;
+  const rows = tarifarioData?.rows ?? [];
+  const headers = tarifarioData?.headers ?? [];
 
   const rowsWithUtility = useMemo(() => {
     if (pct === 0) return rows;
     return rows.map((row) => row.map((cell) => applyUtility(cell, pct)));
   }, [rows, pct]);
+
+  if (!tarifarioKey || !tarifarioData) return null;
 
   const handleCopyTable = () => {
     const source = pct === 0 ? rows : rowsWithUtility;
@@ -787,18 +788,55 @@ export default function TarifasEditor({ tarifas, onChange }) {
 
             {/* ── Alistamientos ── */}
             <div>
-              <SectionHeader label="Alistamientos" onAdd={() => {
-                const cp = deepClone(tarifas);
-                cp.storage.alistamientos = cp.storage.alistamientos || [];
-                cp.storage.alistamientos.push({
-                  tipo: "Simple", descripcion: "",
-                  rangos: [
-                    { rango: "1 - 100", tarifa: "N.A" }, { rango: "101 - 250", tarifa: "N.A" },
-                    { rango: "251 - 500", tarifa: "N.A" }, { rango: "> 500", tarifa: "N.A" },
-                  ],
-                });
-                onChange(cp);
-              }} />
+              <div className="flex items-center justify-between mb-3 mt-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Alistamientos</p>
+                <div className="flex gap-2">
+                  <button
+                    title="Reemplaza los alistamientos con los datos actuales del Tarifario Interno"
+                    onClick={() => {
+                      try {
+                        const stored = localStorage.getItem(SK_TARIFARIO);
+                        if (!stored) return;
+                        const td = JSON.parse(stored);
+                        // TarifarioInterno guarda alistamientos en storage.extra.rows como tabla plana
+                        const rows = td?.storage?.extra?.rows;
+                        if (!rows?.length) return;
+                        // Convertir [Tipo, Desc, Rango, Costo] → [{tipo, descripcion, rangos:[{rango,tarifa}]}]
+                        const grupos = {};
+                        const orden = [];
+                        rows.forEach(([tipo, desc, rango, costo]) => {
+                          if (!grupos[tipo]) { grupos[tipo] = { tipo, descripcion: desc || "", rangos: [] }; orden.push(tipo); }
+                          if (desc && !grupos[tipo].descripcion) grupos[tipo].descripcion = desc;
+                          grupos[tipo].rangos.push({ rango, tarifa: costo });
+                        });
+                        const cp = deepClone(tarifas);
+                        cp.storage.alistamientos = orden.map(t => grupos[t]);
+                        onChange(cp);
+                      } catch {}
+                    }}
+                    className="text-xs text-purple-600 hover:text-purple-800 border border-purple-200 rounded-lg px-3 py-1 hover:bg-purple-50 transition-colors"
+                  >
+                    ⟳ Desde Tarifario
+                  </button>
+                  <button
+                    onClick={() => {
+                      const cp = deepClone(tarifas);
+                      cp.storage.alistamientos = cp.storage.alistamientos || [];
+                      cp.storage.alistamientos.push({
+                        tipo: "Simple", descripcion: "",
+                        rangos: [
+                          { rango: "1 - 100", tarifa: "N.A" }, { rango: "101 - 250", tarifa: "N.A" },
+                          { rango: "251 - 500", tarifa: "N.A" }, { rango: "> 500", tarifa: "N.A" },
+                        ],
+                      });
+                      onChange(cp);
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50 transition-colors flex items-center gap-1"
+                  >
+                    + Agregar
+                  </button>
+                </div>
+              </div>
               {(tarifas.storage.alistamientos || []).map((a, i) => (
                 <CityCard key={i} title={`${a.tipo} — ${a.descripcion || "sin descripción"}`} onDelete={() => {
                   const cp = deepClone(tarifas); cp.storage.alistamientos.splice(i, 1); onChange(cp);
@@ -823,12 +861,40 @@ export default function TarifasEditor({ tarifas, onChange }) {
                   </Row>
                   {/* Rangos de alistamiento */}
                   <div className="mt-2">
-                    <p className="text-xs text-gray-500 mb-2 font-medium">Tarifas por rango de alistamientos / mes:</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-500 font-medium">Tarifas por rango de alistamientos / mes:</p>
+                      <button
+                        onClick={() => {
+                          const cp = deepClone(tarifas);
+                          cp.storage.alistamientos[i].rangos = cp.storage.alistamientos[i].rangos || [];
+                          cp.storage.alistamientos[i].rangos.push({ rango: "", tarifa: "N.A" });
+                          onChange(cp);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50"
+                      >+ Rango</button>
+                    </div>
                     <div className="space-y-1">
                       {(a.rangos || []).map((r, j) => (
-                        <Row key={j} label={`Rango ${r.rango}`}>
-                          <Input value={r.tarifa} onChange={(v) => update(`storage.alistamientos.${i}.rangos.${j}.tarifa`, v)} prefix="$" />
-                        </Row>
+                        <div key={j} className="flex items-center gap-2 py-1 border-b border-gray-100 last:border-0">
+                          <span className="text-xs text-gray-500 shrink-0">Rango</span>
+                          <input
+                            value={r.rango}
+                            onChange={(e) => update(`storage.alistamientos.${i}.rangos.${j}.rango`, e.target.value)}
+                            className="text-xs border border-gray-200 rounded px-2 py-1 w-28 focus:outline-none focus:border-purple-400"
+                            placeholder="ej: 1 - 100"
+                          />
+                          <div className="flex-1">
+                            <Input value={r.tarifa} onChange={(v) => update(`storage.alistamientos.${i}.rangos.${j}.tarifa`, v)} prefix="$" />
+                          </div>
+                          <button
+                            onClick={() => {
+                              const cp = deepClone(tarifas);
+                              cp.storage.alistamientos[i].rangos.splice(j, 1);
+                              onChange(cp);
+                            }}
+                            className="text-red-400 hover:text-red-600 text-sm shrink-0"
+                          >×</button>
+                        </div>
                       ))}
                     </div>
                   </div>
